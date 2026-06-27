@@ -1,0 +1,6 @@
+{
+  "name": "مركز يوسف ذنون للخط العربي",
+  "description": "منصة حديثة واحترافية لمركز يوسف ذنون للخط العربي، تعرض المعارض الفنية، البرامج التعليمية، أدوات الخط، ونظام إدارة المشتركين بالاعتماد على Google Sheets.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
