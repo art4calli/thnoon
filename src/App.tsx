@@ -9,6 +9,7 @@ import ToolsSection from "./components/ToolsSection";
 import ContactSection from "./components/ContactSection";
 import SubscriberPortal from "./components/SubscriberPortal";
 import { AppData, SubscriberState } from "./types";
+import { fetchAllAppDataDirect, loginSubscriberDirect } from "./utils/sheetParser";
 
 export default function App() {
   const [activeSection, setActiveSection] = useState("home");
@@ -26,20 +27,35 @@ export default function App() {
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Fetch initial database content from Express server
+  // Fetch initial database content with direct client-side fallback for static deploys (Vercel/GitHub Pages)
   useEffect(() => {
     const fetchData = async () => {
       try {
         setIsLoading(true);
+        // 1. First try calling the server API (works in AI Studio and dynamic servers)
         const response = await fetch("/api/data");
-        if (!response.ok) throw new Error("Network issue fetching Google Sheets");
-        const data = await response.json();
-        setAppData(data);
+        if (response.ok) {
+          const data = await response.json();
+          setAppData(data);
+        } else {
+          // If server returns error, fallback directly to Google Sheets from the browser!
+          console.warn("Express API returned non-ok, falling back to direct sheets fetching...");
+          const directData = await fetchAllAppDataDirect();
+          setAppData(directData);
+        }
         setIsLoading(false);
       } catch (err) {
-        console.error("Failed to load Google Sheet database:", err);
-        setError("فشل الاتصال بقاعدة البيانات. جاري استخدام البيانات المحلية الاحتياطية.");
-        setIsLoading(false);
+        console.error("Express API failed, falling back to direct sheets fetching:", err);
+        try {
+          // 2. Fetch directly from the Google Sheets Viz API (essential for Vercel/GitHub static sites)
+          const directData = await fetchAllAppDataDirect();
+          setAppData(directData);
+          setIsLoading(false);
+        } catch (fallbackErr) {
+          console.error("Direct browser-sheets fetch failed too:", fallbackErr);
+          setError("فشل الاتصال بقاعدة البيانات المباشرة لـ Google Sheets. تم تحميل التصاميم الاحتياطية.");
+          setIsLoading(false);
+        }
       }
     };
 
@@ -113,20 +129,34 @@ export default function App() {
         console.log("Geolocation omitted or rejected");
       }
 
-      const response = await fetch("/api/login", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          username: usernameInput,
-          password: passwordInput,
-          deviceId: fingerprint,
-          lat: coords?.latitude || null,
-          lng: coords?.longitude || null,
-        }),
-      });
+      let data: any;
 
-      const data = await response.json();
-      if (data.success) {
+      try {
+        // 1. Try server api login first
+        const response = await fetch("/api/login", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            username: usernameInput,
+            password: passwordInput,
+            deviceId: fingerprint,
+            lat: coords?.latitude || null,
+            lng: coords?.longitude || null,
+          }),
+        });
+
+        if (response.ok) {
+          data = await response.json();
+        } else {
+          throw new Error("Express server login not available, switching to direct...");
+        }
+      } catch (apiErr) {
+        console.warn("Express server login offline. Executing direct sheet or Apps Script login...", apiErr);
+        // 2. Fallback to direct client-side sheet verification or Apps Script
+        data = await loginSubscriberDirect(usernameInput, passwordInput, fingerprint);
+      }
+
+      if (data && data.success) {
         sessionStorage.setItem("subscriberLogin", JSON.stringify(data));
         const links = [];
         for (let i = 1; i <= 5; i++) {
@@ -147,9 +177,10 @@ export default function App() {
         setIsDashboardOpen(true);
         return { success: true };
       } else {
-        return { success: false, message: data.message };
+        return { success: false, message: data?.message || "اسم المستخدم أو كلمة المرور غير صحيحة" };
       }
     } catch (err) {
+      console.error("Login execution failed completely:", err);
       return { success: false, message: "فشل التحقق بسبب عطل في الشبكة" };
     }
   };
