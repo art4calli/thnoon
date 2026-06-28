@@ -1,7 +1,8 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { ZoomIn, X, Film, Info, SlidersHorizontal, ChevronLeft, ChevronRight } from "lucide-react";
+import { ZoomIn, X, Film, Info, SlidersHorizontal, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
 import { SheetRow } from "../types";
+import CardMediaSlider from "./CardMediaSlider";
 
 interface GallerySectionProps {
   cards: SheetRow[];
@@ -98,38 +99,9 @@ export default function GallerySection({ cards }: GallerySectionProps) {
             <div>
               {/* Media Display Panel */}
               {card.media && card.media.length > 0 ? (
-                <div className="relative aspect-video w-full overflow-hidden bg-slate-900">
-                  <img
-                    src={card.media[0].url}
-                    alt={card.title}
-                    className="h-full w-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1561214115-f2f134cc4912?auto=format&fit=crop&q=80&w=600";
-                    }}
-                  />
-                  
-                  {/* Overlay Interaction Buttons */}
-                  <div className="absolute inset-0 bg-slate-950/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
-                    <button
-                      onClick={() => handleOpenLightbox(card.media[0].url, card.title, card.description)}
-                      className="p-3 bg-amber-500 text-slate-950 rounded-full hover:scale-110 transition-transform shadow-lg"
-                      title="تكبير الصورة"
-                    >
-                      <ZoomIn className="w-5 h-5" />
-                    </button>
-                    {card.media[0].pairUrl && (
-                      <button
-                        onClick={() => handleOpenVideo(card.media[0].pairUrl!)}
-                        className="p-3 bg-red-600 text-white rounded-full hover:scale-110 transition-transform shadow-lg"
-                        title="تشغيل المقطع المرئي"
-                      >
-                        <Film className="w-5 h-5" />
-                      </button>
-                    )}
-                  </div>
-
-                  <span className="absolute top-3 right-3 bg-slate-950/80 backdrop-blur-md text-amber-500 text-[10px] font-sans font-semibold py-1 px-2.5 rounded-full border border-amber-500/20">
+                <div className="relative">
+                  <CardMediaSlider media={card.media} title={card.title} description={card.description} />
+                  <span className="absolute top-3 right-3 bg-slate-950/80 backdrop-blur-md text-amber-500 text-[10px] font-sans font-semibold py-1 px-2.5 rounded-full border border-amber-500/20 z-10">
                     {card.type}
                   </span>
                 </div>
@@ -149,28 +121,6 @@ export default function GallerySection({ cards }: GallerySectionProps) {
                 </p>
               </div>
             </div>
-
-            {/* Extra images if they exist inside the media list (for Galleries/معرض صور) */}
-            {card.media && card.media.length > 1 && (
-              <div className="px-6 pb-4">
-                <div className="flex items-center gap-2 overflow-x-auto py-2 scrollbar-none border-t border-slate-900 mt-2">
-                  {card.media.slice(1).map((m, mIdx) => (
-                    <button
-                      key={mIdx}
-                      onClick={() => handleOpenLightbox(m.url, `${card.title} (${mIdx + 2})`, card.description)}
-                      className="relative w-12 h-12 rounded-lg overflow-hidden border border-slate-800 shrink-0 hover:border-amber-500/30 transition-all"
-                    >
-                      <img
-                        src={m.url}
-                        alt="مصغرة"
-                        className="w-full h-full object-cover"
-                        referrerPolicy="no-referrer"
-                      />
-                    </button>
-                  ))}
-                </div>
-              </div>
-            )}
 
             {card.linkUrl && (
               <div className="p-6 pt-0 border-t border-slate-900 mt-auto">

@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { BookOpen, GraduationCap, Clock, Award, CheckCircle2 } from "lucide-react";
 import { SheetRow } from "../types";
+import CardMediaSlider from "./CardMediaSlider";
 
 interface CoursesSectionProps {
   cards: SheetRow[];
@@ -63,18 +64,9 @@ export default function CoursesSection({ cards }: CoursesSectionProps) {
               <div>
                 {/* Course Image */}
                 {course.media && course.media.length > 0 ? (
-                  <div className="relative aspect-video overflow-hidden bg-slate-900">
-                    <img
-                      src={course.media[0].url}
-                      alt={course.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1546410531-bb4caa6b424d?auto=format&fit=crop&q=80&w=600";
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
-                    <span className="absolute bottom-3 right-3 bg-amber-500 text-slate-950 text-[10px] font-sans font-bold py-1 px-2.5 rounded-md flex items-center gap-1">
+                  <div className="relative">
+                    <CardMediaSlider media={course.media} title={course.title} description={course.description} />
+                    <span className="absolute bottom-3 right-3 bg-amber-500 text-slate-950 text-[10px] font-sans font-bold py-1 px-2.5 rounded-md flex items-center gap-1 z-10">
                       <GraduationCap className="w-3.5 h-3.5" />
                       <span>منهاج معتمد</span>
                     </span>

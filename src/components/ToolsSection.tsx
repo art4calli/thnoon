@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { ShoppingBag, Box, BadgeCheck, CheckCircle, ExternalLink } from "lucide-react";
 import { SheetRow } from "../types";
+import CardMediaSlider from "./CardMediaSlider";
 
 interface ToolsSectionProps {
   cards: SheetRow[];
@@ -59,18 +60,9 @@ export default function ToolsSection({ cards }: ToolsSectionProps) {
               <div>
                 {/* Tool Cover Image */}
                 {tool.media && tool.media.length > 0 ? (
-                  <div className="relative aspect-square overflow-hidden bg-slate-900">
-                    <img
-                      src={tool.media[0].url}
-                      alt={tool.title}
-                      className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                      referrerPolicy="no-referrer"
-                      onError={(e) => {
-                        (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&q=80&w=600";
-                      }}
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-transparent to-transparent"></div>
-                    <span className="absolute bottom-3 right-3 bg-amber-500 text-slate-950 text-[10px] font-sans font-bold py-1 px-2.5 rounded-md flex items-center gap-1">
+                  <div className="relative">
+                    <CardMediaSlider media={tool.media} title={tool.title} description={tool.description} aspectRatioClassName="aspect-square" />
+                    <span className="absolute bottom-3 right-3 bg-amber-500 text-slate-950 text-[10px] font-sans font-bold py-1 px-2.5 rounded-md flex items-center gap-1 z-10">
                       <Box className="w-3.5 h-3.5" />
                       <span>متوفر في فرع المؤسسة</span>
                     </span>

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Play, Film, X, Calendar, Share2, Eye } from "lucide-react";
 import { SheetRow } from "../types";
+import CardMediaSlider from "./CardMediaSlider";
 
 interface VideoSectionProps {
   cards: SheetRow[];
@@ -79,37 +80,19 @@ export default function VideoSection({ cards }: VideoSectionProps) {
             >
               <div>
                 {/* Video Preview Container */}
-                <div className="relative aspect-video overflow-hidden bg-slate-900">
-                  <img
-                    src={previewImg}
-                    alt={video.title}
-                    className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-                    referrerPolicy="no-referrer"
-                    onError={(e) => {
-                      (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1516280440614-37939bbacd6a?auto=format&fit=crop&q=80&w=600";
-                    }}
-                  />
-                  
-                  {/* Subtle dark gradient overlay */}
-                  <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/20 to-transparent"></div>
-
-                  {/* Play Trigger Badge */}
-                  {videoUrl && (
-                    <button
-                      onClick={() => setSelectedVideoUrl(getYoutubeEmbedUrl(videoUrl))}
-                      className="absolute inset-0 flex items-center justify-center"
-                    >
-                      <div className="w-14 h-14 bg-amber-500 text-slate-950 rounded-full flex items-center justify-center shadow-2xl group-hover:bg-amber-600 transition-colors transform group-hover:scale-110 duration-300">
-                        <Play className="w-6 h-6 fill-slate-950 translate-x-[-1px]" />
-                      </div>
-                    </button>
-                  )}
-
-                  <span className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur-md text-amber-500 text-[10px] font-sans font-medium py-1 px-2 rounded-md">
-                    <Film className="w-3.5 h-3.5" />
-                    <span>محاضرة مرئية</span>
-                  </span>
-                </div>
+                {video.media && video.media.length > 0 ? (
+                  <div className="relative">
+                    <CardMediaSlider media={video.media} title={video.title} description={video.description} />
+                    <span className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur-md text-amber-500 text-[10px] font-sans font-medium py-1 px-2 rounded-md z-10">
+                      <Film className="w-3.5 h-3.5" />
+                      <span>محاضرة مرئية</span>
+                    </span>
+                  </div>
+                ) : (
+                  <div className="aspect-video w-full bg-slate-900/40 flex items-center justify-center border-b border-slate-900">
+                    <Film className="w-10 h-10 text-slate-700" />
+                  </div>
+                )}
 
                 {/* Video Info Content */}
                 <div className="p-6 text-right space-y-3">

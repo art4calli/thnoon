@@ -1,6 +1,7 @@
 import { motion } from "motion/react";
 import { BookOpen, Award, FileText, Landmark, Shield } from "lucide-react";
 import { SheetRow } from "../types";
+import CardMediaSlider from "./CardMediaSlider";
 
 interface AboutSectionProps {
   cards: SheetRow[];
@@ -112,16 +113,8 @@ export default function AboutSection({ cards }: AboutSectionProps) {
                   <p className="text-slate-300 text-sm font-sans leading-relaxed whitespace-pre-line">{card.description}</p>
                   
                   {card.media && card.media.length > 0 && (
-                    <div className="mt-4 overflow-hidden rounded-xl">
-                      <img
-                        src={card.media[0].url}
-                        alt={card.title}
-                        className="w-full h-48 object-cover hover:scale-105 transition-transform duration-300"
-                        referrerPolicy="no-referrer"
-                        onError={(e) => {
-                          (e.target as HTMLImageElement).style.display = "none";
-                        }}
-                      />
+                    <div className="mt-4">
+                      <CardMediaSlider media={card.media} title={card.title} description={card.description} />
                     </div>
                   )}
                 </div>

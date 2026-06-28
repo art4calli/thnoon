@@ -471,7 +471,7 @@ app.post("/api/contact", async (req, res) => {
   const scriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL;
   if (scriptUrl && scriptUrl.trim().startsWith("http")) {
     try {
-      console.log("Proxying contact submission to Google Apps Script Web App...");
+      console.log("Proxying contact submission to Google Apps Script Web App:", scriptUrl);
       const response = await fetch(scriptUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -484,19 +484,39 @@ app.post("/api/contact", async (req, res) => {
           timestamp
         })
       });
-      const data = await response.json();
-      return res.json({
-        success: true,
-        message: "تم حفظ الاستفسار بنجاح ومزامنته مع جدول البيانات",
-        synced: true,
-        data
-      });
+      
+      const responseText = await response.text();
+      console.log("Google Apps Script raw response:", responseText);
+      
+      let data;
+      try {
+        data = JSON.parse(responseText);
+      } catch (parseErr) {
+        throw new Error("استجابة الخادم ليست بتنسيق JSON صالح. قد تحتاج لتفعيل صلاحية الوصول للجميع (Anyone) في Apps Script.");
+      }
+
+      if (data && data.success) {
+        return res.json({
+          success: true,
+          message: "تم حفظ الاستفسار بنجاح ومزامنته مع جدول البيانات",
+          synced: true,
+          data
+        });
+      } else {
+        return res.json({
+          success: true,
+          message: `تم حفظ الاستفسار محلياً، لكن فشل الحفظ في جوجل شيت: ${data ? data.message : "خطأ غير معروف"}`,
+          synced: false,
+          data
+        });
+      }
     } catch (err) {
       console.error("Failed to proxy inquiry to Google Apps Script:", err);
       // Fallback gracefully since we already saved it locally
+      const errorMsg = err instanceof Error ? err.message : String(err);
       return res.json({
         success: true,
-        message: "تم حفظ الاستفسار محلياً على الخادم (حدثت مشكلة أثناء المزامنة التلقائية مع جوجل شيت)",
+        message: `تم حفظ الاستفسار محلياً على الخادم (حدثت مشكلة أثناء المزامنة التلقائية مع جوجل شيت). السبب: ${errorMsg}`,
         synced: false
       });
     }
@@ -522,7 +542,7 @@ app.post("/api/login", async (req, res) => {
   const scriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL;
   if (scriptUrl && scriptUrl.trim().startsWith("http")) {
     try {
-      console.log("Proxying auth to Google Apps Script Web App...");
+      console.log("Proxying auth to Google Apps Script Web App:", scriptUrl);
       const response = await fetch(scriptUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -535,8 +555,20 @@ app.post("/api/login", async (req, res) => {
           lng
         })
       });
-      const data = await response.json();
-      return res.json(data);
+      
+      const responseText = await response.text();
+      console.log("Google Apps Script auth raw response:", responseText);
+      
+      try {
+        const data = JSON.parse(responseText);
+        return res.json(data);
+      } catch (parseErr) {
+        console.error("Failed to parse Auth Apps Script JSON response. Response was HTML or invalid:", responseText);
+        return res.json({
+          success: false,
+          message: "استجابة Apps Script غير صالحة. يرجى التحقق من نشر الـ Web App بصلاحية 'Anyone' وتحديث الكود."
+        });
+      }
     } catch (err) {
       console.error("Failed to proxy authentication to Google Apps Script:", err);
       // Fallback to local Sheet parsing below...

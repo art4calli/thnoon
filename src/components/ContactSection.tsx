@@ -97,6 +97,11 @@ export default function ContactSection({ cards, socialLinks, contactInfo }: Cont
       if (response.ok) {
         const data = await response.json();
         if (data.success) {
+          if (data.synced === false) {
+            setErrorMessage(data.message || "حدثت مشكلة أثناء المزامنة التلقائية مع جوجل شيت. الرجاء التحقق من الرابط والصلاحيات.");
+            setIsSending(false);
+            return;
+          }
           setSentSuccess(true);
           setName("");
           setEmail("");
