@@ -468,8 +468,8 @@ app.post("/api/contact", async (req, res) => {
   }
 
   // 2. Proxy/Forward to Google Apps Script Web App if GOOGLE_SCRIPT_URL is configured
-  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
-  if (scriptUrl) {
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL;
+  if (scriptUrl && scriptUrl.trim().startsWith("http")) {
     try {
       console.log("Proxying contact submission to Google Apps Script Web App...");
       const response = await fetch(scriptUrl, {
@@ -519,8 +519,8 @@ app.post("/api/login", async (req, res) => {
   }
 
   // If Google Apps Script Web App URL is configured, proxy to it for full read/write operations
-  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
-  if (scriptUrl) {
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL;
+  if (scriptUrl && scriptUrl.trim().startsWith("http")) {
     try {
       console.log("Proxying auth to Google Apps Script Web App...");
       const response = await fetch(scriptUrl, {
