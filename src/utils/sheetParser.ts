@@ -78,24 +78,59 @@ export async function getSheetValuesDirect(sheetName: string): Promise<any[][]> 
 
 // Map standard spreadsheet content row
 function mapContentRow(row: any[]): SheetRow | null {
-  if (!row || row.length < 2) return null;
-  const type = row[0] ? row[0].toString().trim() : "";
-  const title = row[1] ? row[1].toString().trim() : "";
-  const description = row[2] ? row[2].toString().trim() : "";
+  if (!row || row.length < 1) return null;
   
-  if (!title && !description) return null;
+  // Helper to check if a string is a URL
+  const isUrl = (str: string): boolean => {
+    if (!str) return false;
+    const s = str.trim().toLowerCase();
+    return s.startsWith("http://") || s.startsWith("https://") || s.includes("drive.google.com") || s.includes("/");
+  };
 
+  let type = "";
+  let title = "";
+  let description = "";
   const media: { url: string }[] = [];
-  
-  // Columns D to M are indices 3 to 12
-  for (let j = 3; j <= 12; j++) {
-    const url = row[j] ? row[j].toString().trim() : "";
-    if (url && url !== "-" && url !== "") {
-      media.push({ url });
+  let linkUrl = "";
+
+  // Check if Column A is missing/deleted (causing shift to the left)
+  // If row[2] is a URL, it means the media URLs started at index 2 instead of index 3,
+  // which means Column A was completely deleted.
+  const isShifted = row[2] && isUrl(row[2].toString());
+
+  if (isShifted) {
+    // Column A is deleted: index 0 is title, index 1 is description, index 2 is first image
+    title = row[0] ? row[0].toString().trim() : "";
+    description = row[1] ? row[1].toString().trim() : "";
+    
+    // Media URLs are indices 2 to 11
+    for (let j = 2; j <= 11; j++) {
+      const url = row[j] ? row[j].toString().trim() : "";
+      if (url && url !== "-" && url !== "") {
+        media.push({ url });
+      }
     }
+    linkUrl = row[12] ? row[12].toString().trim() : "";
+    
+    // Automatically determine type based on media count
+    type = media.length > 1 ? "معرض" : "بطاقة";
+  } else {
+    // Column A is present: index 0 is type, index 1 is title, index 2 is description
+    type = row[0] ? row[0].toString().trim() : "";
+    title = row[1] ? row[1].toString().trim() : "";
+    description = row[2] ? row[2].toString().trim() : "";
+    
+    // Media URLs are indices 3 to 12
+    for (let j = 3; j <= 12; j++) {
+      const url = row[j] ? row[j].toString().trim() : "";
+      if (url && url !== "-" && url !== "") {
+        media.push({ url });
+      }
+    }
+    linkUrl = row[13] ? row[13].toString().trim() : "";
   }
 
-  const linkUrl = row[13] ? row[13].toString().trim() : "";
+  if (!title && !description) return null;
 
   return {
     type,

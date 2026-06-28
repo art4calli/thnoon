@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { Landmark, ArrowUp, Loader2, Sparkles, AlertCircle, BookOpen, GraduationCap, Users } from "lucide-react";
 import Header from "./components/Header";
+import HomeCard from "./components/HomeCard";
 import AboutSection from "./components/AboutSection";
 import GallerySection from "./components/GallerySection";
 import VideoSection from "./components/VideoSection";
@@ -299,51 +300,11 @@ export default function App() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 {appData?.homeCards.map((card, idx) => (
-                  <div
+                  <HomeCard
                     key={idx}
-                    className="bg-slate-950/40 border border-slate-900 rounded-3xl p-6 sm:p-8 hover:border-amber-500/25 transition-all text-right flex flex-col justify-between"
-                  >
-                    <div className="space-y-4">
-                      {card.type && (
-                        <span className="text-[10px] font-sans font-bold uppercase text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md">
-                          {card.type}
-                        </span>
-                      )}
-                      <h4 className="font-serif font-bold text-xl text-slate-100">{card.title}</h4>
-                      <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed whitespace-pre-line">
-                        {card.description}
-                      </p>
-
-                      {card.media && card.media.length > 0 && (
-                        <div className="overflow-hidden rounded-2xl relative aspect-video mt-4 bg-slate-900">
-                          <img
-                            src={card.media[0].url}
-                            alt={card.title}
-                            className="w-full h-full object-cover"
-                            referrerPolicy="no-referrer"
-                            onError={(e) => {
-                              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1561214115-f2f134cc4912?auto=format&fit=crop&q=80&w=600";
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    {card.linkUrl && (
-                      <button
-                        onClick={() => {
-                          if (card.linkUrl?.startsWith("#")) {
-                            handleNavigate(card.linkUrl.substring(1));
-                          } else if (card.linkUrl) {
-                            window.open(card.linkUrl, "_blank");
-                          }
-                        }}
-                        className="w-full inline-flex items-center justify-center bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-semibold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300 mt-6"
-                      >
-                        التفاصيل والملف المرفق
-                      </button>
-                    )}
-                  </div>
+                    card={card}
+                    onNavigate={handleNavigate}
+                  />
                 ))}
               </div>
 
