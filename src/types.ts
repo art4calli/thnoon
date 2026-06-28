@@ -43,6 +43,30 @@ export interface ContactCardItem {
   icon: string;
 }
 
+export interface BiographyData {
+  sectionTitle?: string;
+  sectionDescription?: string;
+  sectionBadge?: string;
+  bioName?: string;
+  bioSubtitle?: string;
+  bioTitle?: string;
+  bioDesc1?: string;
+  bioDesc2?: string;
+  bioImage?: string;
+  stat1Value?: string;
+  stat1Label?: string;
+  stat2Value?: string;
+  stat2Label?: string;
+  stat3Value?: string;
+  stat3Label?: string;
+}
+
+export interface SectionHeaderData {
+  badge?: string;
+  title?: string;
+  description?: string;
+}
+
 export interface ContactDetails {
   badge?: string;
   title?: string;
@@ -63,6 +87,8 @@ export interface AppData {
   aboutCards: SheetRow[];
   contactCards: SheetRow[];
   contactInfo?: ContactDetails;
+  biography?: BiographyData;
+  sectionHeaders?: Record<string, SectionHeaderData>;
 }
 
 export interface SubscriberState {

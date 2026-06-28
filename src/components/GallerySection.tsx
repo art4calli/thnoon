@@ -1,27 +1,37 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { ZoomIn, X, Film, Info, SlidersHorizontal, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
-import { SheetRow } from "../types";
+import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface GallerySectionProps {
   cards: SheetRow[];
+  header?: SectionHeaderData;
 }
 
-export default function GallerySection({ cards }: GallerySectionProps) {
+export default function GallerySection({ cards, header }: GallerySectionProps) {
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string; desc: string } | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
-  const [filterType, setFilterType] = useState<string>("all"); // 'all' | 'cards' | 'galleries'
+  const [filterType, setFilterType] = useState<string>("all");
 
-  // Extract all media items from the sheet cards
-  const allGalleries = cards.filter(card => card.type === "معرض صور");
-  const allCards = cards.filter(card => card.type === "بطاقة");
+  const sectionBadge = header?.badge || "مخطوطات ولوحات فنية";
+  const sectionTitle = header?.title || "معرض روائع الخط العربي";
+  const sectionDesc = header?.description || "مجموعة متميزة من اللوحات الفنية الإبداعية التي صاغها الأستاذ يوسف ذنون ومجموعة من تلامذته الأكاديميين بمختلف أنواع الخطوط التقليدية الرائعة.";
+
+  // Extract all unique non-empty card.type values for dynamic categories
+  const uniqueTypes = Array.from(new Set(cards.map(c => c.type).filter(Boolean)));
+  const categories = ["all", ...uniqueTypes];
+
+  const getCategoryLabel = (cat: string) => {
+    if (cat === "all") return "الكل";
+    if (cat === "بطاقة") return "لوحات متميزة (بطاقات)";
+    if (cat === "معرض صور") return "معارض الصور الجماعية";
+    return cat;
+  };
 
   const filteredCards = cards.filter(card => {
     if (filterType === "all") return true;
-    if (filterType === "cards") return card.type === "بطاقة";
-    if (filterType === "galleries") return card.type === "معرض صور";
-    return true;
+    return card.type === filterType;
   });
 
   const handleOpenLightbox = (url: string, title: string, desc: string) => {
@@ -46,42 +56,29 @@ export default function GallerySection({ cards }: GallerySectionProps) {
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-6 mb-12">
         <div className="text-right">
           <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-            مخطوطات ولوحات فنية
+            {sectionBadge}
           </span>
           <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-            معرض روائع الخط العربي
+            {sectionTitle}
           </h2>
           <p className="text-slate-400 font-sans mt-2 text-sm leading-relaxed max-w-2xl">
-            مجموعة متميزة من اللوحات الفنية الإبداعية التي صاغها الأستاذ يوسف ذنون ومجموعة من تلامذته الأكاديميين بمختلف أنواع الخطوط التقليدية الرائعة.
+            {sectionDesc}
           </p>
         </div>
 
         {/* Categories/Filters */}
-        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1 rounded-2xl w-full md:w-auto overflow-x-auto">
-          <button
-            onClick={() => setFilterType("all")}
-            className={`px-4 py-2 rounded-xl text-xs font-sans font-medium transition-all shrink-0 ${
-              filterType === "all" ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            الكل
-          </button>
-          <button
-            onClick={() => setFilterType("cards")}
-            className={`px-4 py-2 rounded-xl text-xs font-sans font-medium transition-all shrink-0 ${
-              filterType === "cards" ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            لوحات متميزة (بطاقات)
-          </button>
-          <button
-            onClick={() => setFilterType("galleries")}
-            className={`px-4 py-2 rounded-xl text-xs font-sans font-medium transition-all shrink-0 ${
-              filterType === "galleries" ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-slate-200"
-            }`}
-          >
-            معارض الصور الجماعية
-          </button>
+        <div className="flex items-center gap-2 bg-slate-900 border border-slate-800 p-1 rounded-2xl w-full md:w-auto overflow-x-auto scrollbar-none">
+          {categories.map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setFilterType(cat)}
+              className={`px-4 py-2 rounded-xl text-xs font-sans font-medium transition-all shrink-0 whitespace-nowrap ${
+                filterType === cat ? "bg-amber-500 text-slate-950 font-bold" : "text-slate-400 hover:text-slate-200"
+              }`}
+            >
+              {getCategoryLabel(cat)}
+            </button>
+          ))}
         </div>
       </div>
 

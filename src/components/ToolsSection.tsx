@@ -1,14 +1,19 @@
 import { motion } from "motion/react";
 import { ShoppingBag, Box, BadgeCheck, CheckCircle, ExternalLink } from "lucide-react";
-import { SheetRow } from "../types";
+import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface ToolsSectionProps {
   cards: SheetRow[];
+  header?: SectionHeaderData;
 }
 
-export default function ToolsSection({ cards }: ToolsSectionProps) {
+export default function ToolsSection({ cards, header }: ToolsSectionProps) {
   const hasCustomCards = cards && cards.length > 0;
+
+  const sectionBadge = header?.badge || "مستلزمات الحرف العربي الفاخرة";
+  const sectionTitle = header?.title || "أدوات ومستلزمات الخط العربي";
+  const sectionDesc = header?.description || "توفر المؤسسة أجود وأندر أدوات الخط الكلاسيكية المعالجة يدوياً لضمان كتابة دقيقة وانسيابية مطلقة للحبر على الصفحات المقهرة.";
 
   const standardTools = [
     {
@@ -36,13 +41,13 @@ export default function ToolsSection({ cards }: ToolsSectionProps) {
       {/* Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          مستلزمات الحرف العربي الفاخرة
+          {sectionBadge}
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          أدوات ومستلزمات الخط العربي
+          {sectionTitle}
         </h2>
         <p className="text-slate-400 font-sans mt-4 text-sm leading-relaxed">
-          توفر المؤسسة أجود وأندر أدوات الخط الكلاسيكية المعالجة يدوياً لضمان كتابة دقيقة وانسيابية مطلقة للحبر على الصفحات المقهرة.
+          {sectionDesc}
         </p>
       </div>
 
