@@ -182,11 +182,35 @@ app.get("/api/data", async (req, res) => {
     let description = "مؤسسة ثقافية فنية تعنى بالحفاظ على تراث عميد الخط العربي الأستاذ يوسف ذنون ونشر فنون الخط والزخرفة الإسلامية.";
     let loginButtonText = "بوابة المشتركين";
     let loginButtonUrl = "#login";
+    let headerBgUrl = "";
+    const features: any[] = [];
 
     if (profileRows && profileRows.length > 1) {
       if (profileRows[1] && profileRows[1][2]) logoUrl = profileRows[1][2];
       if (profileRows[1] && profileRows[1][1]) title = profileRows[1][1];
       if (profileRows[2] && profileRows[2][1]) description = profileRows[2][1];
+      // Column D of Row 2 is index 3 (cell D2)
+      if (profileRows[1] && profileRows[1][3]) headerBgUrl = profileRows[1][3];
+    }
+
+    // Parse features dynamically from Rows 4 to 8 (index 3 to 7)
+    if (profileRows && profileRows.length > 3) {
+      const limit = Math.min(profileRows.length, 9);
+      for (let i = 3; i < limit; i++) {
+        const row = profileRows[i];
+        if (row && row.length > 1) {
+          const fTitle = row[1] ? row[1].toString().trim() : "";
+          const fDesc = row[2] ? row[2].toString().trim() : "";
+          const fIcon = row[3] ? row[3].toString().trim() : "";
+          if (fTitle || fDesc) {
+            features.push({
+              title: fTitle,
+              description: fDesc,
+              icon: fIcon || "star" // fallback icon name
+            });
+          }
+        }
+      }
     }
 
     // Social Links from Contact rows
@@ -267,7 +291,15 @@ app.get("/api/data", async (req, res) => {
     }
 
     res.json({
-      profile: { logoUrl, title, description, loginButtonText, loginButtonUrl },
+      profile: { 
+        logoUrl, 
+        title, 
+        description, 
+        loginButtonText, 
+        loginButtonUrl,
+        headerBgUrl: headerBgUrl || undefined,
+        features: features.length > 0 ? features : FALLBACK_DATA.profile.features
+      },
       socialLinks,
       homeCards: homeCards.length > 0 ? homeCards : FALLBACK_DATA.homeCards,
       aboutCards: aboutCards.length > 0 ? aboutCards : homeCards.filter(c => c.type === "من نحن"),

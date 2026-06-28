@@ -14,12 +14,20 @@ export interface SheetRow {
   linkUrl?: string;
 }
 
+export interface FeatureItem {
+  title: string;
+  description: string;
+  icon?: string;
+}
+
 export interface ProfileData {
   logoUrl: string;
   title: string;
   description: string;
   loginButtonText: string;
   loginButtonUrl: string;
+  headerBgUrl?: string;
+  features?: FeatureItem[];
 }
 
 export interface SocialLinks {

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Landmark, ArrowUp, Loader2, Sparkles, AlertCircle, BookOpen, GraduationCap, Users } from "lucide-react";
+import { Landmark, ArrowUp, Loader2, Sparkles, AlertCircle, BookOpen, GraduationCap, Users, Award, PenTool, Book, Compass, ShieldCheck, Star } from "lucide-react";
 import Header from "./components/Header";
 import HomeCard from "./components/HomeCard";
 import AboutSection from "./components/AboutSection";
@@ -11,6 +11,57 @@ import ContactSection from "./components/ContactSection";
 import SubscriberPortal from "./components/SubscriberPortal";
 import { AppData, SubscriberState } from "./types";
 import { fetchAllAppDataDirect, loginSubscriberDirect } from "./utils/sheetParser";
+
+function getFeatureIcon(iconName: string) {
+  const name = (iconName || "").toLowerCase().trim();
+  switch (name) {
+    case "users":
+    case "ناس":
+    case "مستخدمين":
+      return <Users className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "graduation-cap":
+    case "graduation":
+    case "تعليم":
+    case "قبعة":
+    case "دراسة":
+      return <GraduationCap className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "book-open":
+    case "مكتبة":
+    case "كتاب":
+    case "كتب":
+      return <BookOpen className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "landmark":
+    case "مؤسسة":
+    case "بناء":
+    case "مبنى":
+      return <Landmark className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "award":
+    case "جائزة":
+    case "وسام":
+    case "شهادة":
+      return <Award className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "pentool":
+    case "قلم":
+    case "خط":
+    case "ريشة":
+      return <PenTool className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "compass":
+    case "بوصلة":
+    case "اتجاه":
+      return <Compass className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "shield":
+    case "ضمان":
+    case "درع":
+    case "أمان":
+      return <ShieldCheck className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    case "sparkles":
+    case "نجوم":
+    case "إبداع":
+      return <Sparkles className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+    default:
+      return <Star className="w-8 h-8 text-amber-500 mx-auto mb-2" />;
+  }
+}
 
 export default function App() {
   const [activeSection, setActiveSection] = useState("home");
@@ -214,6 +265,23 @@ export default function App() {
     description: "مؤسسة ثقافية فنية تعنى بالحفاظ على تراث عميد الخط العربي الأستاذ يوسف ذنون ونشر فنون الخط والزخرفة الإسلامية.",
     loginButtonText: "بوابة المشتركين",
     loginButtonUrl: "#login",
+    features: [
+      {
+        title: "الترخيص الخطّي",
+        description: "تمنح المؤسسة إجازات خطية معتمدة دولياً",
+        icon: "users"
+      },
+      {
+        title: "التعليم النظامي",
+        description: "دورات حضورية وأخرى رقمية عن بُعد",
+        icon: "graduation-cap"
+      },
+      {
+        title: "مكتبة نادرة",
+        description: "مئات الكتب والمجلدات عن الحرف والآثار",
+        icon: "book-open"
+      }
+    ]
   };
 
   const socialLinks = appData?.socialLinks || {
@@ -241,11 +309,24 @@ export default function App() {
 
       {/* 2. Hero Luxury Parallax Banner Section */}
       {activeSection === "home" && (
-        <section className="relative pt-32 pb-24 md:pt-40 md:pb-36 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-slate-900">
-          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#d4a017_1.2px,transparent_1.2px)] [background-size:24px_24px] pointer-events-none"></div>
-          
-          {/* Soft Golden ambient glow */}
-          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+        <section className="relative pt-32 pb-24 md:pt-40 md:pb-36 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-slate-900 overflow-hidden">
+          {profile.headerBgUrl ? (
+            <div className="absolute inset-0 z-0 overflow-hidden">
+              <img
+                src={profile.headerBgUrl}
+                alt={profile.title}
+                className="w-full h-full object-cover opacity-25 animate-slow-zoom"
+                referrerPolicy="no-referrer"
+              />
+              <div className="absolute inset-0 bg-gradient-to-b from-slate-950/95 via-slate-950/85 to-slate-900"></div>
+            </div>
+          ) : (
+            <>
+              <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#d4a017_1.2px,transparent_1.2px)] [background-size:24px_24px] pointer-events-none"></div>
+              {/* Soft Golden ambient glow */}
+              <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+            </>
+          )}
 
           <div className="max-w-5xl mx-auto px-4 text-center space-y-6 relative z-10">
             <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-500 text-xs font-sans font-bold py-1.5 px-3.5 rounded-full border border-amber-500/20">
@@ -309,23 +390,17 @@ export default function App() {
               </div>
 
               {/* Premium quick-link metric summary */}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto mt-20 border-t border-slate-900/60 pt-12">
-                <div className="text-center p-4">
-                  <Users className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                  <h4 className="font-serif font-bold text-lg text-slate-200">الترخيص الخطّي</h4>
-                  <p className="text-slate-400 font-sans text-xs mt-1">تمنح المؤسسة إجازات خطية معتمدة دولياً</p>
+              {profile.features && profile.features.length > 0 && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6 max-w-5xl mx-auto mt-20 border-t border-slate-900/60 pt-12">
+                  {profile.features.map((feature, fIdx) => (
+                    <div key={fIdx} className="text-center p-4">
+                      {getFeatureIcon(feature.icon || "star")}
+                      <h4 className="font-serif font-bold text-lg text-slate-200">{feature.title}</h4>
+                      <p className="text-slate-400 font-sans text-xs mt-1 leading-relaxed">{feature.description}</p>
+                    </div>
+                  ))}
                 </div>
-                <div className="text-center p-4">
-                  <GraduationCap className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                  <h4 className="font-serif font-bold text-lg text-slate-200">التعليم النظامي</h4>
-                  <p className="text-slate-400 font-sans text-xs mt-1">دورات حضورية وأخرى رقمية عن بُعد</p>
-                </div>
-                <div className="text-center p-4">
-                  <BookOpen className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                  <h4 className="font-serif font-bold text-lg text-slate-200">مكتبة نادرة</h4>
-                  <p className="text-slate-400 font-sans text-xs mt-1">مئات الكتب والمجلدات عن الحرف والآثار</p>
-                </div>
-              </div>
+              )}
             </section>
 
             {/* CONTACT SECTION - Rendered directly underneath Home profile */}
