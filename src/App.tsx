@@ -101,12 +101,7 @@ export default function App() {
 
   const handleNavigate = (sectionId: string) => {
     setActiveSection(sectionId);
-    const element = document.getElementById(sectionId);
-    if (element) {
-      element.scrollIntoView({ behavior: "smooth" });
-    } else {
-      window.scrollTo({ top: 0, behavior: "smooth" });
-    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
   const handleLogin = async (usernameInput: string, passwordInput: string) => {
@@ -244,42 +239,44 @@ export default function App() {
       />
 
       {/* 2. Hero Luxury Parallax Banner Section */}
-      <section className="relative pt-32 pb-24 md:pt-40 md:pb-36 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-slate-900">
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#d4a017_1.2px,transparent_1.2px)] [background-size:24px_24px] pointer-events-none"></div>
-        
-        {/* Soft Golden ambient glow */}
-        <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
+      {activeSection === "home" && (
+        <section className="relative pt-32 pb-24 md:pt-40 md:pb-36 bg-gradient-to-b from-slate-950 to-slate-900 border-b border-slate-900">
+          <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#d4a017_1.2px,transparent_1.2px)] [background-size:24px_24px] pointer-events-none"></div>
+          
+          {/* Soft Golden ambient glow */}
+          <div className="absolute top-1/4 left-1/2 -translate-x-1/2 w-96 h-96 bg-amber-500/10 rounded-full blur-3xl pointer-events-none"></div>
 
-        <div className="max-w-5xl mx-auto px-4 text-center space-y-6 relative z-10">
-          <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-500 text-xs font-sans font-bold py-1.5 px-3.5 rounded-full border border-amber-500/20">
-            <Sparkles className="w-3.5 h-3.5" />
-            <span>بوابة الحرف العربي والآثار الإسلامية</span>
+          <div className="max-w-5xl mx-auto px-4 text-center space-y-6 relative z-10">
+            <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-500 text-xs font-sans font-bold py-1.5 px-3.5 rounded-full border border-amber-500/20">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>بوابة الحرف العربي والآثار الإسلامية</span>
+            </div>
+
+            <h1 className="font-serif font-black text-4xl sm:text-5xl md:text-6xl text-amber-400 leading-tight tracking-wide">
+              {profile.title}
+            </h1>
+
+            <p className="max-w-2xl mx-auto text-slate-300 font-sans text-sm sm:text-base md:text-lg leading-relaxed">
+              {profile.description}
+            </p>
+
+            <div className="flex flex-wrap justify-center gap-4 pt-4">
+              <button
+                onClick={() => handleNavigate("courses")}
+                className="bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3 px-6 rounded-xl shadow-lg shadow-amber-500/15 transition-all transform hover:scale-105 cursor-pointer"
+              >
+                استكشف البرامج التعليمية
+              </button>
+              <button
+                onClick={() => handleNavigate("artwork")}
+                className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/30 text-amber-400 text-sm font-sans font-bold py-3 px-6 rounded-xl transition-all"
+              >
+                عرض المعرض الفني
+              </button>
+            </div>
           </div>
-
-          <h1 className="font-serif font-black text-4xl sm:text-5xl md:text-6xl text-amber-400 leading-tight tracking-wide">
-            {profile.title}
-          </h1>
-
-          <p className="max-w-2xl mx-auto text-slate-300 font-sans text-sm sm:text-base md:text-lg leading-relaxed">
-            {profile.description}
-          </p>
-
-          <div className="flex flex-wrap justify-center gap-4 pt-4">
-            <button
-              onClick={() => handleNavigate("courses")}
-              className="bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3 px-6 rounded-xl shadow-lg shadow-amber-500/15 transition-all transform hover:scale-105 cursor-pointer"
-            >
-              استكشف البرامج التعليمية
-            </button>
-            <button
-              onClick={() => handleNavigate("artwork")}
-              className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/30 text-amber-400 text-sm font-sans font-bold py-3 px-6 rounded-xl transition-all"
-            >
-              عرض المعرض الفني
-            </button>
-          </div>
-        </div>
-      </section>
+        </section>
+      )}
 
       {/* Database Connection Warning Banner (If direct query fails) */}
       {error && (
@@ -290,113 +287,134 @@ export default function App() {
       )}
 
       {/* 3. Main content render space */}
-      <main className="flex-grow divide-y divide-slate-900/50">
+      <main className="flex-grow">
         
         {/* HOME SECTION */}
-        <div id="home" className="scroll-mt-20">
-          <section className="py-16 px-4 max-w-7xl mx-auto">
-            <h3 className="font-serif font-bold text-2xl text-amber-400 border-r-4 border-amber-500 pr-3 mb-10 text-right">
-              الواجهة الترحيبية ومستجدات المؤسسة
-            </h3>
+        {activeSection === "home" && (
+          <div id="home">
+            <section className="py-16 px-4 max-w-7xl mx-auto">
+              <h3 className="font-serif font-bold text-2xl text-amber-400 border-r-4 border-amber-500 pr-3 mb-10 text-right">
+                الواجهة الترحيبية ومستجدات المؤسسة
+              </h3>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-              {appData?.homeCards.map((card, idx) => (
-                <div
-                  key={idx}
-                  className="bg-slate-950/40 border border-slate-900 rounded-3xl p-6 sm:p-8 hover:border-amber-500/25 transition-all text-right flex flex-col justify-between"
-                >
-                  <div className="space-y-4">
-                    <span className="text-[10px] font-sans font-bold uppercase text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md">
-                      {card.type}
-                    </span>
-                    <h4 className="font-serif font-bold text-xl text-slate-100">{card.title}</h4>
-                    <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed whitespace-pre-line">
-                      {card.description}
-                    </p>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {appData?.homeCards.map((card, idx) => (
+                  <div
+                    key={idx}
+                    className="bg-slate-950/40 border border-slate-900 rounded-3xl p-6 sm:p-8 hover:border-amber-500/25 transition-all text-right flex flex-col justify-between"
+                  >
+                    <div className="space-y-4">
+                      {card.type && (
+                        <span className="text-[10px] font-sans font-bold uppercase text-amber-500 bg-amber-500/10 px-2.5 py-1 rounded-md">
+                          {card.type}
+                        </span>
+                      )}
+                      <h4 className="font-serif font-bold text-xl text-slate-100">{card.title}</h4>
+                      <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed whitespace-pre-line">
+                        {card.description}
+                      </p>
 
-                    {card.media && card.media.length > 0 && (
-                      <div className="overflow-hidden rounded-2xl relative aspect-video mt-4 bg-slate-900">
-                        <img
-                          src={card.media[0].url}
-                          alt={card.title}
-                          className="w-full h-full object-cover"
-                          referrerPolicy="no-referrer"
-                          onError={(e) => {
-                            (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1561214115-f2f134cc4912?auto=format&fit=crop&q=80&w=600";
-                          }}
-                        />
-                      </div>
+                      {card.media && card.media.length > 0 && (
+                        <div className="overflow-hidden rounded-2xl relative aspect-video mt-4 bg-slate-900">
+                          <img
+                            src={card.media[0].url}
+                            alt={card.title}
+                            className="w-full h-full object-cover"
+                            referrerPolicy="no-referrer"
+                            onError={(e) => {
+                              (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1561214115-f2f134cc4912?auto=format&fit=crop&q=80&w=600";
+                            }}
+                          />
+                        </div>
+                      )}
+                    </div>
+
+                    {card.linkUrl && (
+                      <button
+                        onClick={() => {
+                          if (card.linkUrl?.startsWith("#")) {
+                            handleNavigate(card.linkUrl.substring(1));
+                          } else if (card.linkUrl) {
+                            window.open(card.linkUrl, "_blank");
+                          }
+                        }}
+                        className="w-full inline-flex items-center justify-center bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-semibold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300 mt-6"
+                      >
+                        التفاصيل والملف المرفق
+                      </button>
                     )}
                   </div>
+                ))}
+              </div>
 
-                  {card.linkUrl && (
-                    <button
-                      onClick={() => {
-                        if (card.linkUrl?.startsWith("#")) {
-                          handleNavigate(card.linkUrl.substring(1));
-                        } else if (card.linkUrl) {
-                          window.open(card.linkUrl, "_blank");
-                        }
-                      }}
-                      className="w-full inline-flex items-center justify-center bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-semibold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300 mt-6"
-                    >
-                      التفاصيل والملف المرفق
-                    </button>
-                  )}
+              {/* Premium quick-link metric summary */}
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto mt-20 border-t border-slate-900/60 pt-12">
+                <div className="text-center p-4">
+                  <Users className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                  <h4 className="font-serif font-bold text-lg text-slate-200">الترخيص الخطّي</h4>
+                  <p className="text-slate-400 font-sans text-xs mt-1">تمنح المؤسسة إجازات خطية معتمدة دولياً</p>
                 </div>
-              ))}
-            </div>
+                <div className="text-center p-4">
+                  <GraduationCap className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                  <h4 className="font-serif font-bold text-lg text-slate-200">التعليم النظامي</h4>
+                  <p className="text-slate-400 font-sans text-xs mt-1">دورات حضورية وأخرى رقمية عن بُعد</p>
+                </div>
+                <div className="text-center p-4">
+                  <BookOpen className="w-8 h-8 text-amber-500 mx-auto mb-2" />
+                  <h4 className="font-serif font-bold text-lg text-slate-200">مكتبة نادرة</h4>
+                  <p className="text-slate-400 font-sans text-xs mt-1">مئات الكتب والمجلدات عن الحرف والآثار</p>
+                </div>
+              </div>
+            </section>
 
-            {/* Premium quick-link metric summary */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 max-w-4xl mx-auto mt-20 border-t border-slate-900/60 pt-12">
-              <div className="text-center p-4">
-                <Users className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                <h4 className="font-serif font-bold text-lg text-slate-200">الترخيص الخطّي</h4>
-                <p className="text-slate-400 font-sans text-xs mt-1">تمنح المؤسسة إجازات خطية معتمدة دولياً</p>
-              </div>
-              <div className="text-center p-4">
-                <GraduationCap className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                <h4 className="font-serif font-bold text-lg text-slate-200">التعليم النظامي</h4>
-                <p className="text-slate-400 font-sans text-xs mt-1">دورات حضورية وأخرى رقمية عن بُعد</p>
-              </div>
-              <div className="text-center p-4">
-                <BookOpen className="w-8 h-8 text-amber-500 mx-auto mb-2" />
-                <h4 className="font-serif font-bold text-lg text-slate-200">مكتبة نادرة</h4>
-                <p className="text-slate-400 font-sans text-xs mt-1">مئات الكتب والمجلدات عن الحرف والآثار</p>
-              </div>
+            {/* CONTACT SECTION - Rendered directly underneath Home profile */}
+            <div className="border-t border-slate-900/40">
+              <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} />
             </div>
-          </section>
-        </div>
+          </div>
+        )}
 
         {/* ABOUT SECTION */}
-        <div id="about" className="scroll-mt-20">
-          <AboutSection cards={appData?.aboutCards || []} />
-        </div>
+        {activeSection === "about" && (
+          <div id="about" className="pt-24 md:pt-28">
+            <AboutSection cards={appData?.aboutCards || []} />
+          </div>
+        )}
 
         {/* ARTWORK GALLERY SECTION */}
-        <div id="artwork" className="scroll-mt-20">
-          <GallerySection cards={appData?.artworkCards || []} />
-        </div>
+        {activeSection === "artwork" && (
+          <div id="artwork" className="pt-24 md:pt-28">
+            <GallerySection cards={appData?.artworkCards || []} />
+          </div>
+        )}
 
         {/* VIDEO LIBRARY SECTION */}
-        <div id="video" className="scroll-mt-20">
-          <VideoSection cards={appData?.videoCards || []} />
-        </div>
+        {activeSection === "video" && (
+          <div id="video" className="pt-24 md:pt-28">
+            <VideoSection cards={appData?.videoCards || []} />
+          </div>
+        )}
 
         {/* EDUCATIONAL COURSES SECTION */}
-        <div id="courses" className="scroll-mt-20">
-          <CoursesSection cards={appData?.coursesCards || []} />
-        </div>
+        {activeSection === "courses" && (
+          <div id="courses" className="pt-24 md:pt-28">
+            <CoursesSection cards={appData?.coursesCards || []} />
+          </div>
+        )}
 
         {/* TOOLS AND SUPPLIES SECTION */}
-        <div id="tools" className="scroll-mt-20">
-          <ToolsSection cards={appData?.toolsCards || []} />
-        </div>
+        {activeSection === "tools" && (
+          <div id="tools" className="pt-24 md:pt-28">
+            <ToolsSection cards={appData?.toolsCards || []} />
+          </div>
+        )}
 
-        {/* CONTACT SECTION */}
-        <div id="contact" className="scroll-mt-20">
-          <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} />
-        </div>
+        {/* CONTACT SECTION (Independent Page View) */}
+        {activeSection === "contact" && (
+          <div id="contact" className="pt-24 md:pt-28">
+            <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} />
+          </div>
+        )}
 
       </main>
 

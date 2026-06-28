@@ -63,7 +63,7 @@ export default function Header({
       {/* Main navigation header */}
       <div
         className={`w-full transition-all duration-300 ${
-          scrolled
+          scrolled || activeSection !== "home"
             ? "fixed top-0 bg-slate-950/95 backdrop-blur-md border-b border-amber-500/20 py-2 shadow-xl"
             : "absolute bg-transparent py-4"
         }`}
