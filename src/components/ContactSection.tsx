@@ -1,36 +1,113 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
-import { MapPin, Phone, Mail, Clock, Send, Check, Facebook, Instagram, Youtube, Compass } from "lucide-react";
-import { SheetRow, SocialLinks } from "../types";
+import { 
+  MapPin, Phone, Mail, Clock, Send, Check, Facebook, Instagram, Youtube, Compass,
+  Star, Award, Landmark, PenTool, GraduationCap, Users, ShieldCheck, Sparkles
+} from "lucide-react";
+import { SheetRow, SocialLinks, ContactDetails } from "../types";
 
 interface ContactSectionProps {
   cards: SheetRow[];
   socialLinks: SocialLinks;
+  contactInfo?: ContactDetails;
 }
 
-export default function ContactSection({ cards, socialLinks }: ContactSectionProps) {
+function getContactIcon(iconName: string) {
+  const name = (iconName || "").toLowerCase().trim();
+  switch (name) {
+    case "map-pin":
+    case "pin":
+    case "خارطة":
+    case "موقع":
+    case "عنوان":
+      return <MapPin className="w-5 h-5" />;
+    case "phone":
+    case "هاتف":
+    case "موبايل":
+    case "جوال":
+      return <Phone className="w-5 h-5" />;
+    case "mail":
+    case "email":
+    case "بريد":
+    case "ايميل":
+      return <Mail className="w-5 h-5" />;
+    case "clock":
+    case "time":
+    case "ساعة":
+    case "وقت":
+    case "دوام":
+      return <Clock className="w-5 h-5" />;
+    case "award":
+    case "جائزة":
+    case "شهادة":
+      return <Award className="w-5 h-5" />;
+    case "landmark":
+    case "مؤسسة":
+      return <Landmark className="w-5 h-5" />;
+    case "pentool":
+    case "قلم":
+    case "ريشة":
+    case "خط":
+      return <PenTool className="w-5 h-5" />;
+    case "graduation-cap":
+    case "تعليم":
+    case "دراسة":
+      return <GraduationCap className="w-5 h-5" />;
+    case "users":
+    case "ناس":
+    case "مشتركين":
+      return <Users className="w-5 h-5" />;
+    case "shield":
+    case "ضمان":
+    case "أمان":
+      return <ShieldCheck className="w-5 h-5" />;
+    case "sparkles":
+    case "نجوم":
+    case "إبداع":
+      return <Sparkles className="w-5 h-5" />;
+    default:
+      return <Star className="w-5 h-5" />;
+  }
+}
+
+export default function ContactSection({ cards, socialLinks, contactInfo }: ContactSectionProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
   const [message, setMessage] = useState("");
   const [isSending, setIsSending] = useState(false);
   const [sentSuccess, setSentSuccess] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!name || !message) return;
 
     setIsSending(true);
-    // Simulate successful message send
-    setTimeout(() => {
+    setErrorMessage("");
+    try {
+      const response = await fetch("/api/contact", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name, email, subject, message })
+      });
+      const data = await response.json();
+      if (response.ok && data.success) {
+        setSentSuccess(true);
+        setName("");
+        setEmail("");
+        setSubject("");
+        setMessage("");
+        setTimeout(() => setSentSuccess(false), 7000);
+      } else {
+        setErrorMessage(data.message || "فشل إرسال الاستفسار. الرجاء المحاولة مجدداً.");
+      }
+    } catch (err) {
+      console.error("Error sending contact message:", err);
+      setErrorMessage("حدث خطأ في الشبكة أثناء إرسال استفسارك.");
+    } finally {
       setIsSending(false);
-      setSentSuccess(true);
-      setName("");
-      setEmail("");
-      setSubject("");
-      setMessage("");
-      setTimeout(() => setSentSuccess(false), 5000);
-    }, 1500);
+    }
   };
 
   const socialPlatforms = [
@@ -45,13 +122,13 @@ export default function ContactSection({ cards, socialLinks }: ContactSectionPro
       {/* Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          نسعد دائماً بخدمتكم وتواصلكم
+          {contactInfo?.badge || "نسعد دائماً بخدمتكم وتواصلكم"}
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          تواصل معنا والتحق بنا
+          {contactInfo?.title || "تواصل معنا والتحق بنا"}
         </h2>
         <p className="text-slate-400 font-sans mt-4 text-sm leading-relaxed">
-          لديك استفسار حول الدورات أو ترغب بطلب لوحة خطية مخصصة؟ راسلنا أو تواصل معنا عبر قنواتنا الرسمية، أو تشرفنا بزيارتك لمقر المؤسسة.
+          {contactInfo?.description || "لديك استفسار حول الدورات أو ترغب بطلب لوحة خطية مخصصة؟ راسلنا أو تواصل معنا عبر قنواتنا الرسمية، أو تشرفنا بزيارتك لمقر المؤسسة."}
         </p>
       </div>
 
@@ -60,63 +137,83 @@ export default function ContactSection({ cards, socialLinks }: ContactSectionPro
         {/* Contact Info panel */}
         <div className="lg:col-span-5 bg-slate-950/40 border border-slate-900 rounded-3xl p-6 sm:p-8 flex flex-col justify-between space-y-8">
           <div className="space-y-6 text-right">
-            <h3 className="font-serif font-bold text-2xl text-amber-400">مقر المؤسسة وقنوات التواصل</h3>
+            <h3 className="font-serif font-bold text-2xl text-amber-400">
+              {contactInfo?.panelTitle || "مقر المؤسسة وقنوات التواصل"}
+            </h3>
             <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed">
-              تستقبلكم المؤسسة يومياً لاستقبال الاستفسارات وتوفير أدوات الخط الفاخرة لطلاب الحرف الشريف.
+              {contactInfo?.panelDescription || "تستقبلكم المؤسسة يومياً لاستقبال الاستفسارات وتوفير أدوات الخط الفاخرة لطلاب الحرف الشريف."}
             </p>
 
             <div className="space-y-4 pt-4">
-              {/* Address */}
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
-                  <MapPin className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-sans font-bold text-sm text-slate-100">العنوان والموقع</h4>
-                  <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
-                    العراق، الموصل، الجانب الأيمن، قرب جامع النوري الكبير
-                  </p>
-                </div>
-              </div>
+              {contactInfo?.cards && contactInfo.cards.length > 0 ? (
+                contactInfo.cards.map((item, index) => (
+                  <div key={index} className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                      {getContactIcon(item.icon)}
+                    </div>
+                    <div>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">{item.title}</h4>
+                      <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
+                        {item.value}
+                      </p>
+                    </div>
+                  </div>
+                ))
+              ) : (
+                <>
+                  {/* Address */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                      <MapPin className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">العنوان والموقع</h4>
+                      <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
+                        العراق، الموصل، الجانب الأيمن، قرب جامع النوري الكبير
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Phone */}
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
-                  <Phone className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-sans font-bold text-sm text-slate-100">رقم الهاتف</h4>
-                  <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed" dir="ltr">
-                    +964 770 123 4567
-                  </p>
-                </div>
-              </div>
+                  {/* Phone */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                      <Phone className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">رقم الهاتف</h4>
+                      <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed" dir="ltr">
+                        +964 770 123 4567
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Mail */}
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
-                  <Mail className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-sans font-bold text-sm text-slate-100">البريد الإلكتروني</h4>
-                  <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
-                    info@yousifdhannoun.org
-                  </p>
-                </div>
-              </div>
+                  {/* Mail */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                      <Mail className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">البريد الإلكتروني</h4>
+                      <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
+                        info@yousifdhannoun.org
+                      </p>
+                    </div>
+                  </div>
 
-              {/* Work Hours */}
-              <div className="flex items-start gap-4">
-                <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
-                  <Clock className="w-5 h-5" />
-                </div>
-                <div>
-                  <h4 className="font-sans font-bold text-sm text-slate-100">أوقات العمل</h4>
-                  <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
-                    السبت - الخميس: من ٩:٠٠ صباحاً وحتى ٥:٠٠ مساءً
-                  </p>
-                </div>
-              </div>
+                  {/* Work Hours */}
+                  <div className="flex items-start gap-4">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-400 flex items-center justify-center shrink-0">
+                      <Clock className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">أوقات العمل</h4>
+                      <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
+                        السبت - الخميس: من ٩:٠٠ صباحاً وحتى ٥:٠٠ مساءً
+                      </p>
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
           </div>
 
@@ -212,6 +309,17 @@ export default function ContactSection({ cards, socialLinks }: ContactSectionPro
                 >
                   <Check className="w-5 h-5 shrink-0 text-green-400" />
                   <span>شكراً لك! تم إرسال رسالتك بنجاح وسيتواصل معك فريق المؤسسة في أقرب وقت.</span>
+                </motion.div>
+              )}
+              {errorMessage && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: -10 }}
+                  className="bg-red-500/10 border border-red-500/30 rounded-xl p-4 flex items-center gap-3 text-red-400 text-xs sm:text-sm font-sans"
+                >
+                  <span className="w-2 h-2 rounded-full bg-red-500 shrink-0" />
+                  <span>{errorMessage}</span>
                 </motion.div>
               )}
             </AnimatePresence>

@@ -53,7 +53,36 @@ export const FALLBACK_DATA: AppData = {
   coursesCards: [],
   toolsCards: [],
   aboutCards: [],
-  contactCards: []
+  contactCards: [],
+  contactInfo: {
+    badge: "نسعد دائماً بخدمتكم وتواصلكم",
+    title: "تواصل معنا والتحق بنا",
+    description: "لديك استفسار حول الدورات أو ترغب بطلب لوحة خطية مخصصة؟ راسلنا أو تواصل معنا عبر قنواتنا الرسمية، أو تشرفنا بزيارتك لمقر المؤسسة.",
+    panelTitle: "مقر المؤسسة وقنوات التواصل",
+    panelDescription: "تستقبلكم المؤسسة يومياً لاستقبال الاستفسارات وتوفير أدوات الخط الفاخرة لطلاب الحرف الشريف.",
+    cards: [
+      {
+        title: "العنوان والموقع",
+        value: "العراق، الموصل، الجانب الأيمن، قرب جامع النوري الكبير",
+        icon: "map-pin"
+      },
+      {
+        title: "رقم الهاتف",
+        value: "+964 770 123 4567",
+        icon: "phone"
+      },
+      {
+        title: "البريد الإلكتروني",
+        value: "info@yousifdhannoun.org",
+        icon: "mail"
+      },
+      {
+        title: "أوقات العمل",
+        value: "السبت - الخميس: من ٩:٠٠ صباحاً وحتى ٥:٠٠ مساءً",
+        icon: "clock"
+      }
+    ]
+  }
 };
 
 // Parse visualization API table layout
@@ -215,11 +244,101 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   }
 
   let socialLinks = { ...FALLBACK_DATA.socialLinks };
-  if (contactRows && contactRows.length > 0 && contactRows[0]) {
-    socialLinks.facebook = contactRows[0][0] || socialLinks.facebook;
-    socialLinks.instagram = contactRows[0][1] || socialLinks.instagram;
-    socialLinks.youtube = contactRows[0][2] || socialLinks.youtube;
-    socialLinks.line = contactRows[0][3] || socialLinks.line;
+  let contactInfo = { ...FALLBACK_DATA.contactInfo };
+  const contactCards: SheetRow[] = [];
+
+  // Check if contactRows contains the new structured keywords in Column A of any row
+  let isNewStructuredFormat = false;
+  if (contactRows && contactRows.length > 1) {
+    for (let i = 1; i < contactRows.length; i++) {
+      const typeVal = contactRows[i][0] ? contactRows[i][0].toString().trim() : "";
+      if (
+        typeVal === "شارة البداية" ||
+        typeVal === "العنوان الرئيسي" ||
+        typeVal === "الوصف الرئيسي" ||
+        typeVal === "عنوان اللوحة" ||
+        typeVal === "وصف اللوحة" ||
+        typeVal === "بطاقة تواصل" ||
+        typeVal === "فيسبوك" ||
+        typeVal === "إنستغرام" ||
+        typeVal === "يوتيوب" ||
+        typeVal === "لاين"
+      ) {
+        isNewStructuredFormat = true;
+        break;
+      }
+    }
+  }
+
+  if (isNewStructuredFormat && contactRows) {
+    const parsedCards: any[] = [];
+    let badge = FALLBACK_DATA.contactInfo?.badge;
+    let titleText = FALLBACK_DATA.contactInfo?.title;
+    let descText = FALLBACK_DATA.contactInfo?.description;
+    let panelTitleText = FALLBACK_DATA.contactInfo?.panelTitle;
+    let panelDescText = FALLBACK_DATA.contactInfo?.panelDescription;
+
+    for (let i = 1; i < contactRows.length; i++) {
+      const row = contactRows[i];
+      if (!row || row.length === 0) continue;
+
+      const rowType = row[0] ? row[0].toString().trim() : "";
+      const rowTitle = row[1] ? row[1].toString().trim() : "";
+      const rowValue = row[2] ? row[2].toString().trim() : "";
+      const rowIconLink = row[3] ? row[3].toString().trim() : "";
+
+      if (rowType === "شارة البداية") {
+        badge = rowValue || rowTitle || badge;
+      } else if (rowType === "العنوان الرئيسي") {
+        titleText = rowValue || rowTitle || titleText;
+      } else if (rowType === "الوصف الرئيسي") {
+        descText = rowValue || rowTitle || descText;
+      } else if (rowType === "عنوان اللوحة") {
+        panelTitleText = rowValue || rowTitle || panelTitleText;
+      } else if (rowType === "وصف اللوحة") {
+        panelDescText = rowValue || rowTitle || panelDescText;
+      } else if (rowType === "بطاقة تواصل") {
+        if (rowTitle || rowValue) {
+          parsedCards.push({
+            title: rowTitle,
+            value: rowValue,
+            icon: rowIconLink || "star"
+          });
+        }
+      } else if (rowType === "فيسبوك") {
+        socialLinks.facebook = rowValue || rowIconLink || socialLinks.facebook;
+      } else if (rowType === "إنستغرام") {
+        socialLinks.instagram = rowValue || rowIconLink || socialLinks.instagram;
+      } else if (rowType === "يوتيوب") {
+        socialLinks.youtube = rowValue || rowIconLink || socialLinks.youtube;
+      } else if (rowType === "لاين") {
+        socialLinks.line = rowValue || rowIconLink || socialLinks.line;
+      }
+    }
+
+    contactInfo = {
+      badge,
+      title: titleText,
+      description: descText,
+      panelTitle: panelTitleText,
+      panelDescription: panelDescText,
+      cards: parsedCards.length > 0 ? parsedCards : (FALLBACK_DATA.contactInfo?.cards || [])
+    };
+  } else {
+    // Old style fallback:
+    if (contactRows && contactRows.length > 0 && contactRows[0]) {
+      socialLinks.facebook = contactRows[0][0] || socialLinks.facebook;
+      socialLinks.instagram = contactRows[0][1] || socialLinks.instagram;
+      socialLinks.youtube = contactRows[0][2] || socialLinks.youtube;
+      socialLinks.line = contactRows[0][3] || socialLinks.line;
+    }
+
+    if (contactRows && contactRows.length > 8) {
+      for (let i = 8; i < contactRows.length; i++) {
+        const mapped = mapContentRow(contactRows[i]);
+        if (mapped) contactCards.push(mapped);
+      }
+    }
   }
 
   const homeCards: SheetRow[] = [];
@@ -270,14 +389,6 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     }
   }
 
-  const contactCards: SheetRow[] = [];
-  if (contactRows && contactRows.length > 8) {
-    for (let i = 8; i < contactRows.length; i++) {
-      const mapped = mapContentRow(contactRows[i]);
-      if (mapped) contactCards.push(mapped);
-    }
-  }
-
   return {
     profile: { 
       logoUrl, 
@@ -295,7 +406,8 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     videoCards,
     coursesCards,
     toolsCards,
-    contactCards
+    contactCards,
+    contactInfo
   };
 }
 

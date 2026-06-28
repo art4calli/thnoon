@@ -315,10 +315,10 @@ export default function App() {
               <img
                 src={profile.headerBgUrl}
                 alt={profile.title}
-                className="w-full h-full object-cover opacity-25 animate-slow-zoom"
+                className="w-full h-full object-cover opacity-50 animate-slow-zoom"
                 referrerPolicy="no-referrer"
               />
-              <div className="absolute inset-0 bg-gradient-to-b from-slate-950/95 via-slate-950/85 to-slate-900"></div>
+              <div className="absolute inset-0 bg-gradient-to-b from-slate-950/70 via-slate-950/40 to-slate-950/95"></div>
             </div>
           ) : (
             <>
@@ -405,7 +405,7 @@ export default function App() {
 
             {/* CONTACT SECTION - Rendered directly underneath Home profile */}
             <div className="border-t border-slate-900/40">
-              <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} />
+              <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} contactInfo={appData?.contactInfo} />
             </div>
           </div>
         )}
@@ -448,7 +448,7 @@ export default function App() {
         {/* CONTACT SECTION (Independent Page View) */}
         {activeSection === "contact" && (
           <div id="contact" className="pt-24 md:pt-28">
-            <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} />
+            <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} contactInfo={appData?.contactInfo} />
           </div>
         )}
 

@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import fs from "fs";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
 
@@ -42,7 +43,36 @@ const FALLBACK_DATA = {
   coursesCards: [],
   toolsCards: [],
   aboutCards: [],
-  contactCards: []
+  contactCards: [],
+  contactInfo: {
+    badge: "نسعد دائماً بخدمتكم وتواصلكم",
+    title: "تواصل معنا والتحق بنا",
+    description: "لديك استفسار حول الدورات أو ترغب بطلب لوحة خطية مخصصة؟ راسلنا أو تواصل معنا عبر قنواتنا الرسمية، أو تشرفنا بزيارتك لمقر المؤسسة.",
+    panelTitle: "مقر المؤسسة وقنوات التواصل",
+    panelDescription: "تستقبلكم المؤسسة يومياً لاستقبال الاستفسارات وتوفير أدوات الخط الفاخرة لطلاب الحرف الشريف.",
+    cards: [
+      {
+        title: "العنوان والموقع",
+        value: "العراق، الموصل، الجانب الأيمن، قرب جامع النوري الكبير",
+        icon: "map-pin"
+      },
+      {
+        title: "رقم الهاتف",
+        value: "+964 770 123 4567",
+        icon: "phone"
+      },
+      {
+        title: "البريد الإلكتروني",
+        value: "info@yousifdhannoun.org",
+        icon: "mail"
+      },
+      {
+        title: "أوقات العمل",
+        value: "السبت - الخميس: من ٩:٠٠ صباحاً وحتى ٥:٠٠ مساءً",
+        icon: "clock"
+      }
+    ]
+  }
 };
 
 // Parse Google Sheet JSON response
@@ -213,17 +243,102 @@ app.get("/api/data", async (req, res) => {
       }
     }
 
-    // Social Links from Contact rows
-    // data.contact[0][0]: Facebook
-    // data.contact[0][1]: Instagram
-    // data.contact[0][2]: YouTube
-    // data.contact[0][3]: Line
     let socialLinks = { ...FALLBACK_DATA.socialLinks };
-    if (contactRows && contactRows.length > 0 && contactRows[0]) {
-      socialLinks.facebook = contactRows[0][0] || socialLinks.facebook;
-      socialLinks.instagram = contactRows[0][1] || socialLinks.instagram;
-      socialLinks.youtube = contactRows[0][2] || socialLinks.youtube;
-      socialLinks.line = contactRows[0][3] || socialLinks.line;
+    let contactInfo = { ...FALLBACK_DATA.contactInfo };
+    const contactCards: any[] = [];
+
+    // Check if contactRows contains the new structured keywords in Column A of any row
+    let isNewStructuredFormat = false;
+    if (contactRows && contactRows.length > 1) {
+      for (let i = 1; i < contactRows.length; i++) {
+        const typeVal = contactRows[i][0] ? contactRows[i][0].toString().trim() : "";
+        if (
+          typeVal === "شارة البداية" ||
+          typeVal === "العنوان الرئيسي" ||
+          typeVal === "الوصف الرئيسي" ||
+          typeVal === "عنوان اللوحة" ||
+          typeVal === "وصف اللوحة" ||
+          typeVal === "بطاقة تواصل" ||
+          typeVal === "فيسبوك" ||
+          typeVal === "إنستغرام" ||
+          typeVal === "يوتيوب" ||
+          typeVal === "لاين"
+        ) {
+          isNewStructuredFormat = true;
+          break;
+        }
+      }
+    }
+
+    if (isNewStructuredFormat && contactRows) {
+      const parsedCards: any[] = [];
+      let badge = FALLBACK_DATA.contactInfo?.badge;
+      let titleText = FALLBACK_DATA.contactInfo?.title;
+      let descText = FALLBACK_DATA.contactInfo?.description;
+      let panelTitleText = FALLBACK_DATA.contactInfo?.panelTitle;
+      let panelDescText = FALLBACK_DATA.contactInfo?.panelDescription;
+
+      for (let i = 1; i < contactRows.length; i++) {
+        const row = contactRows[i];
+        if (!row || row.length === 0) continue;
+
+        const rowType = row[0] ? row[0].toString().trim() : "";
+        const rowTitle = row[1] ? row[1].toString().trim() : "";
+        const rowValue = row[2] ? row[2].toString().trim() : "";
+        const rowIconLink = row[3] ? row[3].toString().trim() : "";
+
+        if (rowType === "شارة البداية") {
+          badge = rowValue || rowTitle || badge;
+        } else if (rowType === "العنوان الرئيسي") {
+          titleText = rowValue || rowTitle || titleText;
+        } else if (rowType === "الوصف الرئيسي") {
+          descText = rowValue || rowTitle || descText;
+        } else if (rowType === "عنوان اللوحة") {
+          panelTitleText = rowValue || rowTitle || panelTitleText;
+        } else if (rowType === "وصف اللوحة") {
+          panelDescText = rowValue || rowTitle || panelDescText;
+        } else if (rowType === "بطاقة تواصل") {
+          if (rowTitle || rowValue) {
+            parsedCards.push({
+              title: rowTitle,
+              value: rowValue,
+              icon: rowIconLink || "star"
+            });
+          }
+        } else if (rowType === "فيسبوك") {
+          socialLinks.facebook = rowValue || rowIconLink || socialLinks.facebook;
+        } else if (rowType === "إنستغرام") {
+          socialLinks.instagram = rowValue || rowIconLink || socialLinks.instagram;
+        } else if (rowType === "يوتيوب") {
+          socialLinks.youtube = rowValue || rowIconLink || socialLinks.youtube;
+        } else if (rowType === "لاين") {
+          socialLinks.line = rowValue || rowIconLink || socialLinks.line;
+        }
+      }
+
+      contactInfo = {
+        badge,
+        title: titleText,
+        description: descText,
+        panelTitle: panelTitleText,
+        panelDescription: panelDescText,
+        cards: parsedCards.length > 0 ? parsedCards : (FALLBACK_DATA.contactInfo?.cards || [])
+      };
+    } else {
+      // Old style fallback:
+      if (contactRows && contactRows.length > 0 && contactRows[0]) {
+        socialLinks.facebook = contactRows[0][0] || socialLinks.facebook;
+        socialLinks.instagram = contactRows[0][1] || socialLinks.instagram;
+        socialLinks.youtube = contactRows[0][2] || socialLinks.youtube;
+        socialLinks.line = contactRows[0][3] || socialLinks.line;
+      }
+
+      if (contactRows && contactRows.length > 8) {
+        for (let i = 8; i < contactRows.length; i++) {
+          const mapped = mapContentRow(contactRows[i]);
+          if (mapped) contactCards.push(mapped);
+        }
+      }
     }
 
     // Process Cards for each category
@@ -281,15 +396,6 @@ app.get("/api/data", async (req, res) => {
       }
     }
 
-    // Contact Cards: starting from index 8 (row 11 of Sheet, row index 9)
-    const contactCards: any[] = [];
-    if (contactRows && contactRows.length > 8) {
-      for (let i = 8; i < contactRows.length; i++) {
-        const mapped = mapContentRow(contactRows[i]);
-        if (mapped) contactCards.push(mapped);
-      }
-    }
-
     res.json({
       profile: { 
         logoUrl, 
@@ -307,7 +413,8 @@ app.get("/api/data", async (req, res) => {
       videoCards,
       coursesCards,
       toolsCards,
-      contactCards
+      contactCards,
+      contactInfo
     });
 
   } catch (error) {
@@ -315,6 +422,92 @@ app.get("/api/data", async (req, res) => {
     // Serve fallback gracefully
     res.json(FALLBACK_DATA);
   }
+});
+
+// INQUIRY/CONTACT SUBMISSION ENDPOINT
+app.post("/api/contact", async (req, res) => {
+  const { name, email, subject, message } = req.body;
+
+  if (!name || !message) {
+    return res.status(400).json({ success: false, message: "الرجاء إدخال الاسم الكريم والرسالة" });
+  }
+
+  const timestamp = new Date().toISOString();
+  const inquiryData = {
+    name,
+    email: email || "",
+    subject: subject || "",
+    message,
+    timestamp
+  };
+
+  // 1. Save locally to a JSON file so messages are NEVER lost and can be inspected locally
+  const dataDir = path.join(process.cwd(), "data");
+  const messagesFile = path.join(dataDir, "messages.json");
+
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+
+    let existingMessages = [];
+    if (fs.existsSync(messagesFile)) {
+      try {
+        const fileContent = fs.readFileSync(messagesFile, "utf-8");
+        existingMessages = JSON.parse(fileContent);
+      } catch (e) {
+        console.error("Error reading existing messages file, resetting...", e);
+      }
+    }
+
+    existingMessages.push(inquiryData);
+    fs.writeFileSync(messagesFile, JSON.stringify(existingMessages, null, 2), "utf-8");
+    console.log("Inquiry saved locally to data/messages.json");
+  } catch (err) {
+    console.error("Failed to write inquiry locally:", err);
+  }
+
+  // 2. Proxy/Forward to Google Apps Script Web App if GOOGLE_SCRIPT_URL is configured
+  const scriptUrl = process.env.GOOGLE_SCRIPT_URL;
+  if (scriptUrl) {
+    try {
+      console.log("Proxying contact submission to Google Apps Script Web App...");
+      const response = await fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "submitInquiry",
+          name,
+          email,
+          subject,
+          message,
+          timestamp
+        })
+      });
+      const data = await response.json();
+      return res.json({
+        success: true,
+        message: "تم حفظ الاستفسار بنجاح ومزامنته مع جدول البيانات",
+        synced: true,
+        data
+      });
+    } catch (err) {
+      console.error("Failed to proxy inquiry to Google Apps Script:", err);
+      // Fallback gracefully since we already saved it locally
+      return res.json({
+        success: true,
+        message: "تم حفظ الاستفسار محلياً على الخادم (حدثت مشكلة أثناء المزامنة التلقائية مع جوجل شيت)",
+        synced: false
+      });
+    }
+  }
+
+  // If no scriptUrl is set, return success
+  return res.json({
+    success: true,
+    message: "تم حفظ الاستفسار محلياً بنجاح",
+    synced: false
+  });
 });
 
 // LOGIN AUTHENTICATION ENDPOINT

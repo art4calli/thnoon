@@ -37,6 +37,21 @@ export interface SocialLinks {
   line: string;
 }
 
+export interface ContactCardItem {
+  title: string;
+  value: string;
+  icon: string;
+}
+
+export interface ContactDetails {
+  badge?: string;
+  title?: string;
+  description?: string;
+  panelTitle?: string;
+  panelDescription?: string;
+  cards: ContactCardItem[];
+}
+
 export interface AppData {
   profile: ProfileData;
   socialLinks: SocialLinks;
@@ -47,6 +62,7 @@ export interface AppData {
   toolsCards: SheetRow[];
   aboutCards: SheetRow[];
   contactCards: SheetRow[];
+  contactInfo?: ContactDetails;
 }
 
 export interface SubscriberState {
