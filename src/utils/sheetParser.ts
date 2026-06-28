@@ -5,7 +5,7 @@
 
 import { AppData, SheetRow } from "../types";
 
-const SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
+const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 
 // Fallback quality data
 export const FALLBACK_DATA: AppData = {
@@ -83,17 +83,15 @@ function mapContentRow(row: any[]): SheetRow | null {
   const title = row[1] ? row[1].toString().trim() : "";
   const description = row[2] ? row[2].toString().trim() : "";
   
-  if (!type && !title && !description) return null;
+  if (!title && !description) return null;
 
-  const media: { url: string; pairUrl?: string }[] = [];
+  const media: { url: string }[] = [];
   
-  for (let j = 3; j <= 11; j += 2) {
+  // Columns D to M are indices 3 to 12
+  for (let j = 3; j <= 12; j++) {
     const url = row[j] ? row[j].toString().trim() : "";
-    const pairUrl = row[j+1] ? row[j+1].toString().trim() : "";
-    if (url && url !== "-") {
-      media.push({ url, pairUrl: (pairUrl && pairUrl !== "-") ? pairUrl : undefined });
-    } else if (pairUrl && pairUrl !== "-") {
-      media.push({ url: pairUrl });
+    if (url && url !== "-" && url !== "") {
+      media.push({ url });
     }
   }
 
@@ -131,20 +129,13 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   let logoUrl = FALLBACK_DATA.profile.logoUrl;
   let title = "مؤسسة يوسف ذنون للخط العربي";
   let description = "مؤسسة ثقافية فنية تعنى بالحفاظ على تراث عميد الخط العربي الأستاذ يوسف ذنون ونشر فنون الخط والزخرفة الإسلامية.";
-  let loginButtonText = "دخول";
+  let loginButtonText = "بوابة المشتركين";
   let loginButtonUrl = "#login";
 
-  if (profileRows && profileRows.length > 0) {
-    if (profileRows[0] && profileRows[0][2]) logoUrl = profileRows[0][2];
-    if (profileRows[0] && profileRows[0][1]) title = profileRows[0][1];
-    if (profileRows[1] && profileRows[1][1]) description = profileRows[1][1];
-    
-    for (let i = 2; i < Math.min(6, profileRows.length); i++) {
-      if (profileRows[i] && profileRows[i][0] === "دخول") {
-        loginButtonText = profileRows[i][0];
-        loginButtonUrl = profileRows[i][2] || "#login";
-      }
-    }
+  if (profileRows && profileRows.length > 1) {
+    if (profileRows[1] && profileRows[1][2]) logoUrl = profileRows[1][2];
+    if (profileRows[1] && profileRows[1][1]) title = profileRows[1][1];
+    if (profileRows[2] && profileRows[2][1]) description = profileRows[2][1];
   }
 
   let socialLinks = { ...FALLBACK_DATA.socialLinks };
@@ -156,49 +147,49 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   }
 
   const homeCards: SheetRow[] = [];
-  if (profileRows && profileRows.length > 8) {
-    for (let i = 8; i < profileRows.length; i++) {
+  if (profileRows && profileRows.length > 10) {
+    for (let i = 10; i < profileRows.length; i++) {
       const mapped = mapContentRow(profileRows[i]);
       if (mapped) homeCards.push(mapped);
     }
   }
 
   const aboutCards: SheetRow[] = [];
-  if (aboutRows && aboutRows.length > 0) {
-    for (const row of aboutRows) {
-      const mapped = mapContentRow(row);
+  if (aboutRows && aboutRows.length > 1) {
+    for (let i = 1; i < aboutRows.length; i++) {
+      const mapped = mapContentRow(aboutRows[i]);
       if (mapped) aboutCards.push(mapped);
     }
   }
 
   const artworkCards: SheetRow[] = [];
-  if (artworkRows && artworkRows.length > 0) {
-    for (const row of artworkRows) {
-      const mapped = mapContentRow(row);
+  if (artworkRows && artworkRows.length > 1) {
+    for (let i = 1; i < artworkRows.length; i++) {
+      const mapped = mapContentRow(artworkRows[i]);
       if (mapped) artworkCards.push(mapped);
     }
   }
 
   const videoCards: SheetRow[] = [];
-  if (videoRows && videoRows.length > 0) {
-    for (const row of videoRows) {
-      const mapped = mapContentRow(row);
+  if (videoRows && videoRows.length > 1) {
+    for (let i = 1; i < videoRows.length; i++) {
+      const mapped = mapContentRow(videoRows[i]);
       if (mapped) videoCards.push(mapped);
     }
   }
 
   const coursesCards: SheetRow[] = [];
-  if (coursesRows && coursesRows.length > 0) {
-    for (const row of coursesRows) {
-      const mapped = mapContentRow(row);
+  if (coursesRows && coursesRows.length > 1) {
+    for (let i = 1; i < coursesRows.length; i++) {
+      const mapped = mapContentRow(coursesRows[i]);
       if (mapped) coursesCards.push(mapped);
     }
   }
 
   const toolsCards: SheetRow[] = [];
-  if (toolsRows && toolsRows.length > 0) {
-    for (const row of toolsRows) {
-      const mapped = mapContentRow(row);
+  if (toolsRows && toolsRows.length > 1) {
+    for (let i = 1; i < toolsRows.length; i++) {
+      const mapped = mapContentRow(toolsRows[i]);
       if (mapped) toolsCards.push(mapped);
     }
   }
@@ -264,41 +255,46 @@ export async function loginSubscriberDirect(usernameInput: string, passwordInput
   // 2. Direct browser-side zero-config fallback using public sheet to ensure instant deployment success!
   try {
     const rows = await getSheetValuesDirect("Settings");
-    if (!rows || rows.length <= 1) {
+    if (!rows || rows.length === 0) {
       return { success: false, message: "فشل الاتصال بجدول المشتركين" };
     }
 
-    // Row 0 is the headers, subscribers start at row 1
-    for (let i = 1; i < rows.length; i++) {
-      const row = rows[i];
-      if (!row || row.length < 3) continue;
+    for (const row of rows) {
+      if (!row || row.length < 27) continue;
 
-      const sheetUsername = row[0] ? row[0].toString().trim() : "";
-      const sheetPassword = row[1] ? row[1].toString().trim() : "";
+      const sheetUsername = row[25] ? row[25].toString().trim() : "";
+      const sheetPassword = row[26] ? row[26].toString().trim() : "";
       
-      if (sheetUsername.toLowerCase() === usernameInput.toLowerCase() && sheetPassword === passwordInput) {
-        const subscriberName = row[2] ? row[2].toString().trim() : "مشترك";
-        
+      if (sheetUsername === usernameInput) {
+        if (sheetPassword !== passwordInput) {
+          return { success: false, message: "كلمة المرور غير صحيحة" };
+        }
+
+        const status = row[27] ? row[27].toString().trim() : "";
+        if (status === "لا") {
+          return { success: false, message: "تم منع الدخول لهذا المستخدم" };
+        }
+
         return {
           success: true,
-          subscriberName,
-          linkButtonText1: row[5] || "",
-          linkButtonComment1: row[6] || "",
-          url1: row[7] || "",
-          linkButtonText2: row[8] || "",
-          linkButtonComment2: row[9] || "",
-          url2: row[10] || "",
-          linkButtonText3: row[11] || "",
-          linkButtonComment3: row[12] || "",
-          url3: row[13] || "",
-          linkButtonText4: row[14] || "",
-          linkButtonComment4: row[15] || "",
-          url4: row[16] || "",
-          linkButtonText5: row[17] || "",
-          linkButtonComment5: row[18] || "",
-          url5: row[19] || "",
-          exitButtonText: row[20] || "خروج",
-          exitButtonComment: row[21] || ""
+          subscriberName: row[1] || "مشترك",
+          linkButtonText1: row[2] || "",
+          linkButtonComment1: row[3] || "",
+          url1: row[4] || "",
+          linkButtonText2: row[5] || "",
+          linkButtonComment2: row[6] || "",
+          url2: row[7] || "",
+          linkButtonText3: row[8] || "",
+          linkButtonComment3: row[9] || "",
+          url3: row[10] || "",
+          linkButtonText4: row[11] || "",
+          linkButtonComment4: row[12] || "",
+          url4: row[13] || "",
+          linkButtonText5: row[14] || "",
+          linkButtonComment5: row[15] || "",
+          url5: row[16] || "",
+          exitButtonText: row[17] || "تسجيل الخروج",
+          exitButtonComment: row[18] || ""
         };
       }
     }

@@ -89,18 +89,15 @@ function mapContentRow(row: any[]): any {
   const title = row[1] ? row[1].toString().trim() : "";
   const description = row[2] ? row[2].toString().trim() : "";
   
-  if (!type && !title && !description) return null;
+  if (!title && !description) return null;
 
-  const media: { url: string; pairUrl?: string }[] = [];
+  const media: { url: string }[] = [];
   
-  // Media pairs are in columns 3 to 12 (D to M in Sheet)
-  for (let j = 3; j <= 11; j += 2) {
+  // Columns D to M are indices 3 to 12
+  for (let j = 3; j <= 12; j++) {
     const url = row[j] ? row[j].toString().trim() : "";
-    const pairUrl = row[j+1] ? row[j+1].toString().trim() : "";
-    if (url && url !== "-") {
-      media.push({ url, pairUrl: (pairUrl && pairUrl !== "-") ? pairUrl : undefined });
-    } else if (pairUrl && pairUrl !== "-") {
-      media.push({ url: pairUrl });
+    if (url && url !== "-" && url !== "") {
+      media.push({ url });
     }
   }
 
@@ -141,28 +138,20 @@ app.get("/api/data", async (req, res) => {
     // Parse Profile Info
     // Row 0 of profileRows (which is row 2 of the sheet): [Logo, Logo Text, Logo URL/Image]
     // Wait, the original code had:
-    // Logo image path: data.profile[0][2]
-    // Name: data.profile[0][1]
-    // Subtitle: data.profile[1][1]
-    // Buttons are in rows 3 to 6: data.profile[i]
+    // Parse Profile Info
+    // Row 1 (index 0) of profileRows: Table header (ignore)
+    // Row 2 (index 1) of profileRows: [Column A, Title (Column B), Logo URL (Column C)]
+    // Row 3 (index 2) of profileRows: [Column A, Description (Column B)]
     let logoUrl = FALLBACK_DATA.profile.logoUrl;
     let title = "مؤسسة يوسف ذنون للخط العربي";
     let description = "مؤسسة ثقافية فنية تعنى بالحفاظ على تراث عميد الخط العربي الأستاذ يوسف ذنون ونشر فنون الخط والزخرفة الإسلامية.";
-    let loginButtonText = "دخول";
+    let loginButtonText = "بوابة المشتركين";
     let loginButtonUrl = "#login";
 
-    if (profileRows && profileRows.length > 0) {
-      if (profileRows[0] && profileRows[0][2]) logoUrl = profileRows[0][2];
-      if (profileRows[0] && profileRows[0][1]) title = profileRows[0][1];
-      if (profileRows[1] && profileRows[1][1]) description = profileRows[1][1];
-      
-      // Look for a login button
-      for (let i = 2; i < Math.min(6, profileRows.length); i++) {
-        if (profileRows[i] && profileRows[i][0] === "دخول") {
-          loginButtonText = profileRows[i][0];
-          loginButtonUrl = profileRows[i][2] || "#login";
-        }
-      }
+    if (profileRows && profileRows.length > 1) {
+      if (profileRows[1] && profileRows[1][2]) logoUrl = profileRows[1][2];
+      if (profileRows[1] && profileRows[1][1]) title = profileRows[1][1];
+      if (profileRows[2] && profileRows[2][1]) description = profileRows[2][1];
     }
 
     // Social Links from Contact rows
@@ -179,56 +168,56 @@ app.get("/api/data", async (req, res) => {
     }
 
     // Process Cards for each category
-    // Home Cards: starting at row 9 (index 8 of sliced, which is index 8 of profileRows)
+    // Home Cards: starting at row 11 (index 10 of profileRows)
     const homeCards: any[] = [];
-    if (profileRows && profileRows.length > 8) {
-      for (let i = 8; i < profileRows.length; i++) {
+    if (profileRows && profileRows.length > 10) {
+      for (let i = 10; i < profileRows.length; i++) {
         const mapped = mapContentRow(profileRows[i]);
         if (mapped) homeCards.push(mapped);
       }
     }
 
-    // About Cards
+    // About Cards: starts at row 2 (index 1)
     const aboutCards: any[] = [];
-    if (aboutRows && aboutRows.length > 0) {
-      for (const row of aboutRows) {
-        const mapped = mapContentRow(row);
+    if (aboutRows && aboutRows.length > 1) {
+      for (let i = 1; i < aboutRows.length; i++) {
+        const mapped = mapContentRow(aboutRows[i]);
         if (mapped) aboutCards.push(mapped);
       }
     }
 
-    // Artwork Cards
+    // Artwork Cards: starts at row 2 (index 1)
     const artworkCards: any[] = [];
-    if (artworkRows && artworkRows.length > 0) {
-      for (const row of artworkRows) {
-        const mapped = mapContentRow(row);
+    if (artworkRows && artworkRows.length > 1) {
+      for (let i = 1; i < artworkRows.length; i++) {
+        const mapped = mapContentRow(artworkRows[i]);
         if (mapped) artworkCards.push(mapped);
       }
     }
 
-    // Video Cards
+    // Video Cards: starts at row 2 (index 1)
     const videoCards: any[] = [];
-    if (videoRows && videoRows.length > 0) {
-      for (const row of videoRows) {
-        const mapped = mapContentRow(row);
+    if (videoRows && videoRows.length > 1) {
+      for (let i = 1; i < videoRows.length; i++) {
+        const mapped = mapContentRow(videoRows[i]);
         if (mapped) videoCards.push(mapped);
       }
     }
 
-    // Courses Cards
+    // Courses Cards: starts at row 2 (index 1)
     const coursesCards: any[] = [];
-    if (coursesRows && coursesRows.length > 0) {
-      for (const row of coursesRows) {
-        const mapped = mapContentRow(row);
+    if (coursesRows && coursesRows.length > 1) {
+      for (let i = 1; i < coursesRows.length; i++) {
+        const mapped = mapContentRow(coursesRows[i]);
         if (mapped) coursesCards.push(mapped);
       }
     }
 
-    // Tools Cards
+    // Tools Cards: starts at row 2 (index 1)
     const toolsCards: any[] = [];
-    if (toolsRows && toolsRows.length > 0) {
-      for (const row of toolsRows) {
-        const mapped = mapContentRow(row);
+    if (toolsRows && toolsRows.length > 1) {
+      for (let i = 1; i < toolsRows.length; i++) {
+        const mapped = mapContentRow(toolsRows[i]);
         if (mapped) toolsCards.push(mapped);
       }
     }
