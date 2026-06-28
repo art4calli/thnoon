@@ -202,6 +202,7 @@ function extractSectionMetadata(rows: any[][]): {
     sectionTitle?: string;
     sectionDescription?: string;
     sectionBadge?: string;
+    sectionButtonText?: string;
     [key: string]: any;
   };
 } {
@@ -221,50 +222,67 @@ function extractSectionMetadata(rows: any[][]): {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
+    // Col A is firstCell (ignored by user), Col B is secondCell (Title/Key), Col C is thirdCell (Value)
     const firstCell = row[0] ? row[0].toString().trim() : "";
     const secondCell = row[1] ? row[1].toString().trim() : "";
     const thirdCell = row[2] ? row[2].toString().trim() : "";
 
-    const normKey = normalizeKey(firstCell);
+    const normKey = normalizeKey(secondCell); // Match on Column B (the Key column)
 
     // List of keys we treat as section-wide metadata
     const isMetadataKey = [
       "عنوانالقسم",
       "وصفالقسم",
       "شارةالقسم",
+      "شارهالقسم",
       "سيرةالاسم",
+      "سيرهالاسم",
       "سيرةاللقب",
+      "سيرهاللقب",
       "سيرةالعنوان",
+      "سيرهالعنوان",
       "سيرةالوصف",
+      "سيرهالوصف",
       "سيرةالوصف2",
+      "سيرهالوصف2",
       "سيرةالصورة",
+      "سيرهالصوره",
       "احصائية1الرقم",
+      "احصائيه1الرقم",
       "احصائية1العنوان",
+      "احصائيه1العنوان",
       "احصائية2الرقم",
+      "احصائيه2الرقم",
       "احصائية2العنوان",
+      "احصائيه2العنوان",
       "احصائية3الرقم",
-      "احصائية3العنوان"
+      "احصائيه3الرقم",
+      "احصائية3العنوان",
+      "احصائيه3العنوان",
+      "عنوانالزر",
+      "نصالزر"
     ].includes(normKey);
 
     if (isMetadataKey) {
-      // Use the third cell (Column C) or second cell (Column B) as the value
+      // Use the third cell (Column C) as the primary value, fallback to Column B
       const val = thirdCell || secondCell;
       
       if (normKey === "عنوانالقسم") metadata.sectionTitle = val;
       else if (normKey === "وصفالقسم") metadata.sectionDescription = val;
-      else if (normKey === "شارةالقسم") metadata.sectionBadge = val;
-      else if (normKey === "سيرةالاسم") metadata.bioName = val;
-      else if (normKey === "سيرةاللقب") metadata.bioSubtitle = val;
-      else if (normKey === "سيرةالعنوان") metadata.bioTitle = val;
-      else if (normKey === "سيرةالوصف") metadata.bioDesc1 = val;
-      else if (normKey === "سيرةالوصف2") metadata.bioDesc2 = val;
-      else if (normKey === "سيرةالصورة") metadata.bioImage = val;
-      else if (normKey === "احصائية1الرقم") metadata.stat1Value = val;
-      else if (normKey === "احصائية1العنوان") metadata.stat1Label = val;
-      else if (normKey === "احصائية2الرقم") metadata.stat2Value = val;
-      else if (normKey === "احصائية2العنوان") metadata.stat2Label = val;
-      else if (normKey === "احصائية3الرقم") metadata.stat3Value = val;
-      else if (normKey === "احصائية3العنوان") metadata.stat3Label = val;
+      else if (normKey === "شارةالقسم" || normKey === "شارهالقسم") metadata.sectionBadge = val;
+      else if (normKey === "سيرةالاسم" || normKey === "سيرهالاسم") metadata.bioName = val;
+      else if (normKey === "سيرةاللقب" || normKey === "سيرهاللقب") metadata.bioSubtitle = val;
+      else if (normKey === "سيرةالعنوان" || normKey === "سيرهالعنوان") metadata.bioTitle = val;
+      else if (normKey === "سيرةالوصف" || normKey === "سيرهالوصف") metadata.bioDesc1 = val;
+      else if (normKey === "سيرةالوصف2" || normKey === "سيرهالوصف2") metadata.bioDesc2 = val;
+      else if (normKey === "سيرةالصورة" || normKey === "سيرهالصوره") metadata.bioImage = val;
+      else if (normKey === "احصائية1الرقم" || normKey === "احصائيه1الرقم") metadata.stat1Value = val;
+      else if (normKey === "احصائية1العنوان" || normKey === "احصائيه1العنوان") metadata.stat1Label = val;
+      else if (normKey === "احصائية2الرقم" || normKey === "احصائيه2الرقم") metadata.stat2Value = val;
+      else if (normKey === "احصائية2العنوان" || normKey === "احصائيه2العنوان") metadata.stat2Label = val;
+      else if (normKey === "احصائية3الرقم" || normKey === "احصائيه3الرقم") metadata.stat3Value = val;
+      else if (normKey === "احصائية3العنوان" || normKey === "احصائيه3العنوان") metadata.stat3Label = val;
+      else if (normKey === "عنوانالزر" || normKey === "نصالزر") metadata.sectionButtonText = val;
     } else {
       cleanRows.push(row);
     }
@@ -483,31 +501,36 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     }
   }
 
-  const sectionHeaders: Record<string, { badge?: string; title?: string; description?: string }> = {
+  const sectionHeaders: Record<string, { badge?: string; title?: string; description?: string; buttonText?: string }> = {
     artwork: {
       badge: artworkMeta.sectionBadge || undefined,
       title: artworkMeta.sectionTitle || undefined,
-      description: artworkMeta.sectionDescription || undefined
+      description: artworkMeta.sectionDescription || undefined,
+      buttonText: artworkMeta.sectionButtonText || undefined
     },
     video: {
       badge: videoMeta.sectionBadge || undefined,
       title: videoMeta.sectionTitle || undefined,
-      description: videoMeta.sectionDescription || undefined
+      description: videoMeta.sectionDescription || undefined,
+      buttonText: videoMeta.sectionButtonText || undefined
     },
     courses: {
       badge: coursesMeta.sectionBadge || undefined,
       title: coursesMeta.sectionTitle || undefined,
-      description: coursesMeta.sectionDescription || undefined
+      description: coursesMeta.sectionDescription || undefined,
+      buttonText: coursesMeta.sectionButtonText || undefined
     },
     tools: {
       badge: toolsMeta.sectionBadge || undefined,
       title: toolsMeta.sectionTitle || undefined,
-      description: toolsMeta.sectionDescription || undefined
+      description: toolsMeta.sectionDescription || undefined,
+      buttonText: toolsMeta.sectionButtonText || undefined
     },
     about: {
       badge: aboutMeta.sectionBadge || undefined,
       title: aboutMeta.sectionTitle || undefined,
-      description: aboutMeta.sectionDescription || undefined
+      description: aboutMeta.sectionDescription || undefined,
+      buttonText: aboutMeta.sectionButtonText || undefined
     }
   };
 

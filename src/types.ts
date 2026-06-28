@@ -65,6 +65,7 @@ export interface SectionHeaderData {
   badge?: string;
   title?: string;
   description?: string;
+  buttonText?: string;
 }
 
 export interface ContactDetails {

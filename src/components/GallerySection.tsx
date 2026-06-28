@@ -127,7 +127,7 @@ export default function GallerySection({ cards, header }: GallerySectionProps) {
                   rel="noopener noreferrer"
                   className="w-full inline-block text-center mt-4 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300"
                 >
-                  تصفح التفاصيل الإضافية
+                  {header?.buttonText || "تصفح التفاصيل الإضافية"}
                 </a>
               </div>
             )}
