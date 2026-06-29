@@ -118,7 +118,7 @@ export default function VideoSection({ cards, header }: VideoSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300"
                   >
-                    <span>{header?.buttonText || "فتح رابط الدرس المرفق"}</span>
+                    <span>فتح رابط الدرس المرفق</span>
                   </a>
                 </div>
               )}

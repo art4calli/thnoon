@@ -101,7 +101,7 @@ export default function CoursesSection({ cards, header }: CoursesSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 text-xs font-sans font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/10 transition-all duration-300"
                   >
-                    <span>{header?.buttonText || "تسجيل أو تفاصيل البرنامج"}</span>
+                    <span>تسجيل أو تفاصيل البرنامج</span>
                   </a>
                 </div>
               )}
