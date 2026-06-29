@@ -222,8 +222,8 @@ function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" |
     cleanRows.push(rows[0]);
   }
 
-  // contact has its own custom parsing, so return it as cleanRows
-  if (sheetType === "contact") {
+  // contact and profile have their own custom index-based parsing, so return them completely unchanged
+  if (sheetType === "contact" || sheetType === "profile") {
     for (let i = 1; i < rows.length; i++) {
       cleanRows.push(rows[i]);
     }
@@ -261,56 +261,23 @@ function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" |
     const normKeyA = normalizeKey(firstCell);
     const normKeyB = normalizeKey(secondCell);
 
-    // Determine if this row should be treated as metadata:
-    // 1. By strict row-index range:
-    //    - For "about": Rows 2 to 16 (index 1 to 15) are metadata.
-    //    - For "standard": Rows 2 to 4 (index 1 to 3) are metadata.
-    // 2. By key match (works dynamically for "profile" or any sheet to filter out metadata keys from cards)
-    const isMetadataByRange = sheetType === "about" ? (i >= 1 && i <= 15) : (sheetType === "standard" ? (i >= 1 && i <= 3) : false);
+    // Determine if this row is a metadata row strictly based on key matching
     const isMetadataByKey = METADATA_KEYS_NORMALIZED.includes(normKeyA) || METADATA_KEYS_NORMALIZED.includes(normKeyB);
 
-    if (isMetadataByRange || isMetadataByKey) {
+    if (isMetadataByKey) {
       // It is a metadata row. Extract the key-value pair and exclude from cleanRows.
       let keyToUse = "";
-      if (METADATA_KEYS_NORMALIZED.includes(normKeyB)) {
-        keyToUse = normKeyB;
-      } else if (METADATA_KEYS_NORMALIZED.includes(normKeyA)) {
+      let val = "";
+
+      if (METADATA_KEYS_NORMALIZED.includes(normKeyA)) {
         keyToUse = normKeyA;
-      } else {
-        // Fallback if matched by index but key is custom: map by index mapping
-        if (sheetType === "about") {
-          const indexToKeyMap: Record<number, string> = {
-            1: "عنوانالقسم",
-            2: "وصفالقسم",
-            3: "شارهالقسم",
-            4: "سيرهالاسم",
-            5: "سيرهاللقب",
-            6: "سيرهالعنوان",
-            7: "سيرهالوصف",
-            8: "سيرهالوصف2",
-            9: "سيرهالصوره",
-            10: "احصائيه1الرقم",
-            11: "احصائيه1العنوان",
-            12: "احصائيه2الرقم",
-            13: "احصائيه2العنوان",
-            14: "احصائيه3الرقم",
-            15: "احصائيه3العنوان"
-          };
-          keyToUse = indexToKeyMap[i] || "";
-        } else if (sheetType === "standard") {
-          const indexToKeyMap: Record<number, string> = {
-            1: "عنوانالقسم",
-            2: "وصفالقسم",
-            3: "شارهالقسم"
-          };
-          keyToUse = indexToKeyMap[i] || "";
-        }
+        val = secondCell || thirdCell; // Col A is key, so Col B is value, fallback to Col C
+      } else if (METADATA_KEYS_NORMALIZED.includes(normKeyB)) {
+        keyToUse = normKeyB;
+        val = thirdCell || secondCell; // Col B is key, so Col C is value, fallback to Col B
       }
 
       if (keyToUse) {
-        // Use thirdCell (Col C) as primary value, fallback to secondCell (Col B)
-        const val = thirdCell || secondCell;
-
         if (keyToUse === "عنوانالقسم") metadata.sectionTitle = val;
         else if (keyToUse === "وصفالقسم") metadata.sectionDescription = val;
         else if (keyToUse === "شارهالقسم") metadata.sectionBadge = val;
