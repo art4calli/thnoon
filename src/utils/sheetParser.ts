@@ -330,7 +330,87 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows, "standard");
   const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows, "standard");
   const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows, "standard");
-  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows, "standard");
+  
+  // Custom about sheet parsing: Rows 2 to 16 are strictly for Biography Card metadata, Rows 17+ are for regular cards.
+  const aboutMeta: Record<string, any> = {};
+  const cleanAboutRows: any[][] = [];
+
+  const METADATA_KEYS_NORMALIZED_ABOUT = [
+    "عنوانالقسم",
+    "وصفالقسم",
+    "شارهالقسم",
+    "سيرهالاسم",
+    "سيرهاللقب",
+    "سيرهالعنوان",
+    "سيرهالوصف",
+    "سيرهالوصف2",
+    "سيرهالصوره",
+    "احصائيه1الرقم",
+    "احصائيه1العنوان",
+    "احصائيه2الرقم",
+    "احصائيه2العنوان",
+    "احصائيه3الرقم",
+    "احصائيه3العنوان",
+    "عنوانالزر",
+    "نصالزر"
+  ];
+
+  if (aboutRows && aboutRows.length > 0) {
+    // Keep header row
+    cleanAboutRows.push(aboutRows[0]);
+
+    // Parse Row 2 to Row 16 (index 1 to 15) for biography metadata
+    const bioLimit = Math.min(aboutRows.length, 16);
+    for (let i = 1; i < bioLimit; i++) {
+      const row = aboutRows[i];
+      if (!row || row.length === 0) continue;
+
+      const firstCell = row[0] ? row[0].toString().trim() : "";
+      const secondCell = row[1] ? row[1].toString().trim() : "";
+      const thirdCell = row[2] ? row[2].toString().trim() : "";
+
+      const normKeyA = normalizeKey(firstCell);
+      const normKeyB = normalizeKey(secondCell);
+
+      let keyToUse = "";
+      let val = "";
+
+      if (METADATA_KEYS_NORMALIZED_ABOUT.includes(normKeyA)) {
+        keyToUse = normKeyA;
+        val = secondCell || thirdCell;
+      } else if (METADATA_KEYS_NORMALIZED_ABOUT.includes(normKeyB)) {
+        keyToUse = normKeyB;
+        val = thirdCell || secondCell;
+      }
+
+      if (keyToUse) {
+        if (keyToUse === "عنوانالقسم") aboutMeta.sectionTitle = val;
+        else if (keyToUse === "وصفالقسم") aboutMeta.sectionDescription = val;
+        else if (keyToUse === "شارهالقسم") aboutMeta.sectionBadge = val;
+        else if (keyToUse === "سيرهالاسم") aboutMeta.bioName = val;
+        else if (keyToUse === "سيرهاللقب") aboutMeta.bioSubtitle = val;
+        else if (keyToUse === "سيرهالعنوان") aboutMeta.bioTitle = val;
+        else if (keyToUse === "سيرهالوصف") aboutMeta.bioDesc1 = val;
+        else if (keyToUse === "سيرهالوصف2") aboutMeta.bioDesc2 = val;
+        else if (keyToUse === "سيرهالصوره") aboutMeta.bioImage = val;
+        else if (keyToUse === "احصائيه1الرقم") aboutMeta.stat1Value = val;
+        else if (keyToUse === "احصائيه1العنوان") aboutMeta.stat1Label = val;
+        else if (keyToUse === "احصائيه2الرقم") aboutMeta.stat2Value = val;
+        else if (keyToUse === "احصائيه2العنوان") aboutMeta.stat2Label = val;
+        else if (keyToUse === "احصائيه3الرقم") aboutMeta.stat3Value = val;
+        else if (keyToUse === "احصائيه3العنوان") aboutMeta.stat3Label = val;
+        else if (keyToUse === "عنوانالزر" || keyToUse === "نصالزر") aboutMeta.sectionButtonText = val;
+      }
+    }
+
+    // Rows 17 onwards (index 16+) are parsed as regular cards
+    for (let i = 16; i < aboutRows.length; i++) {
+      const row = aboutRows[i];
+      if (row && row.length > 0) {
+        cleanAboutRows.push(row);
+      }
+    }
+  }
 
   let logoUrl = FALLBACK_DATA.profile.logoUrl;
   let title = "مؤسسة يوسف ذنون للخط العربي";
