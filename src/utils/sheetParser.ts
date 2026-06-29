@@ -355,70 +355,7 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows, "standard");
   const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows, "standard");
   const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows, "standard");
-  
-  // Custom about sheet parsing: dynamically identify metadata rows based on keys, and treat non-metadata rows as standard cards.
-  const aboutMeta: Record<string, any> = {};
-  const cleanAboutRows: any[][] = [];
-
-  if (aboutRows && aboutRows.length > 0) {
-    // Keep header row
-    cleanAboutRows.push(aboutRows[0]);
-
-    for (let i = 1; i < aboutRows.length; i++) {
-      const row = aboutRows[i];
-      if (!row || row.length === 0) continue;
-
-      const firstCell = row[0] ? row[0].toString().trim() : "";
-      const secondCell = row[1] ? row[1].toString().trim() : "";
-      const thirdCell = row[2] ? row[2].toString().trim() : "";
-
-      const normKeyA = normalizeKey(firstCell);
-      const normKeyB = normalizeKey(secondCell);
-
-      let isMetadata = false;
-      let matchedKey = "";
-      let matchedVal = "";
-
-      const checkMetadata = (keyNorm: string, cellVal: string) => {
-        if (!keyNorm) return false;
-        
-        if (keyNorm === "عنوانالقسم") { matchedKey = "sectionTitle"; matchedVal = cellVal; return true; }
-        if (keyNorm === "وصفالقسم") { matchedKey = "sectionDescription"; matchedVal = cellVal; return true; }
-        if (keyNorm === "شارهالقسم" || keyNorm === "شارةالقسم") { matchedKey = "sectionBadge"; matchedVal = cellVal; return true; }
-        if (keyNorm === "سيرهالاسم" || keyNorm === "سيرةالاسم" || keyNorm === "الاسم" || keyNorm === "اسم") { matchedKey = "bioName"; matchedVal = cellVal; return true; }
-        if (keyNorm === "سيرهاللقب" || keyNorm === "سيرةاللقب" || keyNorm === "اللقب" || keyNorm === "لقب" || keyNorm === "الوصفالفرعي") { matchedKey = "bioSubtitle"; matchedVal = cellVal; return true; }
-        if (keyNorm === "سيرهالعنوان" || keyNorm === "سيرةالعنوان" || keyNorm === "العنوان") { matchedKey = "bioTitle"; matchedVal = cellVal; return true; }
-        if (keyNorm === "سيرهالوصف" || keyNorm === "سيرةالوصف" || keyNorm === "الوصف" || keyNorm === "الوصف1" || keyNorm === "الوصفالاول" || keyNorm === "الوصفالأول") { matchedKey = "bioDesc1"; matchedVal = cellVal; return true; }
-        if (keyNorm === "سيرهالوصف2" || keyNorm === "سيرةالوصف2" || keyNorm === "الوصف2" || keyNorm === "الوصفالثاني") { matchedKey = "bioDesc2"; matchedVal = cellVal; return true; }
-        if (keyNorm === "سيرهالصوره" || keyNorm === "سيرةالصورة" || keyNorm === "الصوره" || keyNorm === "الصورة" || keyNorm === "صوره" || keyNorm === "صورة" || keyNorm.includes("سيرهالصوره") || keyNorm.includes("سيرهالصورة") || keyNorm.includes("صورهالسيره") || keyNorm.includes("صورةالسيرة")) { matchedKey = "bioImage"; matchedVal = cellVal; return true; }
-        if (keyNorm === "احصائيه1الرقم" || keyNorm === "احصائية1الرقم" || keyNorm === "الرقم1" || keyNorm === "احصائيه1" || keyNorm === "احصائية1") { matchedKey = "stat1Value"; matchedVal = cellVal; return true; }
-        if (keyNorm === "احصائيه1العنوان" || keyNorm === "احصائية1العنوان" || keyNorm === "العنوان1" || keyNorm === "احصائيه1الوصف" || keyNorm === "احصائية1الوصف") { matchedKey = "stat1Label"; matchedVal = cellVal; return true; }
-        if (keyNorm === "احصائيه2الرقم" || keyNorm === "احصائية2الرقم" || keyNorm === "الرقم2" || keyNorm === "احصائيه2" || keyNorm === "احصائية2") { matchedKey = "stat2Value"; matchedVal = cellVal; return true; }
-        if (keyNorm === "احصائيه2العنوان" || keyNorm === "احصائية2العنوان" || keyNorm === "العنوان2" || keyNorm === "احصائيه2الوصف" || keyNorm === "احصائية2الوصف") { matchedKey = "stat2Label"; matchedVal = cellVal; return true; }
-        if (keyNorm === "احصائيه3الرقم" || keyNorm === "احصائية3الرقم" || keyNorm === "الرقم3" || keyNorm === "احصائيه3" || keyNorm === "احصائية3") { matchedKey = "stat3Value"; matchedVal = cellVal; return true; }
-        if (keyNorm === "احصائيه3العنوان" || keyNorm === "احصائية3العنوان" || keyNorm === "العنوان3" || keyNorm === "احصائيه3الوصف" || keyNorm === "احصائية3الوصف") { matchedKey = "stat3Label"; matchedVal = cellVal; return true; }
-        if (keyNorm === "عنوانالزر" || keyNorm === "نصالزر") { matchedKey = "sectionButtonText"; matchedVal = cellVal; return true; }
-        
-        return false;
-      };
-
-      // Check Column A as key
-      if (checkMetadata(normKeyA, secondCell || thirdCell)) {
-        isMetadata = true;
-      }
-      // Check Column B as key
-      else if (checkMetadata(normKeyB, thirdCell || secondCell)) {
-        isMetadata = true;
-      }
-
-      if (isMetadata && matchedKey) {
-        aboutMeta[matchedKey] = matchedVal;
-      } else {
-        // Not a metadata row, it is a card! Push it to cleanAboutRows
-        cleanAboutRows.push(row);
-      }
-    }
-  }
+  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows, "standard");
 
   let logoUrl = FALLBACK_DATA.profile.logoUrl;
   let title = "مؤسسة يوسف ذنون للخط العربي";

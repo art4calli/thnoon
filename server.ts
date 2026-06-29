@@ -112,6 +112,52 @@ async function getSheetValues(sheetName: string): Promise<any[][]> {
   }
 }
 
+function normalizeKey(str: string): string {
+  if (!str) return "";
+  let res = str.toString().trim()
+    .replace(/[\s\-_]+/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي");
+
+  const arabicNums = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  for (let i = 0; i < 10; i++) {
+    res = res.split(arabicNums[i]).join(i.toString());
+  }
+  return res;
+}
+
+function isMetadataRow(row: any[]): boolean {
+  if (!row || row.length === 0) return false;
+  const col0 = row[0] ? row[0].toString().trim() : "";
+  const col1 = row[1] ? row[1].toString().trim() : "";
+  
+  const normA = normalizeKey(col0);
+  const normB = normalizeKey(col1);
+
+  const METADATA_KEYS_NORMALIZED = [
+    "عنوانالقسم",
+    "وصفالقسم",
+    "شارهالقسم",
+    "سيرهالاسم",
+    "سيرهاللقب",
+    "سيرهالعنوان",
+    "سيرهالوصف",
+    "سيرهالوصف2",
+    "سيرهالصوره",
+    "احصائيه1الرقم",
+    "احصائيه1العنوان",
+    "احصائيه2الرقم",
+    "احصائيه2العنوان",
+    "احصائيه3الرقم",
+    "احصائيه3العنوان",
+    "عنوانالزر",
+    "نصالزر"
+  ];
+
+  return METADATA_KEYS_NORMALIZED.includes(normA) || METADATA_KEYS_NORMALIZED.includes(normB);
+}
+
 // Map standard row structure (N columns)
 function mapContentRow(row: any[]): any {
   if (!row || row.length < 1) return null;
@@ -346,7 +392,9 @@ app.get("/api/data", async (req, res) => {
     const homeCards: any[] = [];
     if (profileRows && profileRows.length > 10) {
       for (let i = 10; i < profileRows.length; i++) {
-        const mapped = mapContentRow(profileRows[i]);
+        const row = profileRows[i];
+        if (row && isMetadataRow(row)) continue;
+        const mapped = mapContentRow(row);
         if (mapped) homeCards.push(mapped);
       }
     }
@@ -355,7 +403,9 @@ app.get("/api/data", async (req, res) => {
     const aboutCards: any[] = [];
     if (aboutRows && aboutRows.length > 1) {
       for (let i = 1; i < aboutRows.length; i++) {
-        const mapped = mapContentRow(aboutRows[i]);
+        const row = aboutRows[i];
+        if (row && isMetadataRow(row)) continue;
+        const mapped = mapContentRow(row);
         if (mapped) aboutCards.push(mapped);
       }
     }
@@ -364,7 +414,9 @@ app.get("/api/data", async (req, res) => {
     const artworkCards: any[] = [];
     if (artworkRows && artworkRows.length > 1) {
       for (let i = 1; i < artworkRows.length; i++) {
-        const mapped = mapContentRow(artworkRows[i]);
+        const row = artworkRows[i];
+        if (row && isMetadataRow(row)) continue;
+        const mapped = mapContentRow(row);
         if (mapped) artworkCards.push(mapped);
       }
     }
@@ -373,7 +425,9 @@ app.get("/api/data", async (req, res) => {
     const videoCards: any[] = [];
     if (videoRows && videoRows.length > 1) {
       for (let i = 1; i < videoRows.length; i++) {
-        const mapped = mapContentRow(videoRows[i]);
+        const row = videoRows[i];
+        if (row && isMetadataRow(row)) continue;
+        const mapped = mapContentRow(row);
         if (mapped) videoCards.push(mapped);
       }
     }
@@ -382,7 +436,9 @@ app.get("/api/data", async (req, res) => {
     const coursesCards: any[] = [];
     if (coursesRows && coursesRows.length > 1) {
       for (let i = 1; i < coursesRows.length; i++) {
-        const mapped = mapContentRow(coursesRows[i]);
+        const row = coursesRows[i];
+        if (row && isMetadataRow(row)) continue;
+        const mapped = mapContentRow(row);
         if (mapped) coursesCards.push(mapped);
       }
     }
@@ -391,7 +447,9 @@ app.get("/api/data", async (req, res) => {
     const toolsCards: any[] = [];
     if (toolsRows && toolsRows.length > 1) {
       for (let i = 1; i < toolsRows.length; i++) {
-        const mapped = mapContentRow(toolsRows[i]);
+        const row = toolsRows[i];
+        if (row && isMetadataRow(row)) continue;
+        const mapped = mapContentRow(row);
         if (mapped) toolsCards.push(mapped);
       }
     }
