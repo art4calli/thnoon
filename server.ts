@@ -115,6 +115,7 @@ async function getSheetValues(sheetName: string): Promise<any[][]> {
 function normalizeKey(str: string): string {
   if (!str) return "";
   let res = str.toString().trim()
+    .toLowerCase()
     .replace(/[\s\-_]+/g, "")
     .replace(/[أإآ]/g, "ا")
     .replace(/ة/g, "ه")
@@ -295,6 +296,16 @@ app.get("/api/data", async (req, res) => {
       getSheetValues("About").catch(() => []),
       getSheetValues("نصوص").catch(() => []).then(rows => rows && rows.length > 0 ? rows : getSheetValues("Texts").catch(() => []))
     ]);
+
+    try {
+      fs.writeFileSync(
+        path.join(__dirname || process.cwd(), "src/debug-sheet.json"),
+        JSON.stringify({ textsRows }, null, 2)
+      );
+      console.log("Successfully wrote textsRows to debug-sheet.json");
+    } catch (e) {
+      console.error("Failed to write debug-sheet.json", e);
+    }
 
     // Parse Profile Info
     // Row 0 of profileRows (which is row 2 of the sheet): [Logo, Logo Text, Logo URL/Image]

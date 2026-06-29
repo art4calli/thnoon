@@ -212,6 +212,7 @@ function mapContentRow(row: any[]): SheetRow | null {
 function normalizeKey(str: string): string {
   if (!str) return "";
   let res = str.toString().trim()
+    .toLowerCase()
     .replace(/[\s\-_]+/g, "")
     .replace(/[أإآ]/g, "ا")
     .replace(/ة/g, "ه")
