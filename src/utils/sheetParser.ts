@@ -138,7 +138,6 @@ function mapContentRow(row: any[]): SheetRow | null {
   let description = "";
   const media: { url: string }[] = [];
   let linkUrl = "";
-  let buttonText = "";
 
   // Check if Column A is missing/deleted (causing shift to the left)
   // If row[2] is a URL, it means the media URLs started at index 2 instead of index 3,
@@ -158,7 +157,6 @@ function mapContentRow(row: any[]): SheetRow | null {
       }
     }
     linkUrl = row[12] ? row[12].toString().trim() : "";
-    buttonText = row[13] ? row[13].toString().trim() : "";
     
     // Automatically determine type based on media count
     type = media.length > 1 ? "معرض" : "بطاقة";
@@ -176,7 +174,6 @@ function mapContentRow(row: any[]): SheetRow | null {
       }
     }
     linkUrl = row[13] ? row[13].toString().trim() : "";
-    buttonText = row[14] ? row[14].toString().trim() : "";
   }
 
   if (!title && !description) return null;
@@ -186,8 +183,7 @@ function mapContentRow(row: any[]): SheetRow | null {
     title,
     description,
     media,
-    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined,
-    buttonText: (buttonText && buttonText !== "-") ? buttonText : undefined
+    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined
   };
 }
 
@@ -200,7 +196,7 @@ function normalizeKey(str: string): string {
     .replace(/ى/g, "ي");
 }
 
-function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" | "profile" | "contact" = "standard"): {
+function extractSectionMetadata(rows: any[][]): {
   cleanRows: any[][];
   metadata: {
     sectionTitle?: string;
@@ -222,81 +218,72 @@ function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" |
     cleanRows.push(rows[0]);
   }
 
-  // contact and profile have their own custom index-based parsing, so return them completely unchanged
-  if (sheetType === "contact" || sheetType === "profile") {
-    for (let i = 1; i < rows.length; i++) {
-      cleanRows.push(rows[i]);
-    }
-    return { cleanRows, metadata };
-  }
-
-  const METADATA_KEYS_NORMALIZED = [
-    "عنوانالقسم",
-    "وصفالقسم",
-    "شارهالقسم",
-    "سيرهالاسم",
-    "سيرهاللقب",
-    "سيرهالعنوان",
-    "سيرهالوصف",
-    "سيرهالوصف2",
-    "سيرهالصوره",
-    "احصائيه1الرقم",
-    "احصائيه1العنوان",
-    "احصائيه2الرقم",
-    "احصائيه2العنوان",
-    "احصائيه3الرقم",
-    "احصائيه3العنوان",
-    "عنوانالزر",
-    "نصالزر"
-  ];
-
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
+    // Col A is firstCell (ignored by user), Col B is secondCell (Title/Key), Col C is thirdCell (Value)
     const firstCell = row[0] ? row[0].toString().trim() : "";
     const secondCell = row[1] ? row[1].toString().trim() : "";
     const thirdCell = row[2] ? row[2].toString().trim() : "";
 
-    const normKeyA = normalizeKey(firstCell);
-    const normKeyB = normalizeKey(secondCell);
+    const normKey = normalizeKey(secondCell); // Match on Column B (the Key column)
 
-    // Determine if this row is a metadata row strictly based on key matching
-    const isMetadataByKey = METADATA_KEYS_NORMALIZED.includes(normKeyA) || METADATA_KEYS_NORMALIZED.includes(normKeyB);
+    // List of keys we treat as section-wide metadata
+    const isMetadataKey = [
+      "عنوانالقسم",
+      "وصفالقسم",
+      "شارةالقسم",
+      "شارهالقسم",
+      "سيرةالاسم",
+      "سيرهالاسم",
+      "سيرةاللقب",
+      "سيرهاللقب",
+      "سيرةالعنوان",
+      "سيرهالعنوان",
+      "سيرةالوصف",
+      "سيرهالوصف",
+      "سيرةالوصف2",
+      "سيرهالوصف2",
+      "سيرةالصورة",
+      "سيرهالصوره",
+      "احصائية1الرقم",
+      "احصائيه1الرقم",
+      "احصائية1العنوان",
+      "احصائيه1العنوان",
+      "احصائية2الرقم",
+      "احصائيه2الرقم",
+      "احصائية2العنوان",
+      "احصائيه2العنوان",
+      "احصائية3الرقم",
+      "احصائيه3الرقم",
+      "احصائية3العنوان",
+      "احصائيه3العنوان",
+      "عنوانالزر",
+      "نصالزر"
+    ].includes(normKey);
 
-    if (isMetadataByKey) {
-      // It is a metadata row. Extract the key-value pair and exclude from cleanRows.
-      let keyToUse = "";
-      let val = "";
-
-      if (METADATA_KEYS_NORMALIZED.includes(normKeyA)) {
-        keyToUse = normKeyA;
-        val = secondCell || thirdCell; // Col A is key, so Col B is value, fallback to Col C
-      } else if (METADATA_KEYS_NORMALIZED.includes(normKeyB)) {
-        keyToUse = normKeyB;
-        val = thirdCell || secondCell; // Col B is key, so Col C is value, fallback to Col B
-      }
-
-      if (keyToUse) {
-        if (keyToUse === "عنوانالقسم") metadata.sectionTitle = val;
-        else if (keyToUse === "وصفالقسم") metadata.sectionDescription = val;
-        else if (keyToUse === "شارهالقسم") metadata.sectionBadge = val;
-        else if (keyToUse === "سيرهالاسم") metadata.bioName = val;
-        else if (keyToUse === "سيرهاللقب") metadata.bioSubtitle = val;
-        else if (keyToUse === "سيرهالعنوان") metadata.bioTitle = val;
-        else if (keyToUse === "سيرهالوصف") metadata.bioDesc1 = val;
-        else if (keyToUse === "سيرهالوصف2") metadata.bioDesc2 = val;
-        else if (keyToUse === "سيرهالصوره") metadata.bioImage = val;
-        else if (keyToUse === "احصائيه1الرقم") metadata.stat1Value = val;
-        else if (keyToUse === "احصائيه1العنوان") metadata.stat1Label = val;
-        else if (keyToUse === "احصائيه2الرقم") metadata.stat2Value = val;
-        else if (keyToUse === "احصائيه2العنوان") metadata.stat2Label = val;
-        else if (keyToUse === "احصائيه3الرقم") metadata.stat3Value = val;
-        else if (keyToUse === "احصائيه3العنوان") metadata.stat3Label = val;
-        else if (keyToUse === "عنوانالزر" || keyToUse === "نصالزر") metadata.sectionButtonText = val;
-      }
+    if (isMetadataKey) {
+      // Use the third cell (Column C) as the primary value, fallback to Column B
+      const val = thirdCell || secondCell;
+      
+      if (normKey === "عنوانالقسم") metadata.sectionTitle = val;
+      else if (normKey === "وصفالقسم") metadata.sectionDescription = val;
+      else if (normKey === "شارةالقسم" || normKey === "شارهالقسم") metadata.sectionBadge = val;
+      else if (normKey === "سيرةالاسم" || normKey === "سيرهالاسم") metadata.bioName = val;
+      else if (normKey === "سيرةاللقب" || normKey === "سيرهاللقب") metadata.bioSubtitle = val;
+      else if (normKey === "سيرةالعنوان" || normKey === "سيرهالعنوان") metadata.bioTitle = val;
+      else if (normKey === "سيرةالوصف" || normKey === "سيرهالوصف") metadata.bioDesc1 = val;
+      else if (normKey === "سيرةالوصف2" || normKey === "سيرهالوصف2") metadata.bioDesc2 = val;
+      else if (normKey === "سيرةالصورة" || normKey === "سيرهالصوره") metadata.bioImage = val;
+      else if (normKey === "احصائية1الرقم" || normKey === "احصائيه1الرقم") metadata.stat1Value = val;
+      else if (normKey === "احصائية1العنوان" || normKey === "احصائيه1العنوان") metadata.stat1Label = val;
+      else if (normKey === "احصائية2الرقم" || normKey === "احصائيه2الرقم") metadata.stat2Value = val;
+      else if (normKey === "احصائية2العنوان" || normKey === "احصائيه2العنوان") metadata.stat2Label = val;
+      else if (normKey === "احصائية3الرقم" || normKey === "احصائيه3الرقم") metadata.stat3Value = val;
+      else if (normKey === "احصائية3العنوان" || normKey === "احصائيه3العنوان") metadata.stat3Label = val;
+      else if (normKey === "عنوانالزر" || normKey === "نصالزر") metadata.sectionButtonText = val;
     } else {
-      // Not a metadata row, it is a card row. Add to cleanRows.
       cleanRows.push(row);
     }
   }
@@ -324,13 +311,13 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     getSheetValuesDirect("About")
   ]);
 
-  // Extract Metadata & clean the records of section helpers with explicit sheetType parameters
-  const { cleanRows: cleanProfileRows, metadata: profileMeta } = extractSectionMetadata(profileRows, "profile");
-  const { cleanRows: cleanArtworkRows, metadata: artworkMeta } = extractSectionMetadata(artworkRows, "standard");
-  const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows, "standard");
-  const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows, "standard");
-  const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows, "standard");
-  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows, "standard");
+  // Extract Metadata & clean the records of section helpers
+  const { cleanRows: cleanProfileRows, metadata: profileMeta } = extractSectionMetadata(profileRows);
+  const { cleanRows: cleanArtworkRows, metadata: artworkMeta } = extractSectionMetadata(artworkRows);
+  const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows);
+  const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows);
+  const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows);
+  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows);
 
   let logoUrl = FALLBACK_DATA.profile.logoUrl;
   let title = "مؤسسة يوسف ذنون للخط العربي";

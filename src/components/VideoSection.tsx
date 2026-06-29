@@ -110,7 +110,7 @@ export default function VideoSection({ cards, header }: VideoSectionProps) {
                 </div>
               </div>
 
-               {video.linkUrl && (
+              {video.linkUrl && (
                 <div className="p-6 pt-0 mt-auto">
                   <a
                     href={video.linkUrl}
@@ -118,7 +118,7 @@ export default function VideoSection({ cards, header }: VideoSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300"
                   >
-                    <span>{video.buttonText || header?.buttonText || "فتح رابط الدرس المرفق"}</span>
+                    <span>{header?.buttonText || "فتح رابط الدرس المرفق"}</span>
                   </a>
                 </div>
               )}
