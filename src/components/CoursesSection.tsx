@@ -1,15 +1,20 @@
 import { motion } from "motion/react";
 import { BookOpen, GraduationCap, Clock, Award, CheckCircle2 } from "lucide-react";
-import { SheetRow } from "../types";
+import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface CoursesSectionProps {
   cards: SheetRow[];
+  header?: SectionHeaderData;
 }
 
-export default function CoursesSection({ cards }: CoursesSectionProps) {
+export default function CoursesSection({ cards, header }: CoursesSectionProps) {
   // If no custom cards are uploaded yet, display a premium educational roadmap structure
   const hasCustomCards = cards && cards.length > 0;
+
+  const sectionBadge = header?.badge || "البناء الأكاديمي للخطاطين";
+  const sectionTitle = header?.title || "البرامج والمناهج التعليمية";
+  const sectionDesc = header?.description || "نقدم لكم مناهج دراسية كلاسيكية معتمدة ومنظمة تتبع خطوات المدرسة الذنونية الرائدة، تبدأ من تأسيس المبتدئين وحتى تأهيل المحترفين للحصول على الإجازة الخطية المباركة.";
 
   const preConfiguredRoadmaps = [
     {
@@ -40,13 +45,13 @@ export default function CoursesSection({ cards }: CoursesSectionProps) {
       {/* Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          البناء الأكاديمي للخطاطين
+          {sectionBadge}
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          البرامج والمناهج التعليمية
+          {sectionTitle}
         </h2>
         <p className="text-slate-400 font-sans mt-4 text-sm leading-relaxed">
-          نقدم لكم مناهج دراسية كلاسيكية معتمدة ومنظمة تتبع خطوات المدرسة الذنونية الرائدة، تبدأ من تأسيس المبتدئين وحتى تأهيل المحترفين للحصول على الإجازة الخطية المباركة.
+          {sectionDesc}
         </p>
       </div>
 
@@ -96,7 +101,7 @@ export default function CoursesSection({ cards }: CoursesSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 text-xs font-sans font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/10 transition-all duration-300"
                   >
-                    <span>تسجيل أو تفاصيل البرنامج</span>
+                    <span>{course.buttonText || header?.buttonText || "تسجيل أو تفاصيل البرنامج"}</span>
                   </a>
                 </div>
               )}

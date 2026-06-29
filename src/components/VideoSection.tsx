@@ -1,15 +1,20 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { Play, Film, X, Calendar, Share2, Eye } from "lucide-react";
-import { SheetRow } from "../types";
+import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface VideoSectionProps {
   cards: SheetRow[];
+  header?: SectionHeaderData;
 }
 
-export default function VideoSection({ cards }: VideoSectionProps) {
+export default function VideoSection({ cards, header }: VideoSectionProps) {
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
+
+  const sectionBadge = header?.badge || "البعد البصري والتعليمي";
+  const sectionTitle = header?.title || "المكتبة المرئية والمحاضرات";
+  const sectionDesc = header?.description || "وثائقيات نادرة، محاضرات علمية للأستاذ يوسف ذنون، ودروس تطبيقية مسجلة تبسط قواعد الحرف وأسرار التركيب لطلاب ومحبي الخط العربي.";
 
   const getYoutubeEmbedUrl = (url: string) => {
     let videoId = "";
@@ -38,13 +43,13 @@ export default function VideoSection({ cards }: VideoSectionProps) {
       {/* Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          البعد البصري والتعليمي
+          {sectionBadge}
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          المكتبة المرئية والمحاضرات
+          {sectionTitle}
         </h2>
         <p className="text-slate-400 font-sans mt-4 text-sm leading-relaxed">
-          وثائقيات نادرة، محاضرات علمية للأستاذ يوسف ذنون، ودروس تطبيقية مسجلة تبسط قواعد الحرف وأسرار التركيب لطلاب ومحبي الخط العربي.
+          {sectionDesc}
         </p>
       </div>
 
@@ -105,7 +110,7 @@ export default function VideoSection({ cards }: VideoSectionProps) {
                 </div>
               </div>
 
-              {video.linkUrl && (
+               {video.linkUrl && (
                 <div className="p-6 pt-0 mt-auto">
                   <a
                     href={video.linkUrl}
@@ -113,7 +118,7 @@ export default function VideoSection({ cards }: VideoSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300"
                   >
-                    <span>فتح رابط الدرس المرفق</span>
+                    <span>{video.buttonText || header?.buttonText || "فتح رابط الدرس المرفق"}</span>
                   </a>
                 </div>
               )}

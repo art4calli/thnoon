@@ -138,6 +138,7 @@ function mapContentRow(row: any[]): SheetRow | null {
   let description = "";
   const media: { url: string }[] = [];
   let linkUrl = "";
+  let buttonText = "";
 
   // Check if Column A is missing/deleted (causing shift to the left)
   // If row[2] is a URL, it means the media URLs started at index 2 instead of index 3,
@@ -157,6 +158,7 @@ function mapContentRow(row: any[]): SheetRow | null {
       }
     }
     linkUrl = row[12] ? row[12].toString().trim() : "";
+    buttonText = row[13] ? row[13].toString().trim() : "";
     
     // Automatically determine type based on media count
     type = media.length > 1 ? "معرض" : "بطاقة";
@@ -174,6 +176,7 @@ function mapContentRow(row: any[]): SheetRow | null {
       }
     }
     linkUrl = row[13] ? row[13].toString().trim() : "";
+    buttonText = row[14] ? row[14].toString().trim() : "";
   }
 
   if (!title && !description) return null;
@@ -183,8 +186,122 @@ function mapContentRow(row: any[]): SheetRow | null {
     title,
     description,
     media,
-    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined
+    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined,
+    buttonText: (buttonText && buttonText !== "-") ? buttonText : undefined
   };
+}
+
+function normalizeKey(str: string): string {
+  if (!str) return "";
+  return str.toString().trim()
+    .replace(/[\s\-_]+/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي");
+}
+
+function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" | "profile" | "contact" = "standard"): {
+  cleanRows: any[][];
+  metadata: {
+    sectionTitle?: string;
+    sectionDescription?: string;
+    sectionBadge?: string;
+    sectionButtonText?: string;
+    [key: string]: any;
+  };
+} {
+  const cleanRows: any[][] = [];
+  const metadata: Record<string, any> = {};
+
+  if (!rows || rows.length === 0) {
+    return { cleanRows: [], metadata };
+  }
+
+  // Row 1 is usually headers, so keep it
+  if (rows.length > 0) {
+    cleanRows.push(rows[0]);
+  }
+
+  // contact and profile have their own custom index-based parsing, so return them completely unchanged
+  if (sheetType === "contact" || sheetType === "profile") {
+    for (let i = 1; i < rows.length; i++) {
+      cleanRows.push(rows[i]);
+    }
+    return { cleanRows, metadata };
+  }
+
+  const METADATA_KEYS_NORMALIZED = [
+    "عنوانالقسم",
+    "وصفالقسم",
+    "شارهالقسم",
+    "سيرهالاسم",
+    "سيرهاللقب",
+    "سيرهالعنوان",
+    "سيرهالوصف",
+    "سيرهالوصف2",
+    "سيرهالصوره",
+    "احصائيه1الرقم",
+    "احصائيه1العنوان",
+    "احصائيه2الرقم",
+    "احصائيه2العنوان",
+    "احصائيه3الرقم",
+    "احصائيه3العنوان",
+    "عنوانالزر",
+    "نصالزر"
+  ];
+
+  for (let i = 1; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length === 0) continue;
+
+    const firstCell = row[0] ? row[0].toString().trim() : "";
+    const secondCell = row[1] ? row[1].toString().trim() : "";
+    const thirdCell = row[2] ? row[2].toString().trim() : "";
+
+    const normKeyA = normalizeKey(firstCell);
+    const normKeyB = normalizeKey(secondCell);
+
+    // Determine if this row is a metadata row strictly based on key matching
+    const isMetadataByKey = METADATA_KEYS_NORMALIZED.includes(normKeyA) || METADATA_KEYS_NORMALIZED.includes(normKeyB);
+
+    if (isMetadataByKey) {
+      // It is a metadata row. Extract the key-value pair and exclude from cleanRows.
+      let keyToUse = "";
+      let val = "";
+
+      if (METADATA_KEYS_NORMALIZED.includes(normKeyA)) {
+        keyToUse = normKeyA;
+        val = secondCell || thirdCell; // Col A is key, so Col B is value, fallback to Col C
+      } else if (METADATA_KEYS_NORMALIZED.includes(normKeyB)) {
+        keyToUse = normKeyB;
+        val = thirdCell || secondCell; // Col B is key, so Col C is value, fallback to Col B
+      }
+
+      if (keyToUse) {
+        if (keyToUse === "عنوانالقسم") metadata.sectionTitle = val;
+        else if (keyToUse === "وصفالقسم") metadata.sectionDescription = val;
+        else if (keyToUse === "شارهالقسم") metadata.sectionBadge = val;
+        else if (keyToUse === "سيرهالاسم") metadata.bioName = val;
+        else if (keyToUse === "سيرهاللقب") metadata.bioSubtitle = val;
+        else if (keyToUse === "سيرهالعنوان") metadata.bioTitle = val;
+        else if (keyToUse === "سيرهالوصف") metadata.bioDesc1 = val;
+        else if (keyToUse === "سيرهالوصف2") metadata.bioDesc2 = val;
+        else if (keyToUse === "سيرهالصوره") metadata.bioImage = val;
+        else if (keyToUse === "احصائيه1الرقم") metadata.stat1Value = val;
+        else if (keyToUse === "احصائيه1العنوان") metadata.stat1Label = val;
+        else if (keyToUse === "احصائيه2الرقم") metadata.stat2Value = val;
+        else if (keyToUse === "احصائيه2العنوان") metadata.stat2Label = val;
+        else if (keyToUse === "احصائيه3الرقم") metadata.stat3Value = val;
+        else if (keyToUse === "احصائيه3العنوان") metadata.stat3Label = val;
+        else if (keyToUse === "عنوانالزر" || keyToUse === "نصالزر") metadata.sectionButtonText = val;
+      }
+    } else {
+      // Not a metadata row, it is a card row. Add to cleanRows.
+      cleanRows.push(row);
+    }
+  }
+
+  return { cleanRows, metadata };
 }
 
 // Full client-side assembler
@@ -207,6 +324,14 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     getSheetValuesDirect("About")
   ]);
 
+  // Extract Metadata & clean the records of section helpers with explicit sheetType parameters
+  const { cleanRows: cleanProfileRows, metadata: profileMeta } = extractSectionMetadata(profileRows, "profile");
+  const { cleanRows: cleanArtworkRows, metadata: artworkMeta } = extractSectionMetadata(artworkRows, "standard");
+  const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows, "standard");
+  const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows, "standard");
+  const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows, "standard");
+  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows, "standard");
+
   let logoUrl = FALLBACK_DATA.profile.logoUrl;
   let title = "مؤسسة يوسف ذنون للخط العربي";
   let description = "مؤسسة ثقافية فنية تعنى بالحفاظ على تراث عميد الخط العربي الأستاذ يوسف ذنون ونشر فنون الخط والزخرفة الإسلامية.";
@@ -215,19 +340,19 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   let headerBgUrl = "";
   const features: any[] = [];
 
-  if (profileRows && profileRows.length > 1) {
-    if (profileRows[1] && profileRows[1][2]) logoUrl = profileRows[1][2];
-    if (profileRows[1] && profileRows[1][1]) title = profileRows[1][1];
-    if (profileRows[2] && profileRows[2][1]) description = profileRows[2][1];
+  if (cleanProfileRows && cleanProfileRows.length > 1) {
+    if (cleanProfileRows[1] && cleanProfileRows[1][2]) logoUrl = cleanProfileRows[1][2];
+    if (cleanProfileRows[1] && cleanProfileRows[1][1]) title = cleanProfileRows[1][1];
+    if (cleanProfileRows[2] && cleanProfileRows[2][1]) description = cleanProfileRows[2][1];
     // Column D of Row 2 is index 3 (cell D2)
-    if (profileRows[1] && profileRows[1][3]) headerBgUrl = profileRows[1][3];
+    if (cleanProfileRows[1] && cleanProfileRows[1][3]) headerBgUrl = cleanProfileRows[1][3];
   }
 
   // Parse features dynamically from Rows 4 to 8 (index 3 to 7)
-  if (profileRows && profileRows.length > 3) {
-    const limit = Math.min(profileRows.length, 9);
+  if (cleanProfileRows && cleanProfileRows.length > 3) {
+    const limit = Math.min(cleanProfileRows.length, 9);
     for (let i = 3; i < limit; i++) {
-      const row = profileRows[i];
+      const row = cleanProfileRows[i];
       if (row && row.length > 1) {
         const fTitle = row[1] ? row[1].toString().trim() : "";
         const fDesc = row[2] ? row[2].toString().trim() : "";
@@ -342,52 +467,103 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   }
 
   const homeCards: SheetRow[] = [];
-  if (profileRows && profileRows.length > 10) {
-    for (let i = 10; i < profileRows.length; i++) {
-      const mapped = mapContentRow(profileRows[i]);
+  if (cleanProfileRows && cleanProfileRows.length > 10) {
+    for (let i = 10; i < cleanProfileRows.length; i++) {
+      const mapped = mapContentRow(cleanProfileRows[i]);
       if (mapped) homeCards.push(mapped);
     }
   }
 
   const aboutCards: SheetRow[] = [];
-  if (aboutRows && aboutRows.length > 1) {
-    for (let i = 1; i < aboutRows.length; i++) {
-      const mapped = mapContentRow(aboutRows[i]);
+  if (cleanAboutRows && cleanAboutRows.length > 1) {
+    for (let i = 1; i < cleanAboutRows.length; i++) {
+      const mapped = mapContentRow(cleanAboutRows[i]);
       if (mapped) aboutCards.push(mapped);
     }
   }
 
   const artworkCards: SheetRow[] = [];
-  if (artworkRows && artworkRows.length > 1) {
-    for (let i = 1; i < artworkRows.length; i++) {
-      const mapped = mapContentRow(artworkRows[i]);
+  if (cleanArtworkRows && cleanArtworkRows.length > 1) {
+    for (let i = 1; i < cleanArtworkRows.length; i++) {
+      const mapped = mapContentRow(cleanArtworkRows[i]);
       if (mapped) artworkCards.push(mapped);
     }
   }
 
   const videoCards: SheetRow[] = [];
-  if (videoRows && videoRows.length > 1) {
-    for (let i = 1; i < videoRows.length; i++) {
-      const mapped = mapContentRow(videoRows[i]);
+  if (cleanVideoRows && cleanVideoRows.length > 1) {
+    for (let i = 1; i < cleanVideoRows.length; i++) {
+      const mapped = mapContentRow(cleanVideoRows[i]);
       if (mapped) videoCards.push(mapped);
     }
   }
 
   const coursesCards: SheetRow[] = [];
-  if (coursesRows && coursesRows.length > 1) {
-    for (let i = 1; i < coursesRows.length; i++) {
-      const mapped = mapContentRow(coursesRows[i]);
+  if (cleanCoursesRows && cleanCoursesRows.length > 1) {
+    for (let i = 1; i < cleanCoursesRows.length; i++) {
+      const mapped = mapContentRow(cleanCoursesRows[i]);
       if (mapped) coursesCards.push(mapped);
     }
   }
 
   const toolsCards: SheetRow[] = [];
-  if (toolsRows && toolsRows.length > 1) {
-    for (let i = 1; i < toolsRows.length; i++) {
-      const mapped = mapContentRow(toolsRows[i]);
+  if (cleanToolsRows && cleanToolsRows.length > 1) {
+    for (let i = 1; i < cleanToolsRows.length; i++) {
+      const mapped = mapContentRow(cleanToolsRows[i]);
       if (mapped) toolsCards.push(mapped);
     }
   }
+
+  const sectionHeaders: Record<string, { badge?: string; title?: string; description?: string; buttonText?: string }> = {
+    artwork: {
+      badge: artworkMeta.sectionBadge || undefined,
+      title: artworkMeta.sectionTitle || undefined,
+      description: artworkMeta.sectionDescription || undefined,
+      buttonText: artworkMeta.sectionButtonText || undefined
+    },
+    video: {
+      badge: videoMeta.sectionBadge || undefined,
+      title: videoMeta.sectionTitle || undefined,
+      description: videoMeta.sectionDescription || undefined,
+      buttonText: videoMeta.sectionButtonText || undefined
+    },
+    courses: {
+      badge: coursesMeta.sectionBadge || undefined,
+      title: coursesMeta.sectionTitle || undefined,
+      description: coursesMeta.sectionDescription || undefined,
+      buttonText: coursesMeta.sectionButtonText || undefined
+    },
+    tools: {
+      badge: toolsMeta.sectionBadge || undefined,
+      title: toolsMeta.sectionTitle || undefined,
+      description: toolsMeta.sectionDescription || undefined,
+      buttonText: toolsMeta.sectionButtonText || undefined
+    },
+    about: {
+      badge: aboutMeta.sectionBadge || undefined,
+      title: aboutMeta.sectionTitle || undefined,
+      description: aboutMeta.sectionDescription || undefined,
+      buttonText: aboutMeta.sectionButtonText || undefined
+    }
+  };
+
+  const biography = {
+    sectionTitle: aboutMeta.sectionTitle || profileMeta.sectionTitle || undefined,
+    sectionDescription: aboutMeta.sectionDescription || profileMeta.sectionDescription || undefined,
+    sectionBadge: aboutMeta.sectionBadge || profileMeta.sectionBadge || undefined,
+    bioName: aboutMeta.bioName || profileMeta.bioName || undefined,
+    bioSubtitle: aboutMeta.bioSubtitle || profileMeta.bioSubtitle || undefined,
+    bioTitle: aboutMeta.bioTitle || profileMeta.bioTitle || undefined,
+    bioDesc1: aboutMeta.bioDesc1 || profileMeta.bioDesc1 || undefined,
+    bioDesc2: aboutMeta.bioDesc2 || profileMeta.bioDesc2 || undefined,
+    bioImage: aboutMeta.bioImage || profileMeta.bioImage || undefined,
+    stat1Value: aboutMeta.stat1Value || profileMeta.stat1Value || undefined,
+    stat1Label: aboutMeta.stat1Label || profileMeta.stat1Label || undefined,
+    stat2Value: aboutMeta.stat2Value || profileMeta.stat2Value || undefined,
+    stat2Label: aboutMeta.stat2Label || profileMeta.stat2Label || undefined,
+    stat3Value: aboutMeta.stat3Value || profileMeta.stat3Value || undefined,
+    stat3Label: aboutMeta.stat3Label || profileMeta.stat3Label || undefined
+  };
 
   return {
     profile: { 
@@ -407,7 +583,9 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     coursesCards,
     toolsCards,
     contactCards,
-    contactInfo
+    contactInfo,
+    biography,
+    sectionHeaders
   };
 }
 
