@@ -330,7 +330,7 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows, "standard");
   const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows, "standard");
   const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows, "standard");
-  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows, "about");
+  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows, "standard");
 
   let logoUrl = FALLBACK_DATA.profile.logoUrl;
   let title = "مؤسسة يوسف ذنون للخط العربي";
