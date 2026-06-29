@@ -140,33 +140,18 @@ function mapContentRow(row: any[]): SheetRow | null {
   let linkUrl = "";
   let buttonText = "";
 
-  // Check if Column A is missing/deleted (causing shift to the left)
-  // If row[2] is a URL, it means the media URLs started at index 2 instead of index 3,
-  // which means Column A was completely deleted.
-  const isShifted = row[2] && isUrl(row[2].toString());
+  const col0 = row[0] ? row[0].toString().trim() : "";
+  const col1 = row[1] ? row[1].toString().trim() : "";
+  const col2 = row[2] ? row[2].toString().trim() : "";
 
-  if (isShifted) {
-    // Column A is deleted: index 0 is title, index 1 is description, index 2 is first image
-    title = row[0] ? row[0].toString().trim() : "";
-    description = row[1] ? row[1].toString().trim() : "";
-    
-    // Media URLs are indices 2 to 11
-    for (let j = 2; j <= 11; j++) {
-      const url = row[j] ? row[j].toString().trim() : "";
-      if (url && url !== "-" && url !== "") {
-        media.push({ url });
-      }
-    }
-    linkUrl = row[12] ? row[12].toString().trim() : "";
-    buttonText = row[13] ? row[13].toString().trim() : "";
-    
-    // Automatically determine type based on media count
-    type = media.length > 1 ? "معرض" : "بطاقة";
-  } else {
-    // Column A is present: index 0 is type, index 1 is title, index 2 is description
-    type = row[0] ? row[0].toString().trim() : "";
-    title = row[1] ? row[1].toString().trim() : "";
-    description = row[2] ? row[2].toString().trim() : "";
+  const standardTypes = ["بطاقة", "معرض", "بطاقه", "سلايدر", "فيديو", "صورة", "صوره", "من نحن", "اتصال", "روابط", "كارد"];
+  const isCol0Type = col0 && standardTypes.includes(col0);
+
+  if (isCol0Type) {
+    // Column A contains a standard card type
+    type = col0;
+    title = col1;
+    description = col2;
     
     // Media URLs are indices 3 to 12
     for (let j = 3; j <= 12; j++) {
@@ -177,12 +162,45 @@ function mapContentRow(row: any[]): SheetRow | null {
     }
     linkUrl = row[13] ? row[13].toString().trim() : "";
     buttonText = row[14] ? row[14].toString().trim() : "";
+  } else {
+    // Column A is omitted or empty
+    if (col0 && !isUrl(col0)) {
+      // Column A has Title, Column B has Description
+      type = "";
+      title = col0;
+      description = col1;
+      
+      // Media URLs start at index 2 (Column C) to 11
+      for (let j = 2; j <= 11; j++) {
+        const url = row[j] ? row[j].toString().trim() : "";
+        if (url && url !== "-" && url !== "") {
+          media.push({ url });
+        }
+      }
+      linkUrl = row[12] ? row[12].toString().trim() : "";
+      buttonText = row[13] ? row[13].toString().trim() : "";
+    } else {
+      // Column A is empty, Column B is Title, Column C is Description
+      type = "";
+      title = col1;
+      description = col2;
+
+      // Media URLs start at index 3 (Column D) to 12
+      for (let j = 3; j <= 12; j++) {
+        const url = row[j] ? row[j].toString().trim() : "";
+        if (url && url !== "-" && url !== "") {
+          media.push({ url });
+        }
+      }
+      linkUrl = row[13] ? row[13].toString().trim() : "";
+      buttonText = row[14] ? row[14].toString().trim() : "";
+    }
   }
 
   if (!title && !description) return null;
 
   return {
-    type,
+    type: type || "بطاقة",
     title,
     description,
     media,
@@ -193,11 +211,18 @@ function mapContentRow(row: any[]): SheetRow | null {
 
 function normalizeKey(str: string): string {
   if (!str) return "";
-  return str.toString().trim()
+  let res = str.toString().trim()
     .replace(/[\s\-_]+/g, "")
     .replace(/[أإآ]/g, "ا")
     .replace(/ة/g, "ه")
     .replace(/ى/g, "ي");
+
+  // Robustly convert Arabic numerals to English numerals to support either system in the Google Sheets
+  const arabicNums = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  for (let i = 0; i < 10; i++) {
+    res = res.split(arabicNums[i]).join(i.toString());
+  }
+  return res;
 }
 
 function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" | "profile" | "contact" = "standard"): {
@@ -331,37 +356,15 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows, "standard");
   const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows, "standard");
   
-  // Custom about sheet parsing: Rows 2 to 16 are strictly for Biography Card metadata, Rows 17+ are for regular cards.
+  // Custom about sheet parsing: dynamically identify metadata rows based on keys, and treat non-metadata rows as standard cards.
   const aboutMeta: Record<string, any> = {};
   const cleanAboutRows: any[][] = [];
-
-  const METADATA_KEYS_NORMALIZED_ABOUT = [
-    "عنوانالقسم",
-    "وصفالقسم",
-    "شارهالقسم",
-    "سيرهالاسم",
-    "سيرهاللقب",
-    "سيرهالعنوان",
-    "سيرهالوصف",
-    "سيرهالوصف2",
-    "سيرهالصوره",
-    "احصائيه1الرقم",
-    "احصائيه1العنوان",
-    "احصائيه2الرقم",
-    "احصائيه2العنوان",
-    "احصائيه3الرقم",
-    "احصائيه3العنوان",
-    "عنوانالزر",
-    "نصالزر"
-  ];
 
   if (aboutRows && aboutRows.length > 0) {
     // Keep header row
     cleanAboutRows.push(aboutRows[0]);
 
-    // Parse Row 2 to Row 16 (index 1 to 15) for biography metadata
-    const bioLimit = Math.min(aboutRows.length, 16);
-    for (let i = 1; i < bioLimit; i++) {
+    for (let i = 1; i < aboutRows.length; i++) {
       const row = aboutRows[i];
       if (!row || row.length === 0) continue;
 
@@ -372,41 +375,46 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
       const normKeyA = normalizeKey(firstCell);
       const normKeyB = normalizeKey(secondCell);
 
-      let keyToUse = "";
-      let val = "";
+      let isMetadata = false;
+      let matchedKey = "";
+      let matchedVal = "";
 
-      if (METADATA_KEYS_NORMALIZED_ABOUT.includes(normKeyA)) {
-        keyToUse = normKeyA;
-        val = secondCell || thirdCell;
-      } else if (METADATA_KEYS_NORMALIZED_ABOUT.includes(normKeyB)) {
-        keyToUse = normKeyB;
-        val = thirdCell || secondCell;
+      const checkMetadata = (keyNorm: string, cellVal: string) => {
+        if (!keyNorm) return false;
+        
+        if (keyNorm === "عنوانالقسم") { matchedKey = "sectionTitle"; matchedVal = cellVal; return true; }
+        if (keyNorm === "وصفالقسم") { matchedKey = "sectionDescription"; matchedVal = cellVal; return true; }
+        if (keyNorm === "شارهالقسم" || keyNorm === "شارةالقسم") { matchedKey = "sectionBadge"; matchedVal = cellVal; return true; }
+        if (keyNorm === "سيرهالاسم" || keyNorm === "سيرةالاسم" || keyNorm === "الاسم" || keyNorm === "اسم") { matchedKey = "bioName"; matchedVal = cellVal; return true; }
+        if (keyNorm === "سيرهاللقب" || keyNorm === "سيرةاللقب" || keyNorm === "اللقب" || keyNorm === "لقب" || keyNorm === "الوصفالفرعي") { matchedKey = "bioSubtitle"; matchedVal = cellVal; return true; }
+        if (keyNorm === "سيرهالعنوان" || keyNorm === "سيرةالعنوان" || keyNorm === "العنوان") { matchedKey = "bioTitle"; matchedVal = cellVal; return true; }
+        if (keyNorm === "سيرهالوصف" || keyNorm === "سيرةالوصف" || keyNorm === "الوصف" || keyNorm === "الوصف1" || keyNorm === "الوصفالاول" || keyNorm === "الوصفالأول") { matchedKey = "bioDesc1"; matchedVal = cellVal; return true; }
+        if (keyNorm === "سيرهالوصف2" || keyNorm === "سيرةالوصف2" || keyNorm === "الوصف2" || keyNorm === "الوصفالثاني") { matchedKey = "bioDesc2"; matchedVal = cellVal; return true; }
+        if (keyNorm === "سيرهالصوره" || keyNorm === "سيرةالصورة" || keyNorm === "الصوره" || keyNorm === "الصورة" || keyNorm === "صوره" || keyNorm === "صورة" || keyNorm.includes("سيرهالصوره") || keyNorm.includes("سيرهالصورة") || keyNorm.includes("صورهالسيره") || keyNorm.includes("صورةالسيرة")) { matchedKey = "bioImage"; matchedVal = cellVal; return true; }
+        if (keyNorm === "احصائيه1الرقم" || keyNorm === "احصائية1الرقم" || keyNorm === "الرقم1" || keyNorm === "احصائيه1" || keyNorm === "احصائية1") { matchedKey = "stat1Value"; matchedVal = cellVal; return true; }
+        if (keyNorm === "احصائيه1العنوان" || keyNorm === "احصائية1العنوان" || keyNorm === "العنوان1" || keyNorm === "احصائيه1الوصف" || keyNorm === "احصائية1الوصف") { matchedKey = "stat1Label"; matchedVal = cellVal; return true; }
+        if (keyNorm === "احصائيه2الرقم" || keyNorm === "احصائية2الرقم" || keyNorm === "الرقم2" || keyNorm === "احصائيه2" || keyNorm === "احصائية2") { matchedKey = "stat2Value"; matchedVal = cellVal; return true; }
+        if (keyNorm === "احصائيه2العنوان" || keyNorm === "احصائية2العنوان" || keyNorm === "العنوان2" || keyNorm === "احصائيه2الوصف" || keyNorm === "احصائية2الوصف") { matchedKey = "stat2Label"; matchedVal = cellVal; return true; }
+        if (keyNorm === "احصائيه3الرقم" || keyNorm === "احصائية3الرقم" || keyNorm === "الرقم3" || keyNorm === "احصائيه3" || keyNorm === "احصائية3") { matchedKey = "stat3Value"; matchedVal = cellVal; return true; }
+        if (keyNorm === "احصائيه3العنوان" || keyNorm === "احصائية3العنوان" || keyNorm === "العنوان3" || keyNorm === "احصائيه3الوصف" || keyNorm === "احصائية3الوصف") { matchedKey = "stat3Label"; matchedVal = cellVal; return true; }
+        if (keyNorm === "عنوانالزر" || keyNorm === "نصالزر") { matchedKey = "sectionButtonText"; matchedVal = cellVal; return true; }
+        
+        return false;
+      };
+
+      // Check Column A as key
+      if (checkMetadata(normKeyA, secondCell || thirdCell)) {
+        isMetadata = true;
+      }
+      // Check Column B as key
+      else if (checkMetadata(normKeyB, thirdCell || secondCell)) {
+        isMetadata = true;
       }
 
-      if (keyToUse) {
-        if (keyToUse === "عنوانالقسم") aboutMeta.sectionTitle = val;
-        else if (keyToUse === "وصفالقسم") aboutMeta.sectionDescription = val;
-        else if (keyToUse === "شارهالقسم") aboutMeta.sectionBadge = val;
-        else if (keyToUse === "سيرهالاسم") aboutMeta.bioName = val;
-        else if (keyToUse === "سيرهاللقب") aboutMeta.bioSubtitle = val;
-        else if (keyToUse === "سيرهالعنوان") aboutMeta.bioTitle = val;
-        else if (keyToUse === "سيرهالوصف") aboutMeta.bioDesc1 = val;
-        else if (keyToUse === "سيرهالوصف2") aboutMeta.bioDesc2 = val;
-        else if (keyToUse === "سيرهالصوره") aboutMeta.bioImage = val;
-        else if (keyToUse === "احصائيه1الرقم") aboutMeta.stat1Value = val;
-        else if (keyToUse === "احصائيه1العنوان") aboutMeta.stat1Label = val;
-        else if (keyToUse === "احصائيه2الرقم") aboutMeta.stat2Value = val;
-        else if (keyToUse === "احصائيه2العنوان") aboutMeta.stat2Label = val;
-        else if (keyToUse === "احصائيه3الرقم") aboutMeta.stat3Value = val;
-        else if (keyToUse === "احصائيه3العنوان") aboutMeta.stat3Label = val;
-        else if (keyToUse === "عنوانالزر" || keyToUse === "نصالزر") aboutMeta.sectionButtonText = val;
-      }
-    }
-
-    // Rows 17 onwards (index 16+) are parsed as regular cards
-    for (let i = 16; i < aboutRows.length; i++) {
-      const row = aboutRows[i];
-      if (row && row.length > 0) {
+      if (isMetadata && matchedKey) {
+        aboutMeta[matchedKey] = matchedVal;
+      } else {
+        // Not a metadata row, it is a card! Push it to cleanAboutRows
         cleanAboutRows.push(row);
       }
     }
