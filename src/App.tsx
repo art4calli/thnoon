@@ -413,7 +413,7 @@ export default function App() {
         {/* ABOUT SECTION */}
         {activeSection === "about" && (
           <div id="about" className="pt-24 md:pt-28">
-            <AboutSection cards={appData?.aboutCards || []} header={appData?.sectionHeaders?.about} />
+            <AboutSection cards={appData?.aboutCards || []} />
           </div>
         )}
 
