@@ -12,6 +12,7 @@ export interface SheetRow {
     pairUrl?: string; // YouTube video URL paired with image, or vice versa
   }[];
   linkUrl?: string;
+  buttonText?: string;
 }
 
 export interface FeatureItem {

@@ -145,7 +145,7 @@ export default function AboutSection({ cards, biography }: AboutSectionProps) {
                     rel="noopener noreferrer"
                     className="inline-block mt-6 text-center bg-amber-500/10 hover:bg-amber-500/20 text-amber-400 text-xs font-sans font-semibold py-2.5 rounded-xl border border-amber-500/20 transition-all"
                   >
-                    تفاصيل إضافية
+                    {card.buttonText || "تفاصيل إضافية"}
                   </a>
                 )}
               </motion.div>

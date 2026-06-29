@@ -138,6 +138,7 @@ function mapContentRow(row: any[]): SheetRow | null {
   let description = "";
   const media: { url: string }[] = [];
   let linkUrl = "";
+  let buttonText = "";
 
   // Check if Column A is missing/deleted (causing shift to the left)
   // If row[2] is a URL, it means the media URLs started at index 2 instead of index 3,
@@ -157,6 +158,7 @@ function mapContentRow(row: any[]): SheetRow | null {
       }
     }
     linkUrl = row[12] ? row[12].toString().trim() : "";
+    buttonText = row[13] ? row[13].toString().trim() : "";
     
     // Automatically determine type based on media count
     type = media.length > 1 ? "معرض" : "بطاقة";
@@ -174,6 +176,7 @@ function mapContentRow(row: any[]): SheetRow | null {
       }
     }
     linkUrl = row[13] ? row[13].toString().trim() : "";
+    buttonText = row[14] ? row[14].toString().trim() : "";
   }
 
   if (!title && !description) return null;
@@ -183,7 +186,8 @@ function mapContentRow(row: any[]): SheetRow | null {
     title,
     description,
     media,
-    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined
+    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined,
+    buttonText: (buttonText && buttonText !== "-") ? buttonText : undefined
   };
 }
 
@@ -196,7 +200,7 @@ function normalizeKey(str: string): string {
     .replace(/ى/g, "ي");
 }
 
-function extractSectionMetadata(rows: any[][]): {
+function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" | "profile" | "contact" = "standard"): {
   cleanRows: any[][];
   metadata: {
     sectionTitle?: string;
@@ -218,52 +222,30 @@ function extractSectionMetadata(rows: any[][]): {
     cleanRows.push(rows[0]);
   }
 
+  if (sheetType === "profile" || sheetType === "contact") {
+    // Return unchanged rows and empty metadata for profile/contact sheets
+    for (let i = 1; i < rows.length; i++) {
+      cleanRows.push(rows[i]);
+    }
+    return { cleanRows, metadata };
+  }
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
-    // Col A is firstCell (ignored by user), Col B is secondCell (Title/Key), Col C is thirdCell (Value)
-    const firstCell = row[0] ? row[0].toString().trim() : "";
-    const secondCell = row[1] ? row[1].toString().trim() : "";
-    const thirdCell = row[2] ? row[2].toString().trim() : "";
+    // Define strict range constraints for metadata:
+    // - "about": Rows 2 to 16 (index 1 to 15) are strictly metadata.
+    // - "standard": Rows 2 to 4 (index 1 to 3) are strictly metadata.
+    const isMetadataRange = sheetType === "about" ? (i >= 1 && i <= 15) : (i >= 1 && i <= 3);
 
-    const normKey = normalizeKey(secondCell); // Match on Column B (the Key column)
+    if (isMetadataRange) {
+      // Col A is firstCell, Col B is secondCell (Title/Key), Col C is thirdCell (Value)
+      const secondCell = row[1] ? row[1].toString().trim() : "";
+      const thirdCell = row[2] ? row[2].toString().trim() : "";
 
-    // List of keys we treat as section-wide metadata
-    const isMetadataKey = [
-      "عنوانالقسم",
-      "وصفالقسم",
-      "شارةالقسم",
-      "شارهالقسم",
-      "سيرةالاسم",
-      "سيرهالاسم",
-      "سيرةاللقب",
-      "سيرهاللقب",
-      "سيرةالعنوان",
-      "سيرهالعنوان",
-      "سيرةالوصف",
-      "سيرهالوصف",
-      "سيرةالوصف2",
-      "سيرهالوصف2",
-      "سيرةالصورة",
-      "سيرهالصوره",
-      "احصائية1الرقم",
-      "احصائيه1الرقم",
-      "احصائية1العنوان",
-      "احصائيه1العنوان",
-      "احصائية2الرقم",
-      "احصائيه2الرقم",
-      "احصائية2العنوان",
-      "احصائيه2العنوان",
-      "احصائية3الرقم",
-      "احصائيه3الرقم",
-      "احصائية3العنوان",
-      "احصائيه3العنوان",
-      "عنوانالزر",
-      "نصالزر"
-    ].includes(normKey);
+      const normKey = normalizeKey(secondCell); // Match on Column B (the Key column)
 
-    if (isMetadataKey) {
       // Use the third cell (Column C) as the primary value, fallback to Column B
       const val = thirdCell || secondCell;
       
@@ -284,6 +266,7 @@ function extractSectionMetadata(rows: any[][]): {
       else if (normKey === "احصائية3العنوان" || normKey === "احصائيه3العنوان") metadata.stat3Label = val;
       else if (normKey === "عنوانالزر" || normKey === "نصالزر") metadata.sectionButtonText = val;
     } else {
+      // Anything outside the metadata range is parsed as content cards
       cleanRows.push(row);
     }
   }
@@ -311,13 +294,13 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     getSheetValuesDirect("About")
   ]);
 
-  // Extract Metadata & clean the records of section helpers
-  const { cleanRows: cleanProfileRows, metadata: profileMeta } = extractSectionMetadata(profileRows);
-  const { cleanRows: cleanArtworkRows, metadata: artworkMeta } = extractSectionMetadata(artworkRows);
-  const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows);
-  const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows);
-  const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows);
-  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows);
+  // Extract Metadata & clean the records of section helpers with explicit sheetType parameters
+  const { cleanRows: cleanProfileRows, metadata: profileMeta } = extractSectionMetadata(profileRows, "profile");
+  const { cleanRows: cleanArtworkRows, metadata: artworkMeta } = extractSectionMetadata(artworkRows, "standard");
+  const { cleanRows: cleanVideoRows, metadata: videoMeta } = extractSectionMetadata(videoRows, "standard");
+  const { cleanRows: cleanCoursesRows, metadata: coursesMeta } = extractSectionMetadata(coursesRows, "standard");
+  const { cleanRows: cleanToolsRows, metadata: toolsMeta } = extractSectionMetadata(toolsRows, "standard");
+  const { cleanRows: cleanAboutRows, metadata: aboutMeta } = extractSectionMetadata(aboutRows, "about");
 
   let logoUrl = FALLBACK_DATA.profile.logoUrl;
   let title = "مؤسسة يوسف ذنون للخط العربي";
