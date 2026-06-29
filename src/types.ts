@@ -78,6 +78,26 @@ export interface ContactDetails {
   cards: ContactCardItem[];
 }
 
+export interface CustomTexts {
+  topAnnouncementRight?: string;
+  topAnnouncementLocation?: string;
+  topAnnouncementLeft?: string;
+  navbarTitle?: string;
+  navbarSubtitle?: string;
+  navHome?: string;
+  navAbout?: string;
+  navArtwork?: string;
+  navVideo?: string;
+  navCourses?: string;
+  navTools?: string;
+  navContact?: string;
+  heroSubtag?: string;
+  homeSectionTitle?: string;
+  footerTitle?: string;
+  footerDescription?: string;
+  footerCopyright?: string;
+}
+
 export interface AppData {
   profile: ProfileData;
   socialLinks: SocialLinks;
@@ -91,6 +111,7 @@ export interface AppData {
   contactInfo?: ContactDetails;
   biography?: BiographyData;
   sectionHeaders?: Record<string, SectionHeaderData>;
+  customTexts?: CustomTexts;
 }
 
 export interface SubscriberState {

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { BookOpen, Image as ImageIcon, Play, ShoppingBag, Phone, HelpCircle, LogIn, Menu, X, Landmark, Globe, Sparkles } from "lucide-react";
-import { ProfileData, SocialLinks } from "../types";
+import { ProfileData, SocialLinks, CustomTexts } from "../types";
 
 interface HeaderProps {
   profile: ProfileData;
@@ -12,6 +12,7 @@ interface HeaderProps {
   subscriberName?: string;
   onLogout: () => void;
   onOpenDashboard: () => void;
+  customTexts?: CustomTexts;
 }
 
 export default function Header({
@@ -23,6 +24,7 @@ export default function Header({
   subscriberName,
   onLogout,
   onOpenDashboard,
+  customTexts,
 }: HeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
@@ -36,13 +38,13 @@ export default function Header({
   }, []);
 
   const navItems = [
-    { id: "home", label: "الرئيسية", icon: Landmark },
-    { id: "about", label: "عن المؤسسة", icon: HelpCircle },
-    { id: "artwork", label: "معرض الصور", icon: ImageIcon },
-    { id: "video", label: "الفيديوهات", icon: Play },
-    { id: "courses", label: "البرامج التعليمية", icon: BookOpen },
-    { id: "tools", label: "أدوات الخط", icon: ShoppingBag },
-    { id: "contact", label: "تواصل معنا", icon: Phone },
+    { id: "home", label: customTexts?.navHome || "الرئيسية", icon: Landmark },
+    { id: "about", label: customTexts?.navAbout || "عن المؤسسة", icon: HelpCircle },
+    { id: "artwork", label: customTexts?.navArtwork || "معرض الصور", icon: ImageIcon },
+    { id: "video", label: customTexts?.navVideo || "الفيديوهات", icon: Play },
+    { id: "courses", label: customTexts?.navCourses || "البرامج التعليمية", icon: BookOpen },
+    { id: "tools", label: customTexts?.navTools || "أدوات الخط", icon: ShoppingBag },
+    { id: "contact", label: customTexts?.navContact || "تواصل معنا", icon: Phone },
   ];
 
   return (
@@ -51,12 +53,12 @@ export default function Header({
       <div className="bg-gradient-to-r from-amber-700 via-amber-600 to-yellow-600 text-slate-900 text-xs py-1 px-4 font-sans font-medium flex justify-between items-center shadow-md">
         <div className="flex items-center gap-2">
           <Sparkles className="w-3 h-3 animate-pulse" />
-          <span>مرحباً بكم في المنصة الرسمية المتطورة لمؤسسة يوسف ذنون للخط العربي</span>
+          <span>{customTexts?.topAnnouncementRight || "مرحباً بكم في المنصة الرسمية المتطورة لمؤسسة يوسف ذنون للخط العربي"}</span>
         </div>
         <div className="hidden sm:flex items-center gap-4 text-[11px] font-sans">
-          <span>الموصل، العراق</span>
+          <span>{customTexts?.topAnnouncementLocation || "الموصل، العراق"}</span>
           <span className="w-1 h-1 bg-slate-900 rounded-full"></span>
-          <span>تأسست لحفظ وإحياء تراث عميد الخط العربي الأستاذ يوسف ذنون</span>
+          <span>{customTexts?.topAnnouncementLeft || "تأسست لحفظ وإحياء تراث عميد الخط العربي الأستاذ يوسف ذنون"}</span>
         </div>
       </div>
 
@@ -86,10 +88,10 @@ export default function Header({
             </div>
             <div>
               <h1 className="font-serif font-bold text-lg sm:text-xl text-amber-400 leading-tight tracking-wide">
-                مؤسسة يوسف ذنون
+                {customTexts?.navbarTitle || "مؤسسة يوسف ذنون"}
               </h1>
               <p className="text-[10px] text-slate-400 font-sans tracking-widest uppercase">
-                للخط العربي والآثار الإسلامية
+                {customTexts?.navbarSubtitle || "للخط العربي والآثار الإسلامية"}
               </p>
             </div>
           </div>

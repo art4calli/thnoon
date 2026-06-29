@@ -305,6 +305,7 @@ export default function App() {
         subscriberName={subscriber.subscriberName}
         onLogout={handleLogout}
         onOpenDashboard={() => setIsDashboardOpen(true)}
+        customTexts={appData?.customTexts}
       />
 
       {/* 2. Hero Luxury Parallax Banner Section */}
@@ -331,7 +332,7 @@ export default function App() {
           <div className="max-w-5xl mx-auto px-4 text-center space-y-6 relative z-10">
             <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-500 text-xs font-sans font-bold py-1.5 px-3.5 rounded-full border border-amber-500/20">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>بوابة الحرف العربي والآثار الإسلامية</span>
+              <span>{appData?.customTexts?.heroSubtag || "بوابة الحرف العربي والآثار الإسلامية"}</span>
             </div>
 
             <h1 className="font-serif font-black text-4xl sm:text-5xl md:text-6xl text-amber-400 leading-tight tracking-wide">
@@ -376,7 +377,7 @@ export default function App() {
           <div id="home">
             <section className="py-16 px-4 max-w-7xl mx-auto">
               <h3 className="font-serif font-bold text-2xl text-amber-400 border-r-4 border-amber-500 pr-3 mb-10 text-right">
-                الواجهة الترحيبية ومستجدات المؤسسة
+                {appData?.customTexts?.homeSectionTitle || "الواجهة الترحيبية ومستجدات المؤسسة"}
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
@@ -459,27 +460,41 @@ export default function App() {
         <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-12 gap-8 items-center text-center md:text-right">
           
           <div className="md:col-span-4 space-y-3">
-            <h4 className="font-serif font-bold text-xl text-amber-400">مؤسسة يوسف ذنون</h4>
+            <h4 className="font-serif font-bold text-xl text-amber-400">
+              {appData?.customTexts?.footerTitle || "مؤسسة يوسف ذنون"}
+            </h4>
             <p className="text-slate-400 font-sans text-xs leading-relaxed">
-              مؤسسة مرخصة تُعنى برعاية الخطاطين وحفظ الموروث الفني والإرث الآثاري للأستاذ عميد الخط العربي يوسف ذنون رحمه الله.
+              {appData?.customTexts?.footerDescription || "مؤسسة مرخصة تُعنى برعاية الخطاطين وحفظ الموروث الفني والإرث الآثاري للأستاذ عميد الخط العربي يوسف ذنون رحمه الله."}
             </p>
           </div>
 
           <div className="md:col-span-4 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs font-sans text-slate-400">
-            <button onClick={() => handleNavigate("home")} className="hover:text-amber-400 transition-colors">الرئيسية</button>
-            <button onClick={() => handleNavigate("about")} className="hover:text-amber-400 transition-colors">عن المؤسسة</button>
-            <button onClick={() => handleNavigate("artwork")} className="hover:text-amber-400 transition-colors">المعرض الفني</button>
-            <button onClick={() => handleNavigate("video")} className="hover:text-amber-400 transition-colors">المرئيات</button>
-            <button onClick={() => handleNavigate("courses")} className="hover:text-amber-400 transition-colors">الدورات</button>
-            <button onClick={() => handleNavigate("tools")} className="hover:text-amber-400 transition-colors">الأدوات</button>
+            <button onClick={() => handleNavigate("home")} className="hover:text-amber-400 transition-colors">
+              {appData?.customTexts?.navHome || "الرئيسية"}
+            </button>
+            <button onClick={() => handleNavigate("about")} className="hover:text-amber-400 transition-colors">
+              {appData?.customTexts?.navAbout || "عن المؤسسة"}
+            </button>
+            <button onClick={() => handleNavigate("artwork")} className="hover:text-amber-400 transition-colors">
+              {appData?.customTexts?.navArtwork || "المعرض الفني"}
+            </button>
+            <button onClick={() => handleNavigate("video")} className="hover:text-amber-400 transition-colors">
+              {appData?.customTexts?.navVideo || "المرئيات"}
+            </button>
+            <button onClick={() => handleNavigate("courses")} className="hover:text-amber-400 transition-colors">
+              {appData?.customTexts?.navCourses || "الدورات"}
+            </button>
+            <button onClick={() => handleNavigate("tools")} className="hover:text-amber-400 transition-colors">
+              {appData?.customTexts?.navTools || "الأدوات"}
+            </button>
           </div>
 
           <div className="md:col-span-4 text-center md:text-left space-y-1">
             <p className="text-slate-500 font-sans text-[11px] leading-normal">
-              جميع الحقوق محفوظة ومسجلة © {new Date().getFullYear()}
+              {appData?.customTexts?.footerCopyright || "جميع الحقوق محفوظة ومسجلة"} © {new Date().getFullYear()}
             </p>
             <p className="text-slate-600 font-sans text-[10px]">
-              مؤسسة يوسف ذنون للخط العربي والآثار الإسلامية
+              {appData?.customTexts?.navbarTitle || "مؤسسة يوسف ذنون"} {appData?.customTexts?.navbarSubtitle || "للخط العربي والآثار الإسلامية"}
             </p>
           </div>
         </div>

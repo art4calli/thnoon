@@ -283,15 +283,17 @@ app.get("/api/data", async (req, res) => {
       coursesRows,
       toolsRows,
       contactRows,
-      aboutRows
+      aboutRows,
+      textsRows
     ] = await Promise.all([
-      getSheetValues("Profile"),
-      getSheetValues("Artwork"),
-      getSheetValues("فيديو"),
-      getSheetValues("Courses"),
-      getSheetValues("Tools"),
-      getSheetValues("Contact"),
-      getSheetValues("About")
+      getSheetValues("Profile").catch(() => []),
+      getSheetValues("Artwork").catch(() => []),
+      getSheetValues("فيديو").catch(() => []),
+      getSheetValues("Courses").catch(() => []),
+      getSheetValues("Tools").catch(() => []),
+      getSheetValues("Contact").catch(() => []),
+      getSheetValues("About").catch(() => []),
+      getSheetValues("نصوص").catch(() => []).then(rows => rows && rows.length > 0 ? rows : getSheetValues("Texts").catch(() => []))
     ]);
 
     // Parse Profile Info
@@ -589,6 +591,56 @@ app.get("/api/data", async (req, res) => {
       tools: getHeaderFromRows(toolsRows),
     };
 
+    // Parse Texts Sheet
+    const customTexts: Record<string, string> = {};
+    if (textsRows && textsRows.length > 0) {
+      for (let i = 0; i < textsRows.length; i++) {
+        const row = textsRows[i];
+        if (!row || row.length < 2) continue;
+        const rawKey = row[0] ? row[0].toString().trim() : "";
+        const rawVal = row[1] ? row[1].toString().trim() : "";
+        if (!rawKey) continue;
+
+        const norm = normalizeKey(rawKey);
+
+        if (norm === "topannouncementright" || norm === "الاعلانالايمن" || norm === "اعلانالايمن") {
+          customTexts.topAnnouncementRight = rawVal;
+        } else if (norm === "topannouncementlocation" || norm === "الاعلانالموقع" || norm === "موقعالاعلان" || norm === "الموقع") {
+          customTexts.topAnnouncementLocation = rawVal;
+        } else if (norm === "topannouncementleft" || norm === "الاعلانالايسر" || norm === "اعلانالايسر") {
+          customTexts.topAnnouncementLeft = rawVal;
+        } else if (norm === "navbartitle" || norm === "عنوانالشريط" || norm === "عنوانالنافبار") {
+          customTexts.navbarTitle = rawVal;
+        } else if (norm === "navbarsubtitle" || norm === "وصفالشريط" || norm === "وصفالنافبار") {
+          customTexts.navbarSubtitle = rawVal;
+        } else if (norm === "navhome" || norm === "الرئيسيه" || norm === "اسمالرئيسيه") {
+          customTexts.navHome = rawVal;
+        } else if (norm === "navabout" || norm === "عنالمؤسسه" || norm === "اسمعنالمؤسسه" || norm === "عنالمؤسسة") {
+          customTexts.navAbout = rawVal;
+        } else if (norm === "navartwork" || norm === "معرضالصور" || norm === "المعرض" || norm === "المعرضالفني" || norm === "اسممعرضالصور") {
+          customTexts.navArtwork = rawVal;
+        } else if (norm === "navvideo" || norm === "الفيديوهات" || norm === "المرئيات" || norm === "الفيديو" || norm === "اسمالفيديوهات") {
+          customTexts.navVideo = rawVal;
+        } else if (norm === "navcourses" || norm === "البرامجالتعليميه" || norm === "البرامج" || norm === "الدورات" || norm === "اسمالبرامجالتعليميه" || norm === "البرامجالتعليمية") {
+          customTexts.navCourses = rawVal;
+        } else if (norm === "navtools" || norm === "ادواتالخط" || norm === "الادوات" || norm === "ادوات" || norm === "اسمادواتالخط" || norm === "أدواتالخط") {
+          customTexts.navTools = rawVal;
+        } else if (norm === "navcontact" || norm === "تواصلمعنا" || norm === "اتصلبنا" || norm === "اسمتواصلمعنا") {
+          customTexts.navContact = rawVal;
+        } else if (norm === "herosubtag" || norm === "شارهالترحيب" || norm === "بوابهالحرف" || norm === "شارةالترحيب") {
+          customTexts.heroSubtag = rawVal;
+        } else if (norm === "homesectiontitle" || norm === "عنوانالترحيب" || norm === "عنوانقسمالرئيسيه" || norm === "عنوانالرئيسيه" || norm === "عنوانالقسمالرئيسي") {
+          customTexts.homeSectionTitle = rawVal;
+        } else if (norm === "footertitle" || norm === "عنوانالفوتر" || norm === "عنوانالتذييل") {
+          customTexts.footerTitle = rawVal;
+        } else if (norm === "footerdescription" || norm === "وصفالفوتر" || norm === "وصفالتذييل") {
+          customTexts.footerDescription = rawVal;
+        } else if (norm === "footercopyright" || norm === "حقوقالنشر" || norm === "الحقوق") {
+          customTexts.footerCopyright = rawVal;
+        }
+      }
+    }
+
     res.json({
       profile: { 
         logoUrl, 
@@ -609,7 +661,8 @@ app.get("/api/data", async (req, res) => {
       contactCards,
       contactInfo,
       biography,
-      sectionHeaders
+      sectionHeaders,
+      customTexts
     });
 
   } catch (error) {
