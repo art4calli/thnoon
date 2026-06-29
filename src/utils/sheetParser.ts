@@ -222,51 +222,114 @@ function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" |
     cleanRows.push(rows[0]);
   }
 
-  if (sheetType === "profile" || sheetType === "contact") {
-    // Return unchanged rows and empty metadata for profile/contact sheets
+  // contact has its own custom parsing, so return it as cleanRows
+  if (sheetType === "contact") {
     for (let i = 1; i < rows.length; i++) {
       cleanRows.push(rows[i]);
     }
     return { cleanRows, metadata };
   }
 
+  const METADATA_KEYS_NORMALIZED = [
+    "عنوانالقسم",
+    "وصفالقسم",
+    "شارهالقسم",
+    "سيرهالاسم",
+    "سيرهاللقب",
+    "سيرهالعنوان",
+    "سيرهالوصف",
+    "سيرهالوصف2",
+    "سيرهالصوره",
+    "احصائيه1الرقم",
+    "احصائيه1العنوان",
+    "احصائيه2الرقم",
+    "احصائيه2العنوان",
+    "احصائيه3الرقم",
+    "احصائيه3العنوان",
+    "عنوانالزر",
+    "نصالزر"
+  ];
+
   for (let i = 1; i < rows.length; i++) {
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
-    // Define strict range constraints for metadata:
-    // - "about": Rows 2 to 16 (index 1 to 15) are strictly metadata.
-    // - "standard": Rows 2 to 4 (index 1 to 3) are strictly metadata.
-    const isMetadataRange = sheetType === "about" ? (i >= 1 && i <= 15) : (i >= 1 && i <= 3);
+    const firstCell = row[0] ? row[0].toString().trim() : "";
+    const secondCell = row[1] ? row[1].toString().trim() : "";
+    const thirdCell = row[2] ? row[2].toString().trim() : "";
 
-    if (isMetadataRange) {
-      // Col A is firstCell, Col B is secondCell (Title/Key), Col C is thirdCell (Value)
-      const secondCell = row[1] ? row[1].toString().trim() : "";
-      const thirdCell = row[2] ? row[2].toString().trim() : "";
+    const normKeyA = normalizeKey(firstCell);
+    const normKeyB = normalizeKey(secondCell);
 
-      const normKey = normalizeKey(secondCell); // Match on Column B (the Key column)
+    // Determine if this row should be treated as metadata:
+    // 1. By strict row-index range:
+    //    - For "about": Rows 2 to 16 (index 1 to 15) are metadata.
+    //    - For "standard": Rows 2 to 4 (index 1 to 3) are metadata.
+    // 2. By key match (works dynamically for "profile" or any sheet to filter out metadata keys from cards)
+    const isMetadataByRange = sheetType === "about" ? (i >= 1 && i <= 15) : (sheetType === "standard" ? (i >= 1 && i <= 3) : false);
+    const isMetadataByKey = METADATA_KEYS_NORMALIZED.includes(normKeyA) || METADATA_KEYS_NORMALIZED.includes(normKeyB);
 
-      // Use the third cell (Column C) as the primary value, fallback to Column B
-      const val = thirdCell || secondCell;
-      
-      if (normKey === "عنوانالقسم") metadata.sectionTitle = val;
-      else if (normKey === "وصفالقسم") metadata.sectionDescription = val;
-      else if (normKey === "شارةالقسم" || normKey === "شارهالقسم") metadata.sectionBadge = val;
-      else if (normKey === "سيرةالاسم" || normKey === "سيرهالاسم") metadata.bioName = val;
-      else if (normKey === "سيرةاللقب" || normKey === "سيرهاللقب") metadata.bioSubtitle = val;
-      else if (normKey === "سيرةالعنوان" || normKey === "سيرهالعنوان") metadata.bioTitle = val;
-      else if (normKey === "سيرةالوصف" || normKey === "سيرهالوصف") metadata.bioDesc1 = val;
-      else if (normKey === "سيرةالوصف2" || normKey === "سيرهالوصف2") metadata.bioDesc2 = val;
-      else if (normKey === "سيرةالصورة" || normKey === "سيرهالصوره") metadata.bioImage = val;
-      else if (normKey === "احصائية1الرقم" || normKey === "احصائيه1الرقم") metadata.stat1Value = val;
-      else if (normKey === "احصائية1العنوان" || normKey === "احصائيه1العنوان") metadata.stat1Label = val;
-      else if (normKey === "احصائية2الرقم" || normKey === "احصائيه2الرقم") metadata.stat2Value = val;
-      else if (normKey === "احصائية2العنوان" || normKey === "احصائيه2العنوان") metadata.stat2Label = val;
-      else if (normKey === "احصائية3الرقم" || normKey === "احصائيه3الرقم") metadata.stat3Value = val;
-      else if (normKey === "احصائية3العنوان" || normKey === "احصائيه3العنوان") metadata.stat3Label = val;
-      else if (normKey === "عنوانالزر" || normKey === "نصالزر") metadata.sectionButtonText = val;
+    if (isMetadataByRange || isMetadataByKey) {
+      // It is a metadata row. Extract the key-value pair and exclude from cleanRows.
+      let keyToUse = "";
+      if (METADATA_KEYS_NORMALIZED.includes(normKeyB)) {
+        keyToUse = normKeyB;
+      } else if (METADATA_KEYS_NORMALIZED.includes(normKeyA)) {
+        keyToUse = normKeyA;
+      } else {
+        // Fallback if matched by index but key is custom: map by index mapping
+        if (sheetType === "about") {
+          const indexToKeyMap: Record<number, string> = {
+            1: "عنوانالقسم",
+            2: "وصفالقسم",
+            3: "شارهالقسم",
+            4: "سيرهالاسم",
+            5: "سيرهاللقب",
+            6: "سيرهالعنوان",
+            7: "سيرهالوصف",
+            8: "سيرهالوصف2",
+            9: "سيرهالصوره",
+            10: "احصائيه1الرقم",
+            11: "احصائيه1العنوان",
+            12: "احصائيه2الرقم",
+            13: "احصائيه2العنوان",
+            14: "احصائيه3الرقم",
+            15: "احصائيه3العنوان"
+          };
+          keyToUse = indexToKeyMap[i] || "";
+        } else if (sheetType === "standard") {
+          const indexToKeyMap: Record<number, string> = {
+            1: "عنوانالقسم",
+            2: "وصفالقسم",
+            3: "شارهالقسم"
+          };
+          keyToUse = indexToKeyMap[i] || "";
+        }
+      }
+
+      if (keyToUse) {
+        // Use thirdCell (Col C) as primary value, fallback to secondCell (Col B)
+        const val = thirdCell || secondCell;
+
+        if (keyToUse === "عنوانالقسم") metadata.sectionTitle = val;
+        else if (keyToUse === "وصفالقسم") metadata.sectionDescription = val;
+        else if (keyToUse === "شارهالقسم") metadata.sectionBadge = val;
+        else if (keyToUse === "سيرهالاسم") metadata.bioName = val;
+        else if (keyToUse === "سيرهاللقب") metadata.bioSubtitle = val;
+        else if (keyToUse === "سيرهالعنوان") metadata.bioTitle = val;
+        else if (keyToUse === "سيرهالوصف") metadata.bioDesc1 = val;
+        else if (keyToUse === "سيرهالوصف2") metadata.bioDesc2 = val;
+        else if (keyToUse === "سيرهالصوره") metadata.bioImage = val;
+        else if (keyToUse === "احصائيه1الرقم") metadata.stat1Value = val;
+        else if (keyToUse === "احصائيه1العنوان") metadata.stat1Label = val;
+        else if (keyToUse === "احصائيه2الرقم") metadata.stat2Value = val;
+        else if (keyToUse === "احصائيه2العنوان") metadata.stat2Label = val;
+        else if (keyToUse === "احصائيه3الرقم") metadata.stat3Value = val;
+        else if (keyToUse === "احصائيه3العنوان") metadata.stat3Label = val;
+        else if (keyToUse === "عنوانالزر" || keyToUse === "نصالزر") metadata.sectionButtonText = val;
+      }
     } else {
-      // Anything outside the metadata range is parsed as content cards
+      // Not a metadata row, it is a card row. Add to cleanRows.
       cleanRows.push(row);
     }
   }
