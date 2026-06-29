@@ -1,14 +1,15 @@
 import { motion } from "motion/react";
 import { BookOpen, Award, FileText, Shield } from "lucide-react";
-import { SheetRow, BiographyData } from "../types";
+import { SheetRow, BiographyData, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface AboutSectionProps {
   cards: SheetRow[];
   biography?: BiographyData;
+  header?: SectionHeaderData;
 }
 
-export default function AboutSection({ cards, biography }: AboutSectionProps) {
+export default function AboutSection({ cards, biography, header }: AboutSectionProps) {
   // If we have custom About cards, render them. Otherwise render a premium biography structure
   const hasCustomCards = cards && cards.length > 0;
 
@@ -40,13 +41,13 @@ export default function AboutSection({ cards, biography }: AboutSectionProps) {
       {/* Visual Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          إرث حضاري إسلامي خالد
+          {header?.badge || "إرث حضاري إسلامي خالد"}
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          عن مؤسسة يوسف ذنون للخط العربي
+          {header?.title || "عن مؤسسة يوسف ذنون للخط العربي"}
         </h2>
         <p className="text-slate-300 font-sans mt-4 text-sm sm:text-base leading-relaxed">
-          تأسست المؤسسة لتكون مناراً إسلامياً وثقافياً يحمل اسم الراحل الكبير الأستاذ يوسف ذنون، عميد ومؤرخ الخط العربي، لنشر هذا الفن الشريف ورعاية أجيال الخطاطين في شتى أنحاء العالم الإسلامي.
+          {header?.description || "تأسست المؤسسة لتكون مناراً إسلامياً وثقافياً يحمل اسم الراحل الكبير الأستاذ يوسف ذنون، عميد ومؤرخ الخط العربي، لنشر هذا الفن الشريف ورعاية أجيال الخطاطين في شتى أنحاء العالم الإسلامي."}
         </p>
       </div>
 
@@ -82,20 +83,6 @@ export default function AboutSection({ cards, biography }: AboutSectionProps) {
               تحولت المؤسسة بجهود تلامذته والمحبين لفنه إلى منبر ثقافي يضم مكتبته النادرة، مخطوطاته الإبداعية، ودراساته التأصيلية، لتقديم برامج تعليمية مميزة تعتمد على إجازته ومدرسته الفريدة في كتابة خطوط الثلث والنسخ والديواني والكوفي.
             </p>
           )}
-          <div className="flex flex-wrap gap-4 pt-2">
-            <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3 text-right">
-              <span className="text-amber-500 font-serif font-bold text-2xl block">{biography?.stat1Value || "٥٠+"}</span>
-              <span className="text-slate-400 text-xs font-sans">{biography?.stat1Label || "سنة من العطاء العلمي والفني"}</span>
-            </div>
-            <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3 text-right">
-              <span className="text-amber-500 font-serif font-bold text-2xl block">{biography?.stat2Value || "١٠٠+"}</span>
-              <span className="text-slate-400 text-xs font-sans">{biography?.stat2Label || "دراسة وبحث تخصصي في الآثار"}</span>
-            </div>
-            <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3 text-right">
-              <span className="text-amber-500 font-serif font-bold text-2xl block">{biography?.stat3Value || "٥٠٠+"}</span>
-              <span className="text-slate-400 text-xs font-sans">{biography?.stat3Label || "تلميذ وخطاط مجاز حول العالم"}</span>
-            </div>
-          </div>
         </div>
       </div>
 
