@@ -297,16 +297,6 @@ app.get("/api/data", async (req, res) => {
       getSheetValues("نصوص").catch(() => []).then(rows => rows && rows.length > 0 ? rows : getSheetValues("Texts").catch(() => []))
     ]);
 
-    try {
-      fs.writeFileSync(
-        path.join(__dirname || process.cwd(), "src/debug-sheet.json"),
-        JSON.stringify({ textsRows }, null, 2)
-      );
-      console.log("Successfully wrote textsRows to debug-sheet.json");
-    } catch (e) {
-      console.error("Failed to write debug-sheet.json", e);
-    }
-
     // Parse Profile Info
     // Row 0 of profileRows (which is row 2 of the sheet): [Logo, Logo Text, Logo URL/Image]
     // Wait, the original code had:
@@ -648,6 +638,12 @@ app.get("/api/data", async (req, res) => {
           customTexts.footerDescription = rawVal;
         } else if (norm === "footercopyright" || norm === "حقوقالنشر" || norm === "الحقوق") {
           customTexts.footerCopyright = rawVal;
+        } else if (norm === "heroprimarybtn" || norm === "الزرالرئيسي" || norm === "زرالبرامج" || norm === "زرالدورات" || norm === "الزرالرئيسيالموقع") {
+          customTexts.heroPrimaryBtn = rawVal;
+        } else if (norm === "herosecondarybtn" || norm === "الزرالثانوي" || norm === "زرالمعرض" || norm === "الزرالثانويالموقع") {
+          customTexts.heroSecondaryBtn = rawVal;
+        } else if (norm === "topannouncementtag" || norm === "شارةالاعلان" || norm === "شارةاخبارالمؤسسه" || norm === "شارةأخبارالمؤسسة" || norm === "عنوانالشارة" || norm === "عنوانالشاره") {
+          customTexts.topAnnouncementTag = rawVal;
         }
       }
     }

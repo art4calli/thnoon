@@ -207,7 +207,7 @@ export default function HomeCard({ card, onNavigate }: HomeCardProps) {
           }}
           className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs sm:text-sm font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300 mt-6 cursor-pointer"
         >
-          <span>التفاصيل والملف المرفق</span>
+          <span>{card.buttonText || "التفاصيل والملف المرفق"}</span>
           <ExternalLink className="w-3.5 h-3.5" />
         </button>
       )}

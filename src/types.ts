@@ -96,6 +96,9 @@ export interface CustomTexts {
   footerTitle?: string;
   footerDescription?: string;
   footerCopyright?: string;
+  heroPrimaryBtn?: string;
+  heroSecondaryBtn?: string;
+  topAnnouncementTag?: string;
 }
 
 export interface AppData {

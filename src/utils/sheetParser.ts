@@ -660,6 +660,12 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
         customTexts.footerDescription = rawVal;
       } else if (norm === "footercopyright" || norm === "حقوقالنشر" || norm === "الحقوق") {
         customTexts.footerCopyright = rawVal;
+      } else if (norm === "heroprimarybtn" || norm === "الزرالرئيسي" || norm === "زرالبرامج" || norm === "زرالدورات" || norm === "الزرالرئيسيالموقع") {
+        customTexts.heroPrimaryBtn = rawVal;
+      } else if (norm === "herosecondarybtn" || norm === "الزرالثانوي" || norm === "زرالمعرض" || norm === "الزرالثانويالموقع") {
+        customTexts.heroSecondaryBtn = rawVal;
+      } else if (norm === "topannouncementtag" || norm === "شارةالاعلان" || norm === "شارةاخبارالمؤسسه" || norm === "شارةأخبارالمؤسسة" || norm === "عنوانالشارة" || norm === "عنوانالشاره") {
+        customTexts.topAnnouncementTag = rawVal;
       }
     }
   }

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { BookOpen, Image as ImageIcon, Play, ShoppingBag, Phone, HelpCircle, LogIn, Menu, X, Landmark, Globe, Sparkles } from "lucide-react";
+import { motion, AnimatePresence } from "motion/react";
 import { ProfileData, SocialLinks, CustomTexts } from "../types";
 
 interface HeaderProps {
@@ -28,6 +29,21 @@ export default function Header({
 }: HeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [announcementIdx, setAnnouncementIdx] = useState(0);
+
+  const announcements = [
+    customTexts?.topAnnouncementRight || "مرحباً بكم في المنصة الرسمية المتطورة لمؤسسة يوسف ذنون للخط العربي",
+    customTexts?.topAnnouncementLocation || "الموصل، العراق",
+    customTexts?.topAnnouncementLeft || "تأسست لحفظ وإحياء تراث عميد الخط العربي الأستاذ يوسف ذنون"
+  ].filter(Boolean);
+
+  useEffect(() => {
+    if (announcements.length <= 1) return;
+    const interval = setInterval(() => {
+      setAnnouncementIdx((prev) => (prev + 1) % announcements.length);
+    }, 6000); // 6 seconds display time
+    return () => clearInterval(interval);
+  }, [announcements.length]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -50,15 +66,35 @@ export default function Header({
   return (
     <header className="relative w-full z-50">
       {/* Top golden announcement bar */}
-      <div className="bg-gradient-to-r from-amber-700 via-amber-600 to-yellow-600 text-slate-900 text-xs py-1 px-4 font-sans font-medium flex justify-between items-center shadow-md">
-        <div className="flex items-center gap-2">
-          <Sparkles className="w-3 h-3 animate-pulse" />
-          <span>{customTexts?.topAnnouncementRight || "مرحباً بكم في المنصة الرسمية المتطورة لمؤسسة يوسف ذنون للخط العربي"}</span>
+      <div className="bg-gradient-to-r from-amber-800 via-amber-700 to-yellow-700 text-white text-xs py-2 px-4 font-sans font-bold flex justify-between items-center shadow-md overflow-hidden min-h-[38px] relative">
+        <div className="flex items-center gap-2 z-10 pr-2 shrink-0">
+          <Sparkles className="w-3.5 h-3.5 text-yellow-300 animate-pulse" />
         </div>
-        <div className="hidden sm:flex items-center gap-4 text-[11px] font-sans">
-          <span>{customTexts?.topAnnouncementLocation || "الموصل، العراق"}</span>
-          <span className="w-1 h-1 bg-slate-900 rounded-full"></span>
-          <span>{customTexts?.topAnnouncementLeft || "تأسست لحفظ وإحياء تراث عميد الخط العربي الأستاذ يوسف ذنون"}</span>
+
+        {/* Animated Carousel wrapper */}
+        <div className="flex-1 relative flex items-center justify-center overflow-hidden h-6 mx-4">
+          <AnimatePresence mode="wait">
+            <motion.div
+              key={announcementIdx}
+              initial={{ x: "-100%", opacity: 0 }}
+              animate={{ x: "0%", opacity: 1 }}
+              exit={{ x: "100%", opacity: 0 }}
+              transition={{ 
+                x: { duration: 1.8, ease: "easeInOut" }, // slow slide movement
+                opacity: { duration: 1.2 } 
+              }}
+              className="absolute text-center whitespace-nowrap text-white text-[11px] sm:text-xs font-bold tracking-wide select-none filter drop-shadow"
+              dir="rtl"
+            >
+              {announcements[announcementIdx]}
+            </motion.div>
+          </AnimatePresence>
+        </div>
+
+        <div className="hidden sm:flex items-center gap-2 z-10 shrink-0 pl-2">
+          <span className="text-[10px] bg-slate-950/40 text-amber-200 font-bold px-2.5 py-0.5 rounded-full border border-amber-500/20">
+            {customTexts?.topAnnouncementTag || "أخبار المؤسسة"}
+          </span>
         </div>
       </div>
 

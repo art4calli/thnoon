@@ -348,13 +348,13 @@ export default function App() {
                 onClick={() => handleNavigate("courses")}
                 className="bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3 px-6 rounded-xl shadow-lg shadow-amber-500/15 transition-all transform hover:scale-105 cursor-pointer"
               >
-                استكشف البرامج التعليمية
+                {appData?.customTexts?.heroPrimaryBtn || "استكشف البرامج التعليمية"}
               </button>
               <button
                 onClick={() => handleNavigate("artwork")}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/30 text-amber-400 text-sm font-sans font-bold py-3 px-6 rounded-xl transition-all"
               >
-                عرض المعرض الفني
+                {appData?.customTexts?.heroSecondaryBtn || "عرض المعرض الفني"}
               </button>
             </div>
           </div>
