@@ -1,20 +1,15 @@
 import { motion } from "motion/react";
 import { BookOpen, GraduationCap, Clock, Award, CheckCircle2 } from "lucide-react";
-import { SheetRow, SectionHeaderData } from "../types";
+import { SheetRow } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface CoursesSectionProps {
   cards: SheetRow[];
-  header?: SectionHeaderData;
 }
 
-export default function CoursesSection({ cards, header }: CoursesSectionProps) {
+export default function CoursesSection({ cards }: CoursesSectionProps) {
   // If no custom cards are uploaded yet, display a premium educational roadmap structure
   const hasCustomCards = cards && cards.length > 0;
-
-  const sectionBadge = header?.badge || "البناء الأكاديمي للخطاطين";
-  const sectionTitle = header?.title || "البرامج والمناهج التعليمية";
-  const sectionDesc = header?.description || "نقدم لكم مناهج دراسية كلاسيكية معتمدة ومنظمة تتبع خطوات المدرسة الذنونية الرائدة، تبدأ من تأسيس المبتدئين وحتى تأهيل المحترفين للحصول على الإجازة الخطية المباركة.";
 
   const preConfiguredRoadmaps = [
     {
@@ -45,13 +40,13 @@ export default function CoursesSection({ cards, header }: CoursesSectionProps) {
       {/* Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          {sectionBadge}
+          البناء الأكاديمي للخطاطين
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          {sectionTitle}
+          البرامج والمناهج التعليمية
         </h2>
         <p className="text-slate-400 font-sans mt-4 text-sm leading-relaxed">
-          {sectionDesc}
+          نقدم لكم مناهج دراسية كلاسيكية معتمدة ومنظمة تتبع خطوات المدرسة الذنونية الرائدة، تبدأ من تأسيس المبتدئين وحتى تأهيل المحترفين للحصول على الإجازة الخطية المباركة.
         </p>
       </div>
 

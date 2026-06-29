@@ -413,35 +413,35 @@ export default function App() {
         {/* ABOUT SECTION */}
         {activeSection === "about" && (
           <div id="about" className="pt-24 md:pt-28">
-            <AboutSection cards={appData?.aboutCards || []} biography={appData?.biography} />
+            <AboutSection cards={appData?.aboutCards || []} />
           </div>
         )}
 
         {/* ARTWORK GALLERY SECTION */}
         {activeSection === "artwork" && (
           <div id="artwork" className="pt-24 md:pt-28">
-            <GallerySection cards={appData?.artworkCards || []} header={appData?.sectionHeaders?.artwork} />
+            <GallerySection cards={appData?.artworkCards || []} />
           </div>
         )}
 
         {/* VIDEO LIBRARY SECTION */}
         {activeSection === "video" && (
           <div id="video" className="pt-24 md:pt-28">
-            <VideoSection cards={appData?.videoCards || []} header={appData?.sectionHeaders?.video} />
+            <VideoSection cards={appData?.videoCards || []} />
           </div>
         )}
 
         {/* EDUCATIONAL COURSES SECTION */}
         {activeSection === "courses" && (
           <div id="courses" className="pt-24 md:pt-28">
-            <CoursesSection cards={appData?.coursesCards || []} header={appData?.sectionHeaders?.courses} />
+            <CoursesSection cards={appData?.coursesCards || []} />
           </div>
         )}
 
         {/* TOOLS AND SUPPLIES SECTION */}
         {activeSection === "tools" && (
           <div id="tools" className="pt-24 md:pt-28">
-            <ToolsSection cards={appData?.toolsCards || []} header={appData?.sectionHeaders?.tools} />
+            <ToolsSection cards={appData?.toolsCards || []} />
           </div>
         )}
 

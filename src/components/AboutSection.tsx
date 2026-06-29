@@ -1,35 +1,15 @@
 import { motion } from "motion/react";
 import { BookOpen, Award, FileText, Landmark, Shield } from "lucide-react";
-import { SheetRow, BiographyData } from "../types";
+import { SheetRow } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface AboutSectionProps {
   cards: SheetRow[];
-  biography?: BiographyData;
 }
 
-export default function AboutSection({ cards, biography }: AboutSectionProps) {
+export default function AboutSection({ cards }: AboutSectionProps) {
   // If we have custom About cards, render them. Otherwise render a premium biography structure
   const hasCustomCards = cards && cards.length > 0;
-
-  // Set the dynamic bio fields with proper defaults
-  const sectionBadge = biography?.sectionBadge || "إرث حضاري إسلامي خالد";
-  const sectionTitle = biography?.sectionTitle || "عن مؤسسة يوسف ذنون للخط العربي";
-  const sectionDescription = biography?.sectionDescription || "تأسست المؤسسة لتكون مناراً إسلامياً وثقافياً يحمل اسم الراحل الكبير الأستاذ يوسف ذنون، عميد ومؤرخ الخط العربي، لنشر هذا الفن الشريف ورعاية أجيال الخطاطين في شتى أنحاء العالم الإسلامي.";
-  
-  const bioName = biography?.bioName || "الأستاذ يوسف ذنون";
-  const bioSubtitle = biography?.bioSubtitle || "عميد ومؤرخ الخط العربي والآثار الإسلامية (١٩٣٢ - ٢٠٢٠)";
-  const bioTitle = biography?.bioTitle || "سيرة عميد الخطاطين ونشأة المؤسسة";
-  const bioDesc1 = biography?.bioDesc1 || "ولد الخطاط والمؤرخ العراقي الأستاذ يوسف ذنون في مدينة الموصل الحدباء عام ١٩٣٢. كرس حياته لخدمة كتابة المصحف الشريف والبحث في أصول الحرف العربي وعلم الآثار والنقوش الإسلامية. كاتب بارز ومحاضر دولي أجاز عشرات الخطاطين الذين أصبحوا بدورهم قادة فن الخط في مختلف الأقطار.";
-  const bioDesc2 = biography?.bioDesc2 || "تحولت المؤسسة بجهود تلامذته والمحبين لفنه إلى منبر ثقافي يضم مكتبته النادرة، مخطوطاته الإبداعية، ودراساته التأصيلية، لتقديم برامج تعليمية مميزة تعتمد على إجازته ومدرسته الفريدة في كتابة خطوط الثلث والنسخ والديواني والكوفي.";
-  const bioImage = biography?.bioImage || "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?auto=format&fit=crop&q=80&w=600";
-
-  const stat1Value = biography?.stat1Value || "٥٠+";
-  const stat1Label = biography?.stat1Label || "سنة من العطاء العلمي والفني";
-  const stat2Value = biography?.stat2Value || "١٠٠+";
-  const stat2Label = biography?.stat2Label || "دراسة وبحث تخصصي في الآثار";
-  const stat3Value = biography?.stat3Value || "٥٠٠+";
-  const stat3Label = biography?.stat3Label || "تلميذ وخطاط مجاز حول العالم";
 
   const features = [
     {
@@ -59,13 +39,13 @@ export default function AboutSection({ cards, biography }: AboutSectionProps) {
       {/* Visual Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          {sectionBadge}
+          إرث حضاري إسلامي خالد
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          {sectionTitle}
+          عن مؤسسة يوسف ذنون للخط العربي
         </h2>
         <p className="text-slate-300 font-sans mt-4 text-sm sm:text-base leading-relaxed">
-          {sectionDescription}
+          تأسست المؤسسة لتكون مناراً إسلامياً وثقافياً يحمل اسم الراحل الكبير الأستاذ يوسف ذنون، عميد ومؤرخ الخط العربي، لنشر هذا الفن الشريف ورعاية أجيال الخطاطين في شتى أنحاء العالم الإسلامي.
         </p>
       </div>
 
@@ -74,39 +54,39 @@ export default function AboutSection({ cards, biography }: AboutSectionProps) {
         <div className="lg:col-span-5 relative group overflow-hidden rounded-2xl border border-amber-500/20">
           <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-60 z-10"></div>
           <img
-            src={bioImage}
-            alt={bioName}
+            src="https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?auto=format&fit=crop&q=80&w=600"
+            alt="الأستاذ يوسف ذنون رحمه الله"
             className="w-full h-[400px] object-cover group-hover:scale-105 transition-transform duration-500"
             referrerPolicy="no-referrer"
           />
           <div className="absolute bottom-4 right-4 left-4 z-20 text-right">
-            <h4 className="font-serif font-bold text-lg text-amber-400">{bioName}</h4>
-            <p className="text-xs text-slate-300 font-sans">{bioSubtitle}</p>
+            <h4 className="font-serif font-bold text-lg text-amber-400">الأستاذ يوسف ذنون</h4>
+            <p className="text-xs text-slate-300 font-sans">عميد ومؤرخ الخط العربي والآثار الإسلامية (١٩٣٢ - ٢٠٢٠)</p>
           </div>
         </div>
 
         <div className="lg:col-span-7 space-y-6 text-right">
           <h3 className="font-serif font-bold text-2xl text-amber-400">
-            {bioTitle}
+            سيرة عميد الخطاطين ونشأة المؤسسة
           </h3>
           <p className="text-slate-300 text-sm sm:text-base leading-relaxed font-sans">
-            {bioDesc1}
+            ولد الخطاط والمؤرخ العراقي الأستاذ يوسف ذنون في مدينة الموصل الحدباء عام ١٩٣٢. كرس حياته لخدمة كتابة المصحف الشريف والبحث في أصول الحرف العربي وعلم الآثار والنقوش الإسلامية. كاتب بارز ومحاضر دولي أجاز عشرات الخطاطين الذين أصبحوا بدورهم قادة فن الخط في مختلف الأقطار.
           </p>
           <p className="text-slate-300 text-sm leading-relaxed font-sans">
-            {bioDesc2}
+            تحولت المؤسسة بجهود تلامذته والمحبين لفنه إلى منبر ثقافي يضم مكتبته النادرة، مخطوطاته الإبداعية، ودراساته التأصيلية، لتقديم برامج تعليمية مميزة تعتمد على إجازته ومدرسته الفريدة في كتابة خطوط الثلث والنسخ والديواني والكوفي.
           </p>
           <div className="flex flex-wrap gap-4 pt-2">
             <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3 text-right">
-              <span className="text-amber-500 font-serif font-bold text-2xl block">{stat1Value}</span>
-              <span className="text-slate-400 text-xs font-sans">{stat1Label}</span>
+              <span className="text-amber-500 font-serif font-bold text-2xl block">٥٠+</span>
+              <span className="text-slate-400 text-xs font-sans">سنة من العطاء العلمي والفني</span>
             </div>
             <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3 text-right">
-              <span className="text-amber-500 font-serif font-bold text-2xl block">{stat2Value}</span>
-              <span className="text-slate-400 text-xs font-sans">{stat2Label}</span>
+              <span className="text-amber-500 font-serif font-bold text-2xl block">١٠٠+</span>
+              <span className="text-slate-400 text-xs font-sans">دراسة وبحث تخصصي في الآثار</span>
             </div>
             <div className="bg-slate-900 border border-slate-800/80 rounded-xl px-4 py-3 text-right">
-              <span className="text-amber-500 font-serif font-bold text-2xl block">{stat3Value}</span>
-              <span className="text-slate-400 text-xs font-sans">{stat3Label}</span>
+              <span className="text-amber-500 font-serif font-bold text-2xl block">٥٠٠+</span>
+              <span className="text-slate-400 text-xs font-sans">تلميذ وخطاط مجاز حول العالم</span>
             </div>
           </div>
         </div>
