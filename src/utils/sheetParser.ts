@@ -279,6 +279,27 @@ function extractSectionMetadata(rows: any[][], sheetType: "about" | "standard" |
     const row = rows[i];
     if (!row || row.length === 0) continue;
 
+    // Scan columns P and Q (index 15 and 16) for biography metadata overrides
+    if (row.length > 15) {
+      const pKey = row[15] ? row[15].toString().trim() : "";
+      const qVal = row[16] ? row[16].toString().trim() : "";
+      if (pKey) {
+        const normP = normalizeKey(pKey);
+        if (normP === "سيرهالاسم" || normP === "الاسم" || normP === "الاسمالكامل") metadata.bioName = qVal;
+        else if (normP === "سيرهاللقب" || normP === "اللقب" || normP === "تاريخ") metadata.bioSubtitle = qVal;
+        else if (normP === "سيرهالعنوان" || normP === "العنوان") metadata.bioTitle = qVal;
+        else if (normP === "سيرهالوصف" || normP === "الوصف" || normP === "النصالاول" || normP === "الوصفالاول") metadata.bioDesc1 = qVal;
+        else if (normP === "سيرهالوصف2" || normP === "الوصف2" || normP === "النصالثاني" || normP === "الوصفالثاني") metadata.bioDesc2 = qVal;
+        else if (normP === "سيرهالصوره" || normP === "الصوره" || normP === "رابطالصوره") metadata.bioImage = qVal;
+        else if (normP === "احصائيه1الرقم" || normP === "الرقم1" || normP === "احصائيه1") metadata.stat1Value = qVal;
+        else if (normP === "احصائيه1العنوان" || normP === "الاسم1") metadata.stat1Label = qVal;
+        else if (normP === "احصائيه2الرقم" || normP === "الرقم2" || normP === "احصائيه2") metadata.stat2Value = qVal;
+        else if (normP === "احصائيه2العنوان" || normP === "الاسم2") metadata.stat2Label = qVal;
+        else if (normP === "احصائيه3الرقم" || normP === "الرقم3" || normP === "احصائيه3") metadata.stat3Value = qVal;
+        else if (normP === "احصائيه3العنوان" || normP === "الاسم3") metadata.stat3Label = qVal;
+      }
+    }
+
     const firstCell = row[0] ? row[0].toString().trim() : "";
     const secondCell = row[1] ? row[1].toString().trim() : "";
     const thirdCell = row[2] ? row[2].toString().trim() : "";

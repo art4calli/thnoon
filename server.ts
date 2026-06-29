@@ -158,6 +158,50 @@ function isMetadataRow(row: any[]): boolean {
   return METADATA_KEYS_NORMALIZED.includes(normA) || METADATA_KEYS_NORMALIZED.includes(normB);
 }
 
+function extractBiographyFromRows(rows: any[][]): any {
+  const bio: Record<string, any> = {};
+  if (!rows || rows.length === 0) return bio;
+
+  for (let i = 0; i < rows.length; i++) {
+    const row = rows[i];
+    if (!row || row.length <= 15) continue; // Column P is index 15
+
+    const rawKey = row[15] ? row[15].toString().trim() : "";
+    const rawVal = row[16] ? row[16].toString().trim() : "";
+    if (!rawKey) continue;
+
+    const norm = normalizeKey(rawKey);
+
+    if (norm === "سيرهالاسم" || norm === "الاسم" || norm === "الاسمالكامل") {
+      bio.bioName = rawVal;
+    } else if (norm === "سيرهاللقب" || norm === "اللقب" || norm === "تاريخ") {
+      bio.bioSubtitle = rawVal;
+    } else if (norm === "سيرهالعنوان" || norm === "العنوان") {
+      bio.bioTitle = rawVal;
+    } else if (norm === "سيرهالوصف" || norm === "الوصف" || norm === "النصالاول" || norm === "الوصفالاول") {
+      bio.bioDesc1 = rawVal;
+    } else if (norm === "سيرهالوصف2" || norm === "الوصف2" || norm === "النصالثاني" || norm === "الوصفالثاني") {
+      bio.bioDesc2 = rawVal;
+    } else if (norm === "سيرهالصوره" || norm === "الصوره" || norm === "رابطالصوره") {
+      bio.bioImage = rawVal;
+    } else if (norm === "احصائيه1الرقم" || norm === "الرقم1" || norm === "احصائيه1") {
+      bio.stat1Value = rawVal;
+    } else if (norm === "احصائيه1العنوان" || norm === "الاسم1") {
+      bio.stat1Label = rawVal;
+    } else if (norm === "احصائيه2الرقم" || norm === "الرقم2" || norm === "احصائيه2") {
+      bio.stat2Value = rawVal;
+    } else if (norm === "احصائيه2العنوان" || norm === "الاسم2") {
+      bio.stat2Label = rawVal;
+    } else if (norm === "احصائيه3الرقم" || norm === "الرقم3" || norm === "احصائيه3") {
+      bio.stat3Value = rawVal;
+    } else if (norm === "احصائيه3العنوان" || norm === "الاسم3") {
+      bio.stat3Label = rawVal;
+    }
+  }
+
+  return bio;
+}
+
 // Map standard row structure (N columns)
 function mapContentRow(row: any[]): any {
   if (!row || row.length < 1) return null;
@@ -174,6 +218,7 @@ function mapContentRow(row: any[]): any {
   let description = "";
   const media: { url: string }[] = [];
   let linkUrl = "";
+  let buttonText = "";
 
   // Check if Column A is missing/deleted (causing shift to the left)
   // If row[2] is a URL, it means the media URLs started at index 2 instead of index 3,
@@ -193,6 +238,7 @@ function mapContentRow(row: any[]): any {
       }
     }
     linkUrl = row[12] ? row[12].toString().trim() : "";
+    buttonText = row[13] ? row[13].toString().trim() : "";
     
     // Automatically determine type based on media count
     type = media.length > 1 ? "معرض" : "بطاقة";
@@ -210,6 +256,7 @@ function mapContentRow(row: any[]): any {
       }
     }
     linkUrl = row[13] ? row[13].toString().trim() : "";
+    buttonText = row[14] ? row[14].toString().trim() : "";
   }
 
   if (!title && !description) return null;
@@ -219,7 +266,8 @@ function mapContentRow(row: any[]): any {
     title,
     description,
     media,
-    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined
+    linkUrl: (linkUrl && linkUrl !== "-") ? linkUrl : undefined,
+    buttonText: (buttonText && buttonText !== "-") ? buttonText : undefined
   };
 }
 
@@ -454,6 +502,93 @@ app.get("/api/data", async (req, res) => {
       }
     }
 
+    // Extract Biography from columns P and Q of aboutRows
+    const bioFromCols = extractBiographyFromRows(aboutRows);
+    
+    // Also support parsing biography from Metadata rows in About
+    const bioFromMeta: Record<string, any> = {};
+    if (aboutRows && aboutRows.length > 1) {
+      for (let i = 1; i < aboutRows.length; i++) {
+        const row = aboutRows[i];
+        if (!row || row.length === 0) continue;
+        const col0 = row[0] ? row[0].toString().trim() : "";
+        const col1 = row[1] ? row[1].toString().trim() : "";
+        const col2 = row[2] ? row[2].toString().trim() : "";
+
+        const normA = normalizeKey(col0);
+        const normB = normalizeKey(col1);
+
+        let key = "";
+        let val = "";
+        if (normA) { key = normA; val = col1 || col2; }
+        else if (normB) { key = normB; val = col2 || col1; }
+
+        if (key) {
+          if (key === "سيرهالاسم" || key === "الاسم" || key === "الاسمالكامل") bioFromMeta.bioName = val;
+          else if (key === "سيرهاللقب" || key === "اللقب" || key === "تاريخ") bioFromMeta.bioSubtitle = val;
+          else if (key === "سيرهالعنوان" || key === "العنوان") bioFromMeta.bioTitle = val;
+          else if (key === "سيرهالوصف" || key === "الوصف" || key === "النصالاول" || key === "الوصفالاول") bioFromMeta.bioDesc1 = val;
+          else if (key === "سيرهالوصف2" || key === "الوصف2" || key === "النصالثاني" || key === "الوصفالثاني") bioFromMeta.bioDesc2 = val;
+          else if (key === "سيرهالصوره" || key === "الصوره" || key === "رابطالصوره") bioFromMeta.bioImage = val;
+          else if (key === "احصائيه1الرقم" || key === "الرقم1" || key === "احصائيه1") bioFromMeta.stat1Value = val;
+          else if (key === "احصائيه1العنوان" || key === "الاسم1") bioFromMeta.stat1Label = val;
+          else if (key === "احصائيه2الرقم" || key === "الرقم2" || key === "احصائيه2") bioFromMeta.stat2Value = val;
+          else if (key === "احصائيه2العنوان" || key === "الاسم2") bioFromMeta.stat2Label = val;
+          else if (key === "احصائيه3الرقم" || key === "الرقم3" || key === "احصائيه3") bioFromMeta.stat3Value = val;
+          else if (key === "احصائيه3العنوان" || key === "الاسم3") bioFromMeta.stat3Label = val;
+        }
+      }
+    }
+
+    const biography = {
+      bioName: bioFromCols.bioName || bioFromMeta.bioName || undefined,
+      bioSubtitle: bioFromCols.bioSubtitle || bioFromMeta.bioSubtitle || undefined,
+      bioTitle: bioFromCols.bioTitle || bioFromMeta.bioTitle || undefined,
+      bioDesc1: bioFromCols.bioDesc1 || bioFromMeta.bioDesc1 || undefined,
+      bioDesc2: bioFromCols.bioDesc2 || bioFromMeta.bioDesc2 || undefined,
+      bioImage: bioFromCols.bioImage || bioFromMeta.bioImage || undefined,
+      stat1Value: bioFromCols.stat1Value || bioFromMeta.stat1Value || undefined,
+      stat1Label: bioFromCols.stat1Label || bioFromMeta.stat1Label || undefined,
+      stat2Value: bioFromCols.stat2Value || bioFromMeta.stat2Value || undefined,
+      stat2Label: bioFromCols.stat2Label || bioFromMeta.stat2Label || undefined,
+      stat3Value: bioFromCols.stat3Value || bioFromMeta.stat3Value || undefined,
+      stat3Label: bioFromCols.stat3Label || bioFromMeta.stat3Label || undefined,
+    };
+
+    const getHeaderFromRows = (rows: any[][]) => {
+      const header: Record<string, string> = {};
+      if (!rows || rows.length === 0) return header;
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || row.length === 0) continue;
+        const col0 = row[0] ? row[0].toString().trim() : "";
+        const col1 = row[1] ? row[1].toString().trim() : "";
+        const col2 = row[2] ? row[2].toString().trim() : "";
+
+        const normA = normalizeKey(col0);
+        const normB = normalizeKey(col1);
+
+        let key = "";
+        let val = "";
+        if (normA) { key = normA; val = col1 || col2; }
+        else if (normB) { key = normB; val = col2 || col1; }
+
+        if (key === "عنوانالقسم") header.title = val;
+        else if (key === "وصفالقسم") header.description = val;
+        else if (key === "شارهالقسم") header.badge = val;
+        else if (key === "عنوانالزر" || key === "نصالزر") header.buttonText = val;
+      }
+      return header;
+    };
+
+    const sectionHeaders = {
+      about: getHeaderFromRows(aboutRows),
+      artwork: getHeaderFromRows(artworkRows),
+      video: getHeaderFromRows(videoRows),
+      courses: getHeaderFromRows(coursesRows),
+      tools: getHeaderFromRows(toolsRows),
+    };
+
     res.json({
       profile: { 
         logoUrl, 
@@ -472,7 +607,9 @@ app.get("/api/data", async (req, res) => {
       coursesCards,
       toolsCards,
       contactCards,
-      contactInfo
+      contactInfo,
+      biography,
+      sectionHeaders
     });
 
   } catch (error) {
