@@ -76,6 +76,19 @@ export interface ContactDetails {
   panelTitle?: string;
   panelDescription?: string;
   cards: ContactCardItem[];
+  contactSocialLabel?: string;
+  contactFormTitle?: string;
+  contactFormLabelName?: string;
+  contactFormLabelEmail?: string;
+  contactFormLabelSubject?: string;
+  contactFormLabelMessage?: string;
+  contactFormPlaceholderName?: string;
+  contactFormPlaceholderEmail?: string;
+  contactFormPlaceholderSubject?: string;
+  contactFormPlaceholderMessage?: string;
+  contactFormSuccessMsg?: string;
+  contactFormSubmitBtn?: string;
+  contactFormSendingBtn?: string;
 }
 
 export interface CustomTexts {
@@ -99,6 +112,20 @@ export interface CustomTexts {
   heroPrimaryBtn?: string;
   heroSecondaryBtn?: string;
   topAnnouncementTag?: string;
+  aboutExtraTitle?: string;
+  contactSocialLabel?: string;
+  contactFormTitle?: string;
+  contactFormLabelName?: string;
+  contactFormLabelEmail?: string;
+  contactFormLabelSubject?: string;
+  contactFormLabelMessage?: string;
+  contactFormPlaceholderName?: string;
+  contactFormPlaceholderEmail?: string;
+  contactFormPlaceholderSubject?: string;
+  contactFormPlaceholderMessage?: string;
+  contactFormSuccessMsg?: string;
+  contactFormSubmitBtn?: string;
+  contactFormSendingBtn?: string;
 }
 
 export interface AppData {

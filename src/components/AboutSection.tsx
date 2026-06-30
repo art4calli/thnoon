@@ -1,15 +1,16 @@
 import { motion } from "motion/react";
 import { BookOpen, Award, FileText, Shield } from "lucide-react";
-import { SheetRow, BiographyData, SectionHeaderData } from "../types";
+import { SheetRow, BiographyData, SectionHeaderData, CustomTexts } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
 
 interface AboutSectionProps {
   cards: SheetRow[];
   biography?: BiographyData;
   header?: SectionHeaderData;
+  customTexts?: CustomTexts;
 }
 
-export default function AboutSection({ cards, biography, header }: AboutSectionProps) {
+export default function AboutSection({ cards, biography, header, customTexts }: AboutSectionProps) {
   // If we have custom About cards, render them. Otherwise render a premium biography structure
   const hasCustomCards = cards && cards.length > 0;
 
@@ -90,7 +91,7 @@ export default function AboutSection({ cards, biography, header }: AboutSectionP
       {hasCustomCards ? (
         <div className="space-y-12">
           <h3 className="font-serif font-bold text-xl sm:text-2xl text-amber-400 border-r-4 border-amber-500 pr-3 mb-8">
-            أقسام ومعلومات المؤسسة الإضافية
+            {customTexts?.aboutExtraTitle || "أقسام ومعلومات المؤسسة الإضافية"}
           </h3>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             {cards.map((card, idx) => (

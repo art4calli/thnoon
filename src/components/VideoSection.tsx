@@ -88,10 +88,6 @@ export default function VideoSection({ cards, header }: VideoSectionProps) {
                 {video.media && video.media.length > 0 ? (
                   <div className="relative">
                     <CardMediaSlider media={video.media} title={video.title} description={video.description} />
-                    <span className="absolute bottom-3 right-3 flex items-center gap-1.5 bg-slate-950/80 backdrop-blur-md text-amber-500 text-[10px] font-sans font-medium py-1 px-2 rounded-md z-10">
-                      <Film className="w-3.5 h-3.5" />
-                      <span>محاضرة مرئية</span>
-                    </span>
                   </div>
                 ) : (
                   <div className="aspect-video w-full bg-slate-900/40 flex items-center justify-center border-b border-slate-900">

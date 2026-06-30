@@ -4,12 +4,13 @@ import {
   MapPin, Phone, Mail, Clock, Send, Check, Facebook, Instagram, Youtube, Compass,
   Star, Award, Landmark, PenTool, GraduationCap, Users, ShieldCheck, Sparkles
 } from "lucide-react";
-import { SheetRow, SocialLinks, ContactDetails } from "../types";
+import { SheetRow, SocialLinks, ContactDetails, CustomTexts } from "../types";
 
 interface ContactSectionProps {
   cards: SheetRow[];
   socialLinks: SocialLinks;
   contactInfo?: ContactDetails;
+  customTexts?: CustomTexts;
 }
 
 function getContactIcon(iconName: string) {
@@ -70,7 +71,7 @@ function getContactIcon(iconName: string) {
   }
 }
 
-export default function ContactSection({ cards, socialLinks, contactInfo }: ContactSectionProps) {
+export default function ContactSection({ cards, socialLinks, contactInfo, customTexts }: ContactSectionProps) {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
@@ -295,7 +296,9 @@ export default function ContactSection({ cards, socialLinks, contactInfo }: Cont
 
           {/* Social Icons Bar */}
           <div className="space-y-4 pt-6 border-t border-slate-900">
-            <p className="text-slate-300 font-sans text-xs font-bold text-right">تابعونا على مواقع التواصل الاجتماعي:</p>
+            <p className="text-slate-300 font-sans text-xs font-bold text-right">
+              {contactInfo?.contactSocialLabel || customTexts?.contactSocialLabel || "تابعونا على مواقع التواصل الاجتماعي:"}
+            </p>
             <div className="flex flex-wrap items-center gap-3">
               {socialPlatforms.map((plat, pIdx) => {
                 const Icon = plat.icon;
@@ -319,30 +322,36 @@ export default function ContactSection({ cards, socialLinks, contactInfo }: Cont
         {/* Dynamic inquiry form */}
         <div className="lg:col-span-7 bg-slate-950/40 border border-slate-900 rounded-3xl p-6 sm:p-8 flex flex-col justify-between">
           <form onSubmit={handleSubmit} className="space-y-6 text-right">
-            <h3 className="font-serif font-bold text-2xl text-amber-400">إرسال استفسار مباشر</h3>
+            <h3 className="font-serif font-bold text-2xl text-amber-400">
+              {contactInfo?.contactFormTitle || customTexts?.contactFormTitle || "إرسال استفسار مباشر"}
+            </h3>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {/* Name */}
               <div className="space-y-1.5">
-                <label className="text-xs font-sans font-semibold text-slate-400">الاسم الكريم *</label>
+                <label className="text-xs font-sans font-semibold text-slate-400">
+                  {contactInfo?.contactFormLabelName || customTexts?.contactFormLabelName || "الاسم الكريم *"}
+                </label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="أدخل اسمك الكامل"
+                  placeholder={contactInfo?.contactFormPlaceholderName || customTexts?.contactFormPlaceholderName || "أدخل اسمك الكامل"}
                   className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/55 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans"
                 />
               </div>
 
               {/* Email */}
               <div className="space-y-1.5">
-                <label className="text-xs font-sans font-semibold text-slate-400">البريد الإلكتروني</label>
+                <label className="text-xs font-sans font-semibold text-slate-400">
+                  {contactInfo?.contactFormLabelEmail || customTexts?.contactFormLabelEmail || "البريد الإلكتروني"}
+                </label>
                 <input
                   type="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  placeholder="name@example.com"
+                  placeholder={contactInfo?.contactFormPlaceholderEmail || customTexts?.contactFormPlaceholderEmail || "name@example.com"}
                   className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/55 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans"
                   dir="ltr"
                 />
@@ -351,25 +360,29 @@ export default function ContactSection({ cards, socialLinks, contactInfo }: Cont
 
             {/* Subject */}
             <div className="space-y-1.5">
-              <label className="text-xs font-sans font-semibold text-slate-400">موضوع الرسالة</label>
+              <label className="text-xs font-sans font-semibold text-slate-400">
+                {contactInfo?.contactFormLabelSubject || customTexts?.contactFormLabelSubject || "موضوع الرسالة"}
+              </label>
               <input
                 type="text"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder="مثال: استفسار عن خط النسخ، طلب أدوات خط"
+                placeholder={contactInfo?.contactFormPlaceholderSubject || customTexts?.contactFormPlaceholderSubject || "مثال: استفسار عن خط النسخ، طلب أدوات خط"}
                 className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/55 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans"
               />
             </div>
 
             {/* Message Body */}
             <div className="space-y-1.5">
-              <label className="text-xs font-sans font-semibold text-slate-400">مضمون الرسالة أو الطلب *</label>
+              <label className="text-xs font-sans font-semibold text-slate-400">
+                {contactInfo?.contactFormLabelMessage || customTexts?.contactFormLabelMessage || "مضمون الرسالة أو الطلب *"}
+              </label>
               <textarea
                 required
                 rows={5}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder="أكتب استفسارك أو تفاصيل طلبك هنا..."
+                placeholder={contactInfo?.contactFormPlaceholderMessage || customTexts?.contactFormPlaceholderMessage || "أكتب استفسارك أو تفاصيل طلبك هنا..."}
                 className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/55 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans resize-none"
               ></textarea>
             </div>
@@ -384,7 +397,9 @@ export default function ContactSection({ cards, socialLinks, contactInfo }: Cont
                   className="bg-green-500/10 border border-green-500/30 rounded-xl p-4 flex items-center gap-3 text-green-400 text-xs sm:text-sm font-sans"
                 >
                   <Check className="w-5 h-5 shrink-0 text-green-400" />
-                  <span>شكراً لك! تم إرسال رسالتك بنجاح وسيتواصل معك فريق المؤسسة في أقرب وقت.</span>
+                  <span>
+                    {contactInfo?.contactFormSuccessMsg || customTexts?.contactFormSuccessMsg || "شكراً لك! تم إرسال رسالتك بنجاح وسيتواصل معك فريق المؤسسة في أقرب وقت."}
+                  </span>
                 </motion.div>
               )}
               {errorMessage && (
@@ -407,7 +422,11 @@ export default function ContactSection({ cards, socialLinks, contactInfo }: Cont
               className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-4 px-4 rounded-xl shadow-lg shadow-amber-500/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
             >
               <Send className="w-4 h-4" />
-              <span>{isSending ? "جاري الإرسال والمزامنة..." : "إرسال الرسالة الإلكترونية"}</span>
+              <span>
+                {isSending 
+                  ? (contactInfo?.contactFormSendingBtn || customTexts?.contactFormSendingBtn || "جاري الإرسال والمزامنة...") 
+                  : (contactInfo?.contactFormSubmitBtn || customTexts?.contactFormSubmitBtn || "إرسال الرسالة الإلكترونية")}
+              </span>
             </button>
           </form>
         </div>

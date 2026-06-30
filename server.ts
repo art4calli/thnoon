@@ -359,7 +359,29 @@ app.get("/api/data", async (req, res) => {
           typeVal === "فيسبوك" ||
           typeVal === "إنستغرام" ||
           typeVal === "يوتيوب" ||
-          typeVal === "لاين"
+          typeVal === "لاين" ||
+          typeVal === "عنوان مواقع التواصل" ||
+          typeVal === "تابعونا على مواقع التواصل" ||
+          typeVal === "عنوان الاستفسار" ||
+          typeVal === "عنوان نموذج التواصل" ||
+          typeVal === "عنوان النموذج" ||
+          typeVal === "حقل الاسم" ||
+          typeVal === "الاسم" ||
+          typeVal === "حقل البريد" ||
+          typeVal === "البريد الإلكتروني" ||
+          typeVal === "حقل الموضوع" ||
+          typeVal === "الموضوع" ||
+          typeVal === "حقل الرسالة" ||
+          typeVal === "الرسالة" ||
+          typeVal === "تلميح الاسم" ||
+          typeVal === "تلميح البريد" ||
+          typeVal === "تلميح الموضوع" ||
+          typeVal === "تلميح الرسالة" ||
+          typeVal === "رسالة النجاح" ||
+          typeVal === "زر الإرسال" ||
+          typeVal === "زر الارسال" ||
+          typeVal === "جاري الإرسال" ||
+          typeVal === "جاري الارسال"
         ) {
           isNewStructuredFormat = true;
           break;
@@ -374,6 +396,20 @@ app.get("/api/data", async (req, res) => {
       let descText = FALLBACK_DATA.contactInfo?.description;
       let panelTitleText = FALLBACK_DATA.contactInfo?.panelTitle;
       let panelDescText = FALLBACK_DATA.contactInfo?.panelDescription;
+
+      let contactSocialLabel: string | undefined = undefined;
+      let contactFormTitle: string | undefined = undefined;
+      let contactFormLabelName: string | undefined = undefined;
+      let contactFormLabelEmail: string | undefined = undefined;
+      let contactFormLabelSubject: string | undefined = undefined;
+      let contactFormLabelMessage: string | undefined = undefined;
+      let contactFormPlaceholderName: string | undefined = undefined;
+      let contactFormPlaceholderEmail: string | undefined = undefined;
+      let contactFormPlaceholderSubject: string | undefined = undefined;
+      let contactFormPlaceholderMessage: string | undefined = undefined;
+      let contactFormSuccessMsg: string | undefined = undefined;
+      let contactFormSubmitBtn: string | undefined = undefined;
+      let contactFormSendingBtn: string | undefined = undefined;
 
       for (let i = 1; i < contactRows.length; i++) {
         const row = contactRows[i];
@@ -410,6 +446,32 @@ app.get("/api/data", async (req, res) => {
           socialLinks.youtube = rowValue || rowIconLink || socialLinks.youtube;
         } else if (rowType === "لاين") {
           socialLinks.line = rowValue || rowIconLink || socialLinks.line;
+        } else if (rowType === "عنوان مواقع التواصل" || rowType === "تابعونا على مواقع التواصل" || rowType === "مواقع التواصل") {
+          contactSocialLabel = rowValue || rowTitle;
+        } else if (rowType === "عنوان الاستفسار" || rowType === "عنوان نموذج التواصل" || rowType === "عنوان النموذج" || rowType === "إرسال استفسار مباشر" || rowType === "ارسال استفسار مباشر") {
+          contactFormTitle = rowValue || rowTitle;
+        } else if (rowType === "تسمية حقل الاسم" || rowType === "تسمية الاسم" || rowType === "حقل الاسم" || rowType === "الاسم") {
+          contactFormLabelName = rowValue || rowTitle;
+        } else if (rowType === "تسمية حقل البريد" || rowType === "تسمية البريد" || rowType === "حقل البريد" || rowType === "البريد" || rowType === "البريد الإلكتروني" || rowType === "البريد الالكتروني") {
+          contactFormLabelEmail = rowValue || rowTitle;
+        } else if (rowType === "تسمية حقل الموضوع" || rowType === "تسمية الموضوع" || rowType === "حقل الموضوع" || rowType === "الموضوع" || rowType === "موضوع الرسالة" || rowType === "موضوع الرساله") {
+          contactFormLabelSubject = rowValue || rowTitle;
+        } else if (rowType === "تسمية حقل الرسالة" || rowType === "تسمية الرسالة" || rowType === "حقل الرسالة" || rowType === "الرسالة" || rowType === "الرساله" || rowType === "مضمون الرسالة" || rowType === "مضمون الرساله") {
+          contactFormLabelMessage = rowValue || rowTitle;
+        } else if (rowType === "تلميح حقل الاسم" || rowType === "تلميح الاسم" || rowType === "تلميح اسم") {
+          contactFormPlaceholderName = rowValue || rowTitle;
+        } else if (rowType === "تلميح حقل البريد" || rowType === "تلميح البريد" || rowType === "تلميح بريد") {
+          contactFormPlaceholderEmail = rowValue || rowTitle;
+        } else if (rowType === "تلميح حقل الموضوع" || rowType === "تلميح الموضوع" || rowType === "تلميح موضوع") {
+          contactFormPlaceholderSubject = rowValue || rowTitle;
+        } else if (rowType === "تلميح حقل الرسالة" || rowType === "تلميح الرسالة" || rowType === "تلميح رسالة" || rowType === "تلميح رساله") {
+          contactFormPlaceholderMessage = rowValue || rowTitle;
+        } else if (rowType === "رسالة النجاح" || rowType === "نص النجاح" || rowType === "تم الارسال بنجاح" || rowType === "تم الإرسال بنجاح") {
+          contactFormSuccessMsg = rowValue || rowTitle;
+        } else if (rowType === "زر الإرسال" || rowType === "زر الارسال") {
+          contactFormSubmitBtn = rowValue || rowTitle;
+        } else if (rowType === "جاري الإرسال" || rowType === "جاري الارسال") {
+          contactFormSendingBtn = rowValue || rowTitle;
         }
       }
 
@@ -419,7 +481,20 @@ app.get("/api/data", async (req, res) => {
         description: descText,
         panelTitle: panelTitleText,
         panelDescription: panelDescText,
-        cards: parsedCards.length > 0 ? parsedCards : (FALLBACK_DATA.contactInfo?.cards || [])
+        cards: parsedCards.length > 0 ? parsedCards : (FALLBACK_DATA.contactInfo?.cards || []),
+        contactSocialLabel,
+        contactFormTitle,
+        contactFormLabelName,
+        contactFormLabelEmail,
+        contactFormLabelSubject,
+        contactFormLabelMessage,
+        contactFormPlaceholderName,
+        contactFormPlaceholderEmail,
+        contactFormPlaceholderSubject,
+        contactFormPlaceholderMessage,
+        contactFormSuccessMsg,
+        contactFormSubmitBtn,
+        contactFormSendingBtn
       };
     } else {
       // Old style fallback:
@@ -644,6 +719,34 @@ app.get("/api/data", async (req, res) => {
           customTexts.heroSecondaryBtn = rawVal;
         } else if (norm === "topannouncementtag" || norm === "شارةالاعلان" || norm === "شارةاخبارالمؤسسه" || norm === "شارةأخبارالمؤسسة" || norm === "عنوانالشارة" || norm === "عنوانالشاره") {
           customTexts.topAnnouncementTag = rawVal;
+        } else if (norm === "aboutextratitle" || norm === "اقسامومعلوماتالمؤسسةالاضافية" || norm === "اقسامومعلوماتالمؤسسهالاضافيه" || norm === "عنوانالاقسامالاضافية" || norm === "عنوانالاقسامالاضافيه") {
+          customTexts.aboutExtraTitle = rawVal;
+        } else if (norm === "contactsociallabel" || norm === "تابعوناعلىمواقعالتواصلالاجتماعي" || norm === "عنوانمواقعالتواصل" || norm === "عنوانالتواصلالاجتماعي") {
+          customTexts.contactSocialLabel = rawVal;
+        } else if (norm === "contactformtitle" || norm === "ارسالاستفسارمباشر" || norm === "إرسالاستفسارمباشر" || norm === "عنوانالاستفسار") {
+          customTexts.contactFormTitle = rawVal;
+        } else if (norm === "contactformlabelname" || norm === "الاسم" || norm === "حقلالاسم" || norm === "الاسم_الكريم") {
+          customTexts.contactFormLabelName = rawVal;
+        } else if (norm === "contactformlabelemail" || norm === "البريد_الالكتروني" || norm === "حقلالبريد" || norm === "البريد" || norm === "البريدالالكتروني" || norm === "البريدالإلكتروني") {
+          customTexts.contactFormLabelEmail = rawVal;
+        } else if (norm === "contactformlabelsubject" || norm === "الموضوع" || norm === "حقلالموضوع" || norm === "موضوعالرسالة" || norm === "موضوعالرساله") {
+          customTexts.contactFormLabelSubject = rawVal;
+        } else if (norm === "contactformlabelmessage" || norm === "الرسالة" || norm === "حقلالرسالة" || norm === "مضمونالرسالة" || norm === "مضمونالرساله" || norm === "مضمونالرسالةاوالطلب" || norm === "مضمونالرسالهاوالطلب") {
+          customTexts.contactFormLabelMessage = rawVal;
+        } else if (norm === "contactformplaceholdername" || norm === "تلميحالاسم" || norm === "ادخلاسمكالكامل" || norm === "أدخلاسمكالكامل") {
+          customTexts.contactFormPlaceholderName = rawVal;
+        } else if (norm === "contactformplaceholderemail" || norm === "تلميخالبريد" || norm === "تلميحالبريد") {
+          customTexts.contactFormPlaceholderEmail = rawVal;
+        } else if (norm === "contactformplaceholdersubject" || norm === "تلميحالموضوع") {
+          customTexts.contactFormPlaceholderSubject = rawVal;
+        } else if (norm === "contactformplaceholdermessage" || norm === "تلميحالرسالة" || norm === "تلميحالرساله" || norm === "اكتباستفساركأوتفاصيلطلبكهنا" || norm === "اكتباستفسارك") {
+          customTexts.contactFormPlaceholderMessage = rawVal;
+        } else if (norm === "contactformsuccessmsg" || norm === "رسالةالنجاح" || norm === "رسالهالنجاح" || norm === "تمالارسالبنجاح") {
+          customTexts.contactFormSuccessMsg = rawVal;
+        } else if (norm === "contactformsubmitbtn" || norm === "زرالارسال" || norm === "زرإرسالالرسالة" || norm === "زرارسالالرساله") {
+          customTexts.contactFormSubmitBtn = rawVal;
+        } else if (norm === "contactformsendingbtn" || norm === "جاريالارسال" || norm === "تلميحجاريالارسال" || norm === "جاريالإرسال") {
+          customTexts.contactFormSendingBtn = rawVal;
         }
       }
     }

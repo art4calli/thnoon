@@ -67,10 +67,6 @@ export default function ToolsSection({ cards, header }: ToolsSectionProps) {
                 {tool.media && tool.media.length > 0 ? (
                   <div className="relative">
                     <CardMediaSlider media={tool.media} title={tool.title} description={tool.description} aspectRatioClassName="aspect-square" />
-                    <span className="absolute bottom-3 right-3 bg-amber-500 text-slate-950 text-[10px] font-sans font-bold py-1 px-2.5 rounded-md flex items-center gap-1 z-10">
-                      <Box className="w-3.5 h-3.5" />
-                      <span>متوفر في فرع المؤسسة</span>
-                    </span>
                   </div>
                 ) : (
                   <div className="aspect-square bg-slate-900/40 flex items-center justify-center border-b border-slate-900">

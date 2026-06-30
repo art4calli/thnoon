@@ -406,7 +406,7 @@ export default function App() {
 
             {/* CONTACT SECTION - Rendered directly underneath Home profile */}
             <div className="border-t border-slate-900/40">
-              <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} contactInfo={appData?.contactInfo} />
+              <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} contactInfo={appData?.contactInfo} customTexts={appData?.customTexts} />
             </div>
           </div>
         )}
@@ -414,7 +414,7 @@ export default function App() {
         {/* ABOUT SECTION */}
         {activeSection === "about" && (
           <div id="about" className="pt-24 md:pt-28">
-            <AboutSection cards={appData?.aboutCards || []} biography={appData?.biography} header={appData?.sectionHeaders?.about} />
+            <AboutSection cards={appData?.aboutCards || []} biography={appData?.biography} header={appData?.sectionHeaders?.about} customTexts={appData?.customTexts} />
           </div>
         )}
 
@@ -449,7 +449,7 @@ export default function App() {
         {/* CONTACT SECTION (Independent Page View) */}
         {activeSection === "contact" && (
           <div id="contact" className="pt-24 md:pt-28">
-            <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} contactInfo={appData?.contactInfo} />
+            <ContactSection cards={appData?.contactCards || []} socialLinks={socialLinks} contactInfo={appData?.contactInfo} customTexts={appData?.customTexts} />
           </div>
         )}
 
@@ -468,7 +468,7 @@ export default function App() {
             </p>
           </div>
 
-          <div className="md:col-span-4 flex flex-wrap justify-center gap-x-6 gap-y-2 text-xs font-sans text-slate-400">
+          <div className="md:col-span-4 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs font-sans text-slate-400">
             <button onClick={() => handleNavigate("home")} className="hover:text-amber-400 transition-colors">
               {appData?.customTexts?.navHome || "الرئيسية"}
             </button>
@@ -476,16 +476,19 @@ export default function App() {
               {appData?.customTexts?.navAbout || "عن المؤسسة"}
             </button>
             <button onClick={() => handleNavigate("artwork")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navArtwork || "المعرض الفني"}
+              {appData?.customTexts?.navArtwork || "معرض الصور"}
             </button>
             <button onClick={() => handleNavigate("video")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navVideo || "المرئيات"}
+              {appData?.customTexts?.navVideo || "الفيديوهات"}
             </button>
             <button onClick={() => handleNavigate("courses")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navCourses || "الدورات"}
+              {appData?.customTexts?.navCourses || "البرامج التعليمية"}
             </button>
             <button onClick={() => handleNavigate("tools")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navTools || "الأدوات"}
+              {appData?.customTexts?.navTools || "أدوات الخط"}
+            </button>
+            <button onClick={() => handleNavigate("contact")} className="hover:text-amber-400 transition-colors">
+              {appData?.customTexts?.navContact || "تواصل معنا"}
             </button>
           </div>
 
