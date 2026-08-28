@@ -420,83 +420,228 @@ function submitRegistration(data) {
       }
     }
 
-    // 6. بناء قائمة الأعمدة المطلوبة بالكامل
-    var allRequiredHeaders = ["التاريخ والوقت", "رقم التسجيل"];
-    
+    // دوال المطابقة الذكية وتوحيد مسميات الحقول لمنع أي تكرار للأعمدة
+    function normalizeFieldKey(str) {
+      if (!str) return "";
+      return str.toString()
+        .toLowerCase()
+        .replace(/[\u064B-\u065F]/g, "") // إزالة التشكيل
+        .replace(/[إأآا]/g, "ا")
+        .replace(/[ة]/g, "ه")
+        .replace(/[يى]/g, "ي")
+        .replace(/[^a-z0-9\u0600-\u06FF\u0E00-\u0E7F]/g, "")
+        .trim();
+    }
+
+    function isSameFieldCategory(fieldA, fieldB) {
+      if (!fieldA || !fieldB) return false;
+      var normA = normalizeFieldKey(fieldA);
+      var normB = normalizeFieldKey(fieldB);
+      if (!normA || !normB) return false;
+      if (normA === normB) return true;
+      
+      // فئة البريد الإلكتروني
+      var isEmailA = normA.indexOf("ايميل") !== -1 || normA.indexOf("بريد") !== -1 || normA.indexOf("email") !== -1 || normA.indexOf("mail") !== -1 || normA.indexOf("อีเมล") !== -1;
+      var isEmailB = normB.indexOf("ايميل") !== -1 || normB.indexOf("بريد") !== -1 || normB.indexOf("email") !== -1 || normB.indexOf("mail") !== -1 || normB.indexOf("อีเมล") !== -1;
+      if (isEmailA && isEmailB) return true;
+
+      // فئة المرفقات والصور والملفات
+      var isFileA = normA.indexOf("صوره") !== -1 || normA.indexOf("ملف") !== -1 || normA.indexOf("مرفق") !== -1 || normA.indexOf("رفع") !== -1 || normA.indexOf("file") !== -1 || normA.indexOf("photo") !== -1 || normA.indexOf("image") !== -1 || normA.indexOf("upload") !== -1 || normA.indexOf("drive") !== -1 || normA.indexOf("รูป") !== -1;
+      var isFileB = normB.indexOf("صوره") !== -1 || normB.indexOf("ملف") !== -1 || normB.indexOf("مرفق") !== -1 || normB.indexOf("رفع") !== -1 || normB.indexOf("file") !== -1 || normB.indexOf("photo") !== -1 || normB.indexOf("image") !== -1 || normB.indexOf("upload") !== -1 || normB.indexOf("drive") !== -1 || normB.indexOf("รูป") !== -1;
+      if (isFileA && isFileB) return true;
+
+      // فئة الهاتف والواتساب
+      var isPhoneA = normA.indexOf("هاتف") !== -1 || normA.indexOf("جوال") !== -1 || normA.indexOf("واتساب") !== -1 || normA.indexOf("phone") !== -1 || normA.indexOf("mobile") !== -1 || normA.indexOf("tel") !== -1 || normA.indexOf("โทร") !== -1;
+      var isPhoneB = normB.indexOf("هاتف") !== -1 || normB.indexOf("جوال") !== -1 || normB.indexOf("واتساب") !== -1 || normB.indexOf("phone") !== -1 || normB.indexOf("mobile") !== -1 || normB.indexOf("tel") !== -1 || normB.indexOf("โทร") !== -1;
+      if (isPhoneA && isPhoneB) return true;
+
+      // فئة الاسم الكامل
+      var isNameA = normA === "الاسم" || normA === "الاسمكامل" || normA === "اسمالمشترك" || normA === "name" || normA === "fullname" || normA === "ชื่อ";
+      var isNameB = normB === "الاسم" || normB === "الاسمكامل" || normB === "اسمالمشترك" || normB === "name" || normB === "fullname" || normB === "ชื่อ";
+      if (isNameA && isNameB) return true;
+
+      // فئة الاسم بالعربي
+      var isArNameA = normA.indexOf("اسمبالعربي") !== -1 || normA.indexOf("arabicname") !== -1;
+      var isArNameB = normB.indexOf("اسمبالعربي") !== -1 || normB.indexOf("arabicname") !== -1;
+      if (isArNameA && isArNameB) return true;
+
+      // فئة العمر
+      var isAgeA = normA.indexOf("عمر") !== -1 || normA.indexOf("سن") !== -1 || normA.indexOf("age") !== -1 || normA.indexOf("อายุ") !== -1;
+      var isAgeB = normB.indexOf("عمر") !== -1 || normB.indexOf("سن") !== -1 || normB.indexOf("age") !== -1 || normB.indexOf("อายุ") !== -1;
+      if (isAgeA && isAgeB) return true;
+
+      // فئة ID Line
+      var isLineA = normA.indexOf("line") !== -1 || normA.indexOf("لاين") !== -1;
+      var isLineB = normB.indexOf("line") !== -1 || normB.indexOf("لاين") !== -1;
+      if (isLineA && isLineB) return true;
+
+      // فئة Facebook
+      var isFbA = normA.indexOf("face") !== -1 || normA.indexOf("فيس") !== -1;
+      var isFbB = normB.indexOf("face") !== -1 || normB.indexOf("فيس") !== -1;
+      if (isFbA && isFbB) return true;
+
+      // فئة التاريخ والوقت
+      var isTimeA = normA.indexOf("تاريخ") !== -1 || normA.indexOf("وقت") !== -1 || normA.indexOf("time") !== -1 || normA.indexOf("date") !== -1;
+      var isTimeB = normB.indexOf("تاريخ") !== -1 || normB.indexOf("وقت") !== -1 || normB.indexOf("time") !== -1 || normB.indexOf("date") !== -1;
+      if (isTimeA && isTimeB) return true;
+
+      // فئة رقم التسجيل
+      var isIdA = normA.indexOf("تسجيل") !== -1 || normA.indexOf("قيد") !== -1 || normA.indexOf("regid") !== -1;
+      var isIdB = normB.indexOf("تسجيل") !== -1 || normB.indexOf("قيد") !== -1 || normB.indexOf("regid") !== -1;
+      if (isIdA && isIdB && normA.indexOf("line") === -1 && normB.indexOf("line") === -1) return true;
+
+      // فئة QR Code
+      var isQrA = normA.indexOf("qr") !== -1 || normA.indexOf("باركود") !== -1 || normA.indexOf("استجابه") !== -1;
+      var isQrB = normB.indexOf("qr") !== -1 || normB.indexOf("باركود") !== -1 || normB.indexOf("استجابه") !== -1;
+      if (isQrA && isQrB) return true;
+
+      // فئة حالة وتأكيد الإرسال
+      var isStatusA = normA.indexOf("ارسال") !== -1 || normA.indexOf("حاله") !== -1 || normA.indexOf("status") !== -1 || normA.indexOf("تاكيد") !== -1;
+      var isStatusB = normB.indexOf("ارسال") !== -1 || normB.indexOf("حاله") !== -1 || normB.indexOf("status") !== -1 || normB.indexOf("تاكيد") !== -1;
+      if (isStatusA && isStatusB) return true;
+
+      return false;
+    }
+
+    // 6. بناء قائمة الأعمدة القياسية في حال كانت الورقة جديدة تماماً
+    var defaultStandardHeaders = ["التاريخ والوقت", "رقم التسجيل"];
     for (var f = 0; f < formQuestionsList.length; f++) {
-      var qName = formQuestionsList[f];
-      if (allRequiredHeaders.indexOf(qName) === -1) {
-        allRequiredHeaders.push(qName);
+      var qName = (formQuestionsList[f] || "").toString().trim();
+      if (qName && defaultStandardHeaders.indexOf(qName) === -1) {
+        defaultStandardHeaders.push(qName);
       }
     }
 
-    // إضافة أي إجابات إضافية لها مدخلات غير موجودة بالقائمة الأساسية
-    for (var extraKey in answersMap) {
-      if (extraKey && allRequiredHeaders.indexOf(extraKey) === -1) {
-        if (
-          extraKey !== "صورة" &&
-          extraKey !== "زر" &&
-          extraKey !== "عرض صورة" &&
-          extraKey !== "البريد الإلكتروني" &&
-          extraKey !== "إجابات الأسئلة التفصيلية" &&
-          extraKey !== "ملخص الإجابات" &&
-          extraKey !== "Facebook"
-        ) {
-          allRequiredHeaders.push(extraKey);
-        }
-      }
-    }
-
-    // 7. التأكد من وجود الورقة وضبط الترويسة
+    // 7. التأكد من وجود الورقة وقراءة الترويسة الحالية بدقة
     if (!sheet) {
       sheet = ss.insertSheet(sheetName);
     }
 
-    // قراءة الترويسة الحالية
-    var maxCols = Math.max(sheet.getLastColumn(), allRequiredHeaders.length);
-    var currentHeaders = sheet.getLastRow() > 0 ? (sheet.getRange(1, 1, 1, maxCols).getValues()[0] || []) : [];
-    
-    // إذا كانت الترويسة قديمة أو تحتوي على عامود مجمع أو غير مطابقة، يتم تحديث الترويسة بالكامل
-    var needsHeaderReset = false;
-    if (currentHeaders.length === 0 || !currentHeaders[0]) {
-      needsHeaderReset = true;
-    } else {
-      for (var ch = 0; ch < currentHeaders.length; ch++) {
-        var hText = currentHeaders[ch] ? currentHeaders[ch].toString().trim() : "";
-        if (hText === "إجابات الأسئلة التفصيلية" || hText === "ملخص الإجابات" || hText === "Facebook") {
-          needsHeaderReset = true;
-          break;
+    // قراءة الترويسة الحالية الفعلية من الصف الأول
+    var lastCol = sheet.getLastColumn();
+    var currentHeaders = [];
+    if (lastCol > 0 && sheet.getLastRow() > 0) {
+      var rawHeaders = sheet.getRange(1, 1, 1, lastCol).getValues()[0] || [];
+      for (var rh = 0; rh < rawHeaders.length; rh++) {
+        var hVal = rawHeaders[rh] ? rawHeaders[rh].toString().trim() : "";
+        if (hVal) {
+          currentHeaders.push(hVal);
         }
       }
     }
 
-    if (needsHeaderReset) {
-      sheet.getRange(1, 1, 1, allRequiredHeaders.length).setValues([allRequiredHeaders]);
-      sheet.getRange(1, 1, 1, allRequiredHeaders.length)
+    // إذا كانت الورقة جديدة تماماً أو فارغة بدون ترويسة، يتم إنشاء الترويسة القياسية
+    if (currentHeaders.length === 0) {
+      sheet.getRange(1, 1, 1, defaultStandardHeaders.length).setValues([defaultStandardHeaders]);
+      sheet.getRange(1, 1, 1, defaultStandardHeaders.length)
            .setFontWeight("bold")
            .setBackground("#1E293B")
            .setFontColor("#F8FAFC")
            .setHorizontalAlignment("center");
       sheet.setFrozenRows(1);
-      currentHeaders = allRequiredHeaders.slice();
+      currentHeaders = defaultStandardHeaders.slice();
     } else {
-      // إضافة أي أعمدة جديدة غير موجودة
-      for (var h = 0; h < allRequiredHeaders.length; h++) {
-        var reqHeader = allRequiredHeaders[h];
-        if (currentHeaders.indexOf(reqHeader) === -1) {
-          var newColIdx = currentHeaders.length + 1;
-          var headerCell = sheet.getRange(1, newColIdx);
-          headerCell.setValue(reqHeader)
-                    .setFontWeight("bold")
-                    .setBackground("#0F766E")
-                    .setFontColor("#FFFFFF")
-                    .setHorizontalAlignment("center");
-          currentHeaders.push(reqHeader);
+      // التحقق من الأسئلة الجديدة المخصصة في ورقة RegistrationQuestions وإضافتها فقط إذا كانت جديدة فعلاً
+      for (var fq = 0; fq < formQuestionsList.length; fq++) {
+        var formQ = (formQuestionsList[fq] || "").toString().trim();
+        if (!formQ) continue;
+        
+        // التحقق إن كان السؤال موجوداً بالفعل أو مشابهاً لأي عامود حالي
+        var alreadyExists = false;
+        for (var ex = 0; ex < currentHeaders.length; ex++) {
+          if (isSameFieldCategory(formQ, currentHeaders[ex])) {
+            alreadyExists = true;
+            break;
+          }
+        }
+
+        // يضاف العامود فقط إذا كان سؤالاً إضافياً جديداً ولم يكن له أي عامود مماثل إطلاقاً
+        if (!alreadyExists) {
+          var nextColIdx = currentHeaders.length + 1;
+          sheet.getRange(1, nextColIdx)
+               .setValue(formQ)
+               .setFontWeight("bold")
+               .setBackground("#0F766E")
+               .setFontColor("#FFFFFF")
+               .setHorizontalAlignment("center");
+          currentHeaders.push(formQ);
         }
       }
     }
 
-    // 8. بناء صف الإجابات بما يطابق الأعمدة بدقة 100%
+    // 8. دالة استخراج القيمة المطابقة للعامود بأعلى دقة ومرونة
+    function getAnswerForColumn(colHeader, cIndex) {
+      if (!colHeader) return "";
+      var cleanHeader = colHeader.toString().trim();
+      
+      // أ) مطابقة مباشرة بالاسم الدقيق
+      if (answersMap[cleanHeader] !== undefined && answersMap[cleanHeader] !== null && answersMap[cleanHeader] !== "") {
+        return answersMap[cleanHeader];
+      }
+
+      // ب) مطابقة الحقول الأساسية حسب الفئات الموحدة (عربي / إنجليزي / تايلاندي)
+      if (isSameFieldCategory(cleanHeader, "ايميل")) {
+        return answersMap["ايميل"] || answersMap["البريد الإلكتروني"] || answersMap["البريد"] || answersMap["Email"] || data.email || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "رفع ملف")) {
+        return answersMap["رفع ملف"] || answersMap["ملف"] || answersMap["صورة"] || answersMap["الصورة"] || answersMap["الصورة الشخصية"] || answersMap["رابط صورة"] || answersMap["ملف المرفقات / رابط Drive"] || data.attachment || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "اسم بالعربي")) {
+        return answersMap["الاسم بالعربي"] || data.nameArabic || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "الاسم")) {
+        return answersMap["الاسم"] || answersMap["الاسم الكامل"] || answersMap["اسم المشترك"] || data.name || data.nameArabic || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "العمر")) {
+        return answersMap["العمر"] || answersMap["Age"] || data.age || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "رقم الهاتف")) {
+        return answersMap["رقم الهاتف"] || answersMap["هاتف"] || answersMap["الواتساب"] || answersMap["الجوال"] || data.phone || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "ID Line")) {
+        return answersMap["ID Line"] || answersMap["Line ID"] || answersMap["لاين"] || data.lineId || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "فيس بوك")) {
+        return answersMap["فيس بوك"] || answersMap["Facebook"] || data.facebook || "";
+      }
+      if (isSameFieldCategory(cleanHeader, "التاريخ والوقت")) {
+        return timestamp;
+      }
+      if (isSameFieldCategory(cleanHeader, "رقم التسجيل")) {
+        return registrationId;
+      }
+      if (isSameFieldCategory(cleanHeader, "QR Code")) {
+        return ""; // يترك فارغاً ليتم تعبئته لاحقاً برابط الـ QR
+      }
+      if (isSameFieldCategory(cleanHeader, "تأكيد الإرسال")) {
+        return ""; // يترك فارغاً ليتم تعبئته بعد إرسال الإيميل
+      }
+
+      // ج) مطابقة الأسئلة المخصصة الإضافية
+      for (var k in answersMap) {
+        if (k && isSameFieldCategory(k, cleanHeader) && answersMap[k]) {
+          return answersMap[k];
+        }
+      }
+
+      // د) فحص من مصفوفة الإجابات answers
+      if (data.answers && Array.isArray(data.answers)) {
+        for (var ai = 0; ai < data.answers.length; ai++) {
+          var aObj = data.answers[ai];
+          if (!aObj) continue;
+          var aQ = (aObj.question || "").toString().trim();
+          if (aQ && isSameFieldCategory(aQ, cleanHeader)) {
+            if (aObj.answer !== undefined && aObj.answer !== null) {
+              return aObj.answer.toString().trim();
+            }
+          }
+        }
+      }
+
+      return "";
+    }
+
+    // بناء صف الإجابات بما يطابق الأعمدة بدقة 100%
     var rowValues = [];
     for (var c = 0; c < currentHeaders.length; c++) {
       var col = (currentHeaders[c] || "").toString().trim();
@@ -509,18 +654,7 @@ function submitRegistration(data) {
       } else if (col === "إجابات الأسئلة التفصيلية" || col === "ملخص الإجابات") {
         rowValues.push(""); // تفريغ أي عامود مجمع قديم
       } else {
-        var val = answersMap[col];
-        if (val === undefined || val === null) {
-          if (col === "ايميل" || col === "البريد الإلكتروني") val = answersMap["ايميل"] || answersMap["البريد الإلكتروني"] || data.email;
-          else if (col === "الاسم" || col === "الاسم الكامل") val = answersMap["الاسم"] || data.name;
-          else if (col === "الاسم بالعربي") val = answersMap["الاسم بالعربي"] || data.nameArabic;
-          else if (col === "العمر") val = answersMap["العمر"] || data.age;
-          else if (col === "رقم الهاتف" || col === "هاتف") val = answersMap["رقم الهاتف"] || answersMap["هاتف"] || data.phone;
-          else if (col === "ID Line" || col === "لاين") val = answersMap["ID Line"] || answersMap["لاين"] || data.lineId;
-          else if (col === "فيس بوك" || col === "Facebook") val = answersMap["فيس بوك"] || answersMap["Facebook"] || data.facebook;
-          else if (col === "رفع ملف" || col === "ملف المرفقات / رابط Drive" || col.indexOf("رفع") !== -1 || col.indexOf("ملف") !== -1) val = answersMap["رفع ملف"] || answersMap["ملف المرفقات / رابط Drive"] || data.attachment;
-          else val = "";
-        }
+        var val = getAnswerForColumn(col, c);
         rowValues.push(val || "");
       }
     }
@@ -537,32 +671,56 @@ function submitRegistration(data) {
     }
 
     // 9. التأكد من وجود أعمدة الـ QR Code وحالة الإرسال وتنسيقها
-    var qrColLetter = (data.emailConfig && data.emailConfig.qrDriveUrlColumn) ? data.emailConfig.qrDriveUrlColumn : "Y";
-    var statusColLetter = (data.emailConfig && data.emailConfig.deliveryStatusColumn) ? data.emailConfig.deliveryStatusColumn : "Z";
-    var qrColIdx = colLetterToNumber(qrColLetter);
-    var statusColIdx = colLetterToNumber(statusColLetter);
+    var qrColIdx = 0;
+    var statusColIdx = 0;
+
+    // البحث في الأعمدة الحالية أولاً
+    for (var chk = 0; chk < currentHeaders.length; chk++) {
+      var headTxt = currentHeaders[chk] || "";
+      if (!qrColIdx && (isSameFieldCategory(headTxt, "QR Code") || isSameFieldCategory(headTxt, "باركود"))) {
+        qrColIdx = chk + 1;
+      }
+      if (!statusColIdx && (isSameFieldCategory(headTxt, "تأكيد الإرسال") || isSameFieldCategory(headTxt, "حالة الإرسال") || isSameFieldCategory(headTxt, "تم الإرسال"))) {
+        statusColIdx = chk + 1;
+      }
+    }
+
+    // إذا لم تكن موجودة، استخدام التكوين المحدد أو الأعمدة الافتراضية
+    if (!qrColIdx) {
+      var qrColLetter = (data.emailConfig && data.emailConfig.qrDriveUrlColumn) ? data.emailConfig.qrDriveUrlColumn : "";
+      qrColIdx = qrColLetter ? colLetterToNumber(qrColLetter) : 0;
+    }
+    if (!statusColIdx) {
+      var statusColLetter = (data.emailConfig && data.emailConfig.deliveryStatusColumn) ? data.emailConfig.deliveryStatusColumn : "";
+      statusColIdx = statusColLetter ? colLetterToNumber(statusColLetter) : 0;
+    }
 
     try {
-      var maxNeededCol = Math.max(currentHeaders.length, qrColIdx, statusColIdx);
-      if (sheet.getMaxColumns() < maxNeededCol) {
-        sheet.insertColumnsAfter(sheet.getMaxColumns(), maxNeededCol - sheet.getMaxColumns() + 2);
+      if (qrColIdx > 0) {
+        if (sheet.getMaxColumns() < qrColIdx) {
+          sheet.insertColumnsAfter(sheet.getMaxColumns(), qrColIdx - sheet.getMaxColumns() + 1);
+        }
+        if (sheet.getRange(1, qrColIdx).getValue() === "") {
+          sheet.getRange(1, qrColIdx)
+               .setValue("رابط صورة QR Code (Google Drive)")
+               .setFontWeight("bold")
+               .setBackground("#D97706")
+               .setFontColor("#FFFFFF")
+               .setHorizontalAlignment("center");
+        }
       }
-
-      if (sheet.getRange(1, qrColIdx).getValue() === "") {
-        sheet.getRange(1, qrColIdx)
-             .setValue("رابط صورة QR Code (Google Drive)")
-             .setFontWeight("bold")
-             .setBackground("#D97706")
-             .setFontColor("#FFFFFF")
-             .setHorizontalAlignment("center");
-      }
-      if (sheet.getRange(1, statusColIdx).getValue() === "") {
-        sheet.getRange(1, statusColIdx)
-             .setValue("حالة إرسال الإيميل (Email Status)")
-             .setFontWeight("bold")
-             .setBackground("#059669")
-             .setFontColor("#FFFFFF")
-             .setHorizontalAlignment("center");
+      if (statusColIdx > 0) {
+        if (sheet.getMaxColumns() < statusColIdx) {
+          sheet.insertColumnsAfter(sheet.getMaxColumns(), statusColIdx - sheet.getMaxColumns() + 1);
+        }
+        if (sheet.getRange(1, statusColIdx).getValue() === "") {
+          sheet.getRange(1, statusColIdx)
+               .setValue("حالة إرسال الإيميل (Email Status)")
+               .setFontWeight("bold")
+               .setBackground("#059669")
+               .setFontColor("#FFFFFF")
+               .setHorizontalAlignment("center");
+        }
       }
     } catch(headErr) {
       Logger.log("Header setup note: " + headErr.message);
@@ -745,7 +903,17 @@ function testSubscriberEmailService(postData) {
 // دالة إرسال إيميل المشترك المخصص بالكامل مع QR Code وجدول البيانات والمرفقات
 function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeaders, customEmailConfig) {
   try {
-    var emailConfig = customEmailConfig || {};
+    var emailConfig = customEmailConfig;
+    if (!emailConfig || Object.keys(emailConfig).length === 0) {
+      try {
+        var savedEmailStr = PropertiesService.getScriptProperties().getProperty("SUBSCRIBER_EMAIL_CONFIG");
+        if (savedEmailStr) {
+          emailConfig = JSON.parse(savedEmailStr);
+        }
+      } catch (e) {}
+    }
+    if (!emailConfig) emailConfig = {};
+
     var emailColLetter = emailConfig.emailColumn || "E";
     var emailColIdx = colLetterToNumber(emailColLetter);
     
@@ -887,14 +1055,26 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
     }
 
     // تسجيل رابط الـ QR في العامود المخصص بالورقة دائماً
-    var qrColToSave = (emailConfig && emailConfig.qrDriveUrlColumn) ? emailConfig.qrDriveUrlColumn.toString().trim().toUpperCase() : "Y";
-    if (sheet && rowIdx && qrColToSave) {
-      try {
-        var qrColIdx = colLetterToNumber(qrColToSave);
-        if (sheet.getMaxColumns() < qrColIdx) {
-          sheet.insertColumnsAfter(sheet.getMaxColumns(), qrColIdx - sheet.getMaxColumns() + 2);
+    var qrColIdxToSave = 0;
+    if (currentHeaders && currentHeaders.length > 0) {
+      for (var qhi = 0; qhi < currentHeaders.length; qhi++) {
+        var qHText = (currentHeaders[qhi] || "").toString().trim().toLowerCase();
+        if (qHText.indexOf("qr") !== -1 || qHText.indexOf("باركود") !== -1 || qHText.indexOf("استجابة") !== -1 || qHText.indexOf("استجابه") !== -1) {
+          qrColIdxToSave = qhi + 1;
+          break;
         }
-        sheet.getRange(rowIdx, qrColIdx).setValue(driveQrFileUrl || qrImageUrl);
+      }
+    }
+    if (!qrColIdxToSave && emailConfig && emailConfig.qrDriveUrlColumn) {
+      qrColIdxToSave = colLetterToNumber(emailConfig.qrDriveUrlColumn);
+    }
+    
+    if (sheet && rowIdx && qrColIdxToSave > 0) {
+      try {
+        if (sheet.getMaxColumns() < qrColIdxToSave) {
+          sheet.insertColumnsAfter(sheet.getMaxColumns(), qrColIdxToSave - sheet.getMaxColumns() + 1);
+        }
+        sheet.getRange(rowIdx, qrColIdxToSave).setValue(driveQrFileUrl || qrImageUrl);
         SpreadsheetApp.flush();
       } catch(qSetErr) {
         Logger.log("QR Sheet write note: " + qSetErr.message);
@@ -1170,15 +1350,27 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
 
     MailApp.sendEmail(mailPayload);
 
-    // تسجيل حالة "تم الإرسال" في العامود المحدد في الشيت
-    var statusColToSave = (emailConfig && emailConfig.deliveryStatusColumn) ? emailConfig.deliveryStatusColumn.toString().trim().toUpperCase() : "Z";
-    if (sheet && rowIdx && statusColToSave) {
-      try {
-        var statusColIdx = colLetterToNumber(statusColToSave);
-        if (sheet.getMaxColumns() < statusColIdx) {
-          sheet.insertColumnsAfter(sheet.getMaxColumns(), statusColIdx - sheet.getMaxColumns() + 2);
+    // تسجيل حالة "تم الإرسال" في العامود المخصص بالورقة دائماً
+    var statusColIdxToSave = 0;
+    if (currentHeaders && currentHeaders.length > 0) {
+      for (var shi = 0; shi < currentHeaders.length; shi++) {
+        var sHText = (currentHeaders[shi] || "").toString().trim().toLowerCase();
+        if (sHText.indexOf("إرسال") !== -1 || sHText.indexOf("ارسال") !== -1 || sHText.indexOf("حالة") !== -1 || sHText.indexOf("حاله") !== -1 || sHText.indexOf("تأكيد") !== -1 || sHText.indexOf("تاكيد") !== -1 || sHText.indexOf("status") !== -1) {
+          statusColIdxToSave = shi + 1;
+          break;
         }
-        sheet.getRange(rowIdx, statusColIdx).setValue("تم الإرسال: " + timestamp);
+      }
+    }
+    if (!statusColIdxToSave && emailConfig && emailConfig.deliveryStatusColumn) {
+      statusColIdxToSave = colLetterToNumber(emailConfig.deliveryStatusColumn);
+    }
+    
+    if (sheet && rowIdx && statusColIdxToSave > 0) {
+      try {
+        if (sheet.getMaxColumns() < statusColIdxToSave) {
+          sheet.insertColumnsAfter(sheet.getMaxColumns(), statusColIdxToSave - sheet.getMaxColumns() + 1);
+        }
+        sheet.getRange(rowIdx, statusColIdxToSave).setValue("تم الإرسال: " + timestamp);
         SpreadsheetApp.flush();
       } catch(sSetErr) {
         Logger.log("Status Sheet write note: " + sSetErr.message);
@@ -1564,7 +1756,7 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
     // توليد بيانات ورابط رمز الـ QR Code الخاص بالمشترك للإشعار
     var qrInfo = null;
     var qrCodeCols = (data.emailConfig && data.emailConfig.qrCodeColumns) ? data.emailConfig.qrCodeColumns : "B, C";
-    if (telegramConfig.includeQrCode) {
+    if (telegramConfig.includeQrCode !== false) {
       qrInfo = generateSubscriberQrData(qrCodeCols, data, rowValues, currentHeaders, null, null);
     }
 
@@ -1611,7 +1803,7 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
     }
 
     // 3. إذا لم تكن هناك صورة مرفوعة وكان الـ QR Code مفعلاً، نستخدم رمز الـ QR
-    if (!photoBlob && telegramConfig.includeQrCode && qrInfo && qrInfo.qrUrl) {
+    if (!photoBlob && telegramConfig.includeQrCode !== false && qrInfo && qrInfo.qrUrl) {
       try {
         photoBlob = UrlFetchApp.fetch(qrInfo.qrUrl, { muteHttpExceptions: true }).getBlob();
         photoBlob.setName("QR_" + regId + ".png");
@@ -1681,8 +1873,8 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
       inlineKeyboard.push([{ text: "📎 فتح الملف المرفق ↗", url: rawAttachmentUrl }]);
     }
 
-    // زر مباشر لفتح رمز الـ QR Code إذا وُجدت صورة مرفوعة منفصلة
-    if (driveFileId && telegramConfig.includeQrCode && qrInfo && qrInfo.qrUrl) {
+    // زر مباشر لفتح رمز الـ QR Code دائماً في حال توفره
+    if (telegramConfig.includeQrCode !== false && qrInfo && qrInfo.qrUrl) {
       inlineKeyboard.push([{ text: "🔳 عرض وتنزيل رمز QR Code ↗", url: qrInfo.qrUrl }]);
     }
 

@@ -636,18 +636,13 @@ export default function RegistrationModal({
       setUploadingFiles((prev) => ({ ...prev, [targetKey]: true }));
       const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || "";
 
-      fetch("/api/upload-drive", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          base64Data,
-          fileName,
-          mimeType: "image/jpeg",
-          folderId: driveFolderId,
-          scriptUrl: activeScriptUrl
-        })
-      })
-        .then((res) => res.json())
+      uploadFileToDriveBridge(
+        base64Data,
+        fileName,
+        "image/jpeg",
+        driveFolderId || DEFAULT_DRIVE_FOLDER_ID,
+        activeScriptUrl
+      )
         .then((data) => {
           if (data && data.success && data.fileUrl) {
             setAnswers((prev) => ({ ...prev, [targetKey]: data.fileUrl }));

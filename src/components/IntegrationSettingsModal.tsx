@@ -6,7 +6,7 @@ import SubscriberEmailSettings from "./SubscriberEmailSettings";
 import TelegramAdminSettings from "./TelegramAdminSettings";
 import RegistrationAnswersViewer from "./RegistrationAnswersViewer";
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_xPutpZY3p0dT6FXOKS2Xdn_ErIyen9JY5GX0OHyyfDYRma6oBA5bhxKSYN5f9323oA/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
 
 interface IntegrationSettingsModalProps {
   isOpen: boolean;
@@ -342,9 +342,9 @@ export default function IntegrationSettingsModal({
       <div className="relative w-full max-w-3xl bg-slate-900 border border-amber-500/30 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
         
         {/* Modal Header */}
-        <div className="flex items-center justify-between px-6 py-4 border-b border-amber-500/20 bg-slate-950/60">
+        <div className="flex-shrink-0 flex items-center justify-between px-6 py-4 border-b border-amber-500/20 bg-slate-950/80">
           <div className="flex items-center gap-3">
-            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400">
+            <div className="p-2.5 bg-amber-500/10 border border-amber-500/30 rounded-xl text-amber-400 shrink-0">
               <Link2 className="w-5 h-5" />
             </div>
             <div>
@@ -354,107 +354,107 @@ export default function IntegrationSettingsModal({
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-xl transition-colors"
+            className="p-2 text-slate-400 hover:text-white bg-slate-800/60 hover:bg-slate-800 rounded-xl transition-colors shrink-0"
           >
             <X className="w-5 h-5" />
           </button>
         </div>
 
-        {/* Tab Navigation */}
-        <div className="flex border-b border-slate-800 bg-slate-950/30 px-6 gap-2 overflow-x-auto">
+        {/* Tab Navigation - Sticky & Never Collapses */}
+        <div className="flex-shrink-0 sticky top-0 z-20 flex border-b border-slate-800 bg-slate-950 px-4 md:px-6 gap-2 overflow-x-auto whitespace-nowrap scrollbar-thin scrollbar-thumb-slate-700 py-1 shadow-sm">
           <button
             onClick={() => setActiveTab("settings")}
-            className={`flex items-center gap-2 py-3 px-3.5 font-sans text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "settings"
-                ? "border-amber-500 text-amber-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Database className="w-4 h-4" />
+            <Database className="w-4 h-4 shrink-0" />
             <span>بيانات الربط والروابط</span>
           </button>
 
           <button
             onClick={() => setActiveTab("admin_auth")}
-            className={`flex items-center gap-2 py-3 px-3.5 font-sans text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "admin_auth"
-                ? "border-amber-500 text-amber-400 bg-amber-500/5"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Shield className="w-4 h-4 text-amber-400" />
+            <Shield className="w-4 h-4 text-amber-400 shrink-0" />
             <span>أمان المشرف ورابط الإعدادات</span>
           </button>
 
           <button
             onClick={() => setActiveTab("registrants")}
-            className={`flex items-center gap-2 py-3 px-3.5 font-sans text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "registrants"
-                ? "border-amber-500 text-amber-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Users className="w-4 h-4" />
+            <Users className="w-4 h-4 shrink-0" />
             <span>سجل المسجلين (RegistrationAnswers)</span>
           </button>
           
           <button
             onClick={() => setActiveTab("translations")}
-            className={`flex items-center gap-2 py-3 px-3.5 font-sans text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "translations"
-                ? "border-amber-500 text-amber-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Languages className="w-4 h-4" />
+            <Languages className="w-4 h-4 shrink-0" />
             <span>ترجمة ولغات الاستمارة</span>
           </button>
 
           <button
             onClick={() => setActiveTab("subscriber_email")}
-            className={`flex items-center gap-2 py-3 px-3.5 font-sans text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "subscriber_email"
-                ? "border-amber-500 text-amber-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Mail className="w-4 h-4" />
+            <Mail className="w-4 h-4 shrink-0" />
             <span>إيميل المشترك (الربط والرسائل)</span>
           </button>
 
           <button
             onClick={() => setActiveTab("telegram_admin")}
-            className={`flex items-center gap-2 py-3 px-3.5 font-sans text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "telegram_admin"
-                ? "border-sky-500 text-sky-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-sky-500 text-sky-400 bg-sky-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Send className="w-4 h-4" />
+            <Send className="w-4 h-4 shrink-0" />
             <span>رسائل تلغرام (الإدارة)</span>
           </button>
 
           <button
             onClick={() => setActiveTab("code")}
-            className={`flex items-center gap-2 py-3 px-3.5 font-sans text-xs font-semibold border-b-2 whitespace-nowrap transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "code"
-                ? "border-amber-500 text-amber-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Code2 className="w-4 h-4" />
+            <Code2 className="w-4 h-4 shrink-0" />
             <span>كود Google Apps Script</span>
           </button>
 
           <button
             onClick={() => setActiveTab("instructions")}
-            className={`flex items-center gap-2 py-3 px-4 font-sans text-xs font-semibold border-b-2 transition-colors ${
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "instructions"
-                ? "border-amber-500 text-amber-400"
-                : "border-transparent text-slate-400 hover:text-slate-200"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
             }`}
           >
-            <Layers className="w-4 h-4" />
+            <Layers className="w-4 h-4 shrink-0" />
             <span>خطوات التحديث والربط</span>
           </button>
         </div>

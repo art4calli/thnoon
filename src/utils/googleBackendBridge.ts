@@ -13,7 +13,7 @@
 
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig } from "../types";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_xPutpZY3p0dT6FXOKS2Xdn_ErIyen9JY5GX0OHyyfDYRma6oBA5bhxKSYN5f9323oA/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyz8awoTXf8Pi4inYxOCPod3-3YHpJFeY-unuWVSkf41XyiOxsMz7rtcTnrrofbXobenA/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
