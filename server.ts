@@ -26,7 +26,7 @@ const dataDir = path.join(process.cwd(), "data");
 const configFile = path.join(dataDir, "config.json");
 const formTranslationsFile = path.join(dataDir, "form_translations.json");
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz_xPutpZY3p0dT6FXOKS2Xdn_ErIyen9JY5GX0OHyyfDYRma6oBA5bhxKSYN5f9323oA/exec";
 let currentSpreadsheetId = process.env.SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 let currentScriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL || DEFAULT_SCRIPT_URL;
 let currentDriveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
@@ -2152,24 +2152,40 @@ async function sendTelegramAdminNotification(config: any, regData: any, spreadsh
     console.warn("QR build error in Telegram notification:", qrErr.message);
   }
 
-  // 1. Detect uploaded image attachment URL
+  // 1. Detect uploaded image attachment URL & Google Drive File ID
   let detectedImageUrl = "";
-  if (config.includeAttachment) {
-    if (regData.attachment && typeof regData.attachment === "string" && regData.attachment.startsWith("http")) {
-      const driveMatch = regData.attachment.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || regData.attachment.match(/id=([a-zA-Z0-9_-]+)/);
-      if (driveMatch && driveMatch[1]) {
-        detectedImageUrl = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
-      } else if (/\.(jpeg|jpg|png|webp|gif)($|\?)/i.test(regData.attachment)) {
+  let driveFileId = "";
+  let driveViewUrl = "";
+
+  function extractFileIdFromUrl(url: string) {
+    if (!url || typeof url !== "string") return "";
+    const m = url.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || url.match(/id=([a-zA-Z0-9_-]+)/);
+    return m && m[1] ? m[1] : "";
+  }
+
+  if (config.includeAttachment !== false) {
+    if (regData.attachment && typeof regData.attachment === "string") {
+      const fId = extractFileIdFromUrl(regData.attachment);
+      if (fId) {
+        driveFileId = fId;
+        driveViewUrl = `https://drive.google.com/file/d/${fId}/view?usp=sharing`;
+        detectedImageUrl = `https://lh3.googleusercontent.com/d/${fId}=w1600`;
+      } else if (/\.(jpeg|jpg|png|webp|gif)($|\?)/i.test(regData.attachment) || regData.attachment.startsWith("http")) {
         detectedImageUrl = regData.attachment;
       }
     }
     // Also check if any answer item contains a drive image URL
     if (!detectedImageUrl && regData.answers && Array.isArray(regData.answers)) {
       for (const item of regData.answers) {
-        if (item && typeof item.answer === "string" && item.answer.startsWith("http")) {
-          const driveMatch = item.answer.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || item.answer.match(/id=([a-zA-Z0-9_-]+)/);
-          if (driveMatch && driveMatch[1]) {
-            detectedImageUrl = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+        if (item && typeof item.answer === "string") {
+          const fId = extractFileIdFromUrl(item.answer);
+          if (fId) {
+            driveFileId = fId;
+            driveViewUrl = `https://drive.google.com/file/d/${fId}/view?usp=sharing`;
+            detectedImageUrl = `https://lh3.googleusercontent.com/d/${fId}=w1600`;
+            break;
+          } else if (/\.(jpeg|jpg|png|webp|gif)($|\?)/i.test(item.answer)) {
+            detectedImageUrl = item.answer;
             break;
           }
         }
@@ -2193,7 +2209,7 @@ async function sendTelegramAdminNotification(config: any, regData: any, spreadsh
   if (config.customHeader) {
     message += `<b>${escapeTelegramHtml(config.customHeader)}</b>\n`;
   }
-  message += `<b>${escapeTelegramHtml(config.notificationTitle || "🔔 إشعار تسجيل جديد")}</b>\n`;
+  message += `<b>${escapeTelegramHtml(config.notificationTitle || "🔔 إشعار تسجيل جديد - مؤسسة يوسف ذنون")}</b>\n`;
   message += `━━━━━━━━━━━━━━━━━━━━\n`;
   message += `👤 <b>اسم المشترك:</b> ${escapeTelegramHtml(name)}\n`;
   message += `🆔 <b>رقم التسجيل:</b> <code>${escapeTelegramHtml(regId)}</code>\n`;
@@ -2216,16 +2232,13 @@ async function sendTelegramAdminNotification(config: any, regData: any, spreadsh
         a = "—";
       }
 
-      const isAttachmentUrl = (typeof a === "string") && (
-        a === regData.attachment ||
-        a.includes("drive.google.com") ||
-        a.includes("lh3.googleusercontent.com") ||
-        /\.(jpeg|jpg|gif|png|webp|bmp)/i.test(a) ||
-        a.startsWith("data:")
-      );
+      const isDriveLink = typeof a === "string" && (a.includes("drive.google.com") || a.includes("lh3.googleusercontent.com"));
+      const isBase64Img = typeof a === "string" && (a.startsWith("data:image") || a.includes("base64,"));
 
-      if (isAttachmentUrl) {
-        message += `▫️ <b>${escapeTelegramHtml(q)}:</b> <i>[مرفقة كصورة في الإشعار 🖼️]</i>\n`;
+      if (isDriveLink) {
+        message += `▫️ <b>${escapeTelegramHtml(q)}:</b> <a href="${escapeTelegramHtml(a)}">عرض المرفق من Google Drive ↗</a>\n`;
+      } else if (isBase64Img) {
+        message += `▫️ <b>${escapeTelegramHtml(q)}:</b> <i>[صورة مرفقة بالإشعار 🖼️]</i>\n`;
       } else if (typeof a === "string" && (a.startsWith("http://") || a.startsWith("https://"))) {
         message += `▫️ <b>${escapeTelegramHtml(q)}:</b> <a href="${escapeTelegramHtml(a)}">فتح الرابط ↗</a>\n`;
       } else {
@@ -2241,6 +2254,14 @@ async function sendTelegramAdminNotification(config: any, regData: any, spreadsh
 
   // Inline keyboard buttons
   const inlineKeyboard: any[][] = [];
+
+  // Direct button to view the uploaded file in Google Drive if present
+  if (driveViewUrl) {
+    inlineKeyboard.push([{
+      text: "🖼️ فتح المرفق في Google Drive ↗",
+      url: driveViewUrl
+    }]);
+  }
 
   // If both photo and QR Code exist, add a direct QR button to open the QR Code image
   if (qrCodeAsButton && qrInfo && qrInfo.qrUrl) {

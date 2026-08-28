@@ -1464,7 +1464,7 @@ function testSendSubscriberEmailDirectly() {
     throw err;
   }
 }
-// 9. دالة إرسال إشعار تلغرام المباشر للإدارة للمتابعة الفورية
+// 9. دالة إرسال إشعار تلغرام المباشر للإدارة للمتابعة الفورية مع دعم إرفاق الصور والملفات
 function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, customTelegramConfig) {
   try {
     var telegramConfig = customTelegramConfig;
@@ -1497,22 +1497,68 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
     var email = data.email || (data.answersMap && (data.answersMap["ايميل"] || data.answersMap["البريد الإلكتروني"])) || "";
     var timestamp = data.timestamp || Utilities.formatDate(new Date(), "GMT+3", "yyyy/MM/dd - hh:mm a");
 
-    function extractDriveDirectUrl(url) {
+    // استخراج معرف Google Drive أو الصورة بدقة
+    var driveFileId = "";
+    var rawBase64 = "";
+    var rawAttachmentUrl = "";
+
+    function extractFileIdFromUrl(url) {
       if (!url || typeof url !== "string") return "";
-      var fileId = "";
       if (url.indexOf("/file/d/") !== -1) {
-        fileId = url.split("/file/d/")[1].split("/")[0].split("?")[0];
+        return url.split("/file/d/")[1].split("/")[0].split("?")[0].split("&")[0];
       } else if (url.indexOf("id=") !== -1) {
-        fileId = url.split("id=")[1].split("&")[0];
-      }
-      if (fileId && fileId.length > 5) {
-        return "https://drive.google.com/uc?export=view&id=" + fileId;
-      }
-      var lower = url.toLowerCase();
-      if (lower.indexOf(".jpg") !== -1 || lower.indexOf(".jpeg") !== -1 || lower.indexOf(".png") !== -1 || lower.indexOf(".webp") !== -1) {
-        return url;
+        return url.split("id=")[1].split("&")[0].split("#")[0].split("/")[0];
       }
       return "";
+    }
+
+    if (telegramConfig.includeAttachment !== false) {
+      // 1. فحص الحقل المباشر attachment
+      if (data.attachment && typeof data.attachment === "string") {
+        if (data.attachment.indexOf("data:") === 0 || data.attachment.indexOf("base64,") !== -1) {
+          rawBase64 = data.attachment;
+        } else {
+          rawAttachmentUrl = data.attachment;
+          driveFileId = extractFileIdFromUrl(data.attachment);
+        }
+      }
+
+      // 2. فحص مصفوفة الإجابات
+      if (!driveFileId && !rawBase64 && data.answers && Array.isArray(data.answers)) {
+        for (var ak = 0; ak < data.answers.length; ak++) {
+          var aItem = data.answers[ak];
+          if (!aItem || !aItem.answer) continue;
+          var aStr = aItem.answer.toString().trim();
+          if (aStr.indexOf("data:") === 0 || aStr.indexOf("base64,") !== -1) {
+            rawBase64 = aStr;
+            break;
+          }
+          var fId = extractFileIdFromUrl(aStr);
+          if (fId) {
+            driveFileId = fId;
+            rawAttachmentUrl = aStr;
+            break;
+          }
+        }
+      }
+
+      // 3. فحص قاموس الإجابات answersMap
+      if (!driveFileId && !rawBase64 && data.answersMap) {
+        for (var amKey in data.answersMap) {
+          var amVal = (data.answersMap[amKey] || "").toString().trim();
+          if (!amVal) continue;
+          if (amVal.indexOf("data:") === 0 || amVal.indexOf("base64,") !== -1) {
+            rawBase64 = amVal;
+            break;
+          }
+          var fId2 = extractFileIdFromUrl(amVal);
+          if (fId2) {
+            driveFileId = fId2;
+            rawAttachmentUrl = amVal;
+            break;
+          }
+        }
+      }
     }
 
     // توليد بيانات ورابط رمز الـ QR Code الخاص بالمشترك للإشعار
@@ -1522,52 +1568,72 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
       qrInfo = generateSubscriberQrData(qrCodeCols, data, rowValues, currentHeaders, null, null);
     }
 
-    var detectedImageUrl = "";
-    if (telegramConfig.includeAttachment) {
-      if (data.attachment) {
-        detectedImageUrl = extractDriveDirectUrl(data.attachment);
-      }
-      if (!detectedImageUrl && data.answers && Array.isArray(data.answers)) {
-        for (var k = 0; k < data.answers.length; k++) {
-          var itemA = data.answers[k];
-          if (itemA && itemA.answer) {
-            var direct = extractDriveDirectUrl(itemA.answer);
-            if (direct) {
-              detectedImageUrl = direct;
-              break;
+    // تجهيز الملف أو الصورة كـ Blob لإرسالها مباشرة لـ Telegram
+    var photoBlob = null;
+    var driveViewUrl = "";
+
+    // 1. جلب الصورة المرفوعة من Google Drive كـ Blob أصلي
+    if (driveFileId) {
+      try {
+        var dFile = DriveApp.getFileById(driveFileId);
+        if (dFile) {
+          driveViewUrl = "https://drive.google.com/file/d/" + driveFileId + "/view?usp=sharing";
+          if (dFile.getSize() < 15 * 1024 * 1024) {
+            photoBlob = dFile.getBlob();
+            var mime = (photoBlob.getContentType() || "").toLowerCase();
+            var fName = dFile.getName() || "uploaded_file";
+            if (mime.indexOf("png") !== -1 && fName.indexOf(".png") === -1) {
+              photoBlob.setName(fName + ".png");
+            } else if (mime.indexOf("webp") !== -1 && fName.indexOf(".webp") === -1) {
+              photoBlob.setName(fName + ".webp");
+            } else if (mime.indexOf("pdf") !== -1 && fName.indexOf(".pdf") === -1) {
+              photoBlob.setName(fName + ".pdf");
+            } else if (fName.indexOf(".") === -1) {
+              photoBlob.setName(fName + ".jpg");
             }
           }
         }
+      } catch (dErr) {
+        Logger.log("Drive getBlob error for Telegram: " + dErr.message);
       }
     }
 
-    // إذا كان هناك صورة مرفوعة وتم تفعيل QR Code أيضاً، نرسل الصورة المرفوعة كصورة أساسية ونرفق زر مباشر لرمز الـ QR
-    // أما إذا لم تكن هناك صورة مرفوعة، نرسل صورة رمز الـ QR مباشرة كصورة أساسية
-    var qrCodeAsButton = false;
-    if (detectedImageUrl) {
-      if (telegramConfig.includeQrCode && qrInfo && qrInfo.qrUrl) {
-        qrCodeAsButton = true;
+    // 2. إذا كانت الصورة مشفرة بـ Base64
+    if (!photoBlob && rawBase64) {
+      try {
+        var cleanBase64 = rawBase64.indexOf("base64,") !== -1 ? rawBase64.split("base64,")[1] : rawBase64;
+        cleanBase64 = cleanBase64.split(" ").join("").split(String.fromCharCode(10)).join("").split(String.fromCharCode(13)).join("");
+        var decodedBytes = Utilities.base64Decode(cleanBase64);
+        photoBlob = Utilities.newBlob(decodedBytes, "image/jpeg", "uploaded_photo.jpg");
+      } catch(bErr) {
+        Logger.log("Base64 blob decode error for Telegram: " + bErr.message);
       }
-    } else if (telegramConfig.includeQrCode && qrInfo && qrInfo.qrUrl) {
-      detectedImageUrl = qrInfo.qrUrl;
+    }
+
+    // 3. إذا لم تكن هناك صورة مرفوعة وكان الـ QR Code مفعلاً، نستخدم رمز الـ QR
+    if (!photoBlob && telegramConfig.includeQrCode && qrInfo && qrInfo.qrUrl) {
+      try {
+        photoBlob = UrlFetchApp.fetch(qrInfo.qrUrl, { muteHttpExceptions: true }).getBlob();
+        photoBlob.setName("QR_" + regId + ".png");
+      } catch(qrFetchErr) {}
     }
 
     var msgLines = [];
     if (telegramConfig.customHeader) {
       msgLines.push("<b>" + escapeTelHtml(telegramConfig.customHeader) + "</b>");
     }
-    var title = telegramConfig.notificationTitle ? escapeTelHtml(telegramConfig.notificationTitle) : "إشعار تسجيل جديد";
+    var title = telegramConfig.notificationTitle ? escapeTelHtml(telegramConfig.notificationTitle) : "🔔 إشعار تسجيل جديد - مؤسسة يوسف ذنون";
     msgLines.push("<b>" + title + "</b>");
-    msgLines.push("----------------------------------------");
-    msgLines.push("<b>اسم المشترك:</b> " + escapeTelHtml(name));
-    msgLines.push("<b>رقم التسجيل:</b> <code>" + escapeTelHtml(regId) + "</code>");
-    if (phone) msgLines.push("<b>الهاتف:</b> <code>" + escapeTelHtml(phone) + "</code>");
-    if (email) msgLines.push("<b>البريد:</b> " + escapeTelHtml(email));
-    msgLines.push("<b>التاريخ والوقت:</b> " + escapeTelHtml(timestamp));
+    msgLines.push("━━━━━━━━━━━━━━━━━━━━");
+    msgLines.push("👤 <b>اسم المشترك:</b> " + escapeTelHtml(name));
+    msgLines.push("🆔 <b>رقم التسجيل:</b> <code>" + escapeTelHtml(regId) + "</code>");
+    if (phone) msgLines.push("📱 <b>الهاتف:</b> <code>" + escapeTelHtml(phone) + "</code>");
+    if (email) msgLines.push("📧 <b>البريد:</b> " + escapeTelHtml(email));
+    msgLines.push("⏰ <b>التاريخ والوقت:</b> " + escapeTelHtml(timestamp));
 
     if (telegramConfig.includeAllAnswers && data.answers && Array.isArray(data.answers) && data.answers.length > 0) {
       msgLines.push("");
-      msgLines.push("<b>تفاصيل الاستمارة:</b>");
+      msgLines.push("📋 <b>تفاصيل الاستمارة:</b>");
       for (var i = 0; i < data.answers.length; i++) {
         var it = data.answers[i];
         if (!it) continue;
@@ -1575,21 +1641,25 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
         var a = it.answer;
         if (a === undefined || a === null || a === "") a = "-";
 
-        var isAtt = (typeof a === "string") && (
-          a === data.attachment ||
+        var isDriveLink = (typeof a === "string") && (
           a.indexOf("drive.google.com") !== -1 ||
-          a.indexOf("lh3.googleusercontent.com") !== -1 ||
-          a.indexOf("data:") === 0 ||
-          /\.(jpeg|jpg|gif|png|webp|bmp)/i.test(a)
+          a.indexOf("lh3.googleusercontent.com") !== -1
         );
 
-        if (isAtt) {
-          msgLines.push("• <b>" + escapeTelHtml(q) + ":</b> <i>[مرفقة كصورة في الإشعار 🖼️]</i>");
+        var isBase64Img = (typeof a === "string") && (
+          a.indexOf("data:image") === 0 ||
+          a.indexOf("base64,") !== -1
+        );
+
+        if (isDriveLink) {
+          msgLines.push("▫️ <b>" + escapeTelHtml(q) + ":</b> <a href='" + a + "'>عرض المرفق من Google Drive ↗</a>");
+        } else if (isBase64Img) {
+          msgLines.push("▫️ <b>" + escapeTelHtml(q) + ":</b> <i>[صورة مرفقة بالإشعار 🖼️]</i>");
         } else if (typeof a === "string" && (a.indexOf("http://") === 0 || a.indexOf("https://") === 0)) {
-          msgLines.push("• <b>" + escapeTelHtml(q) + ":</b> " + a);
+          msgLines.push("▫️ <b>" + escapeTelHtml(q) + ":</b> <a href='" + a + "'>فتح الرابط ↗</a>");
         } else {
           var safeStr = String(a).length > 250 ? String(a).slice(0, 250) + "..." : String(a);
-          msgLines.push("• <b>" + escapeTelHtml(q) + ":</b> " + escapeTelHtml(safeStr));
+          msgLines.push("▫️ <b>" + escapeTelHtml(q) + ":</b> " + escapeTelHtml(safeStr));
         }
       }
     }
@@ -1599,13 +1669,20 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
       msgLines.push("<i>" + escapeTelHtml(telegramConfig.customFooter) + "</i>");
     }
 
-    var msg = msgLines.join(String.fromCharCode(10));
+    var fullHtmlMessage = msgLines.join(String.fromCharCode(10));
 
     // أزرار الروابط المخصصة في تلغرام
     var inlineKeyboard = [];
 
-    // إذا كانت هناك صورة مرفوعة ورمز QR معاً، نضع زر مباشر لفتح صورة رمز الـ QR
-    if (qrCodeAsButton && qrInfo && qrInfo.qrUrl) {
+    // زر مباشر لفتح الصورة المرفوعة في Google Drive إذا وُجدت
+    if (driveViewUrl) {
+      inlineKeyboard.push([{ text: "🖼️ فتح المرفق في Google Drive ↗", url: driveViewUrl }]);
+    } else if (rawAttachmentUrl && rawAttachmentUrl.indexOf("http") === 0) {
+      inlineKeyboard.push([{ text: "📎 فتح الملف المرفق ↗", url: rawAttachmentUrl }]);
+    }
+
+    // زر مباشر لفتح رمز الـ QR Code إذا وُجدت صورة مرفوعة منفصلة
+    if (driveFileId && telegramConfig.includeQrCode && qrInfo && qrInfo.qrUrl) {
       inlineKeyboard.push([{ text: "🔳 عرض وتنزيل رمز QR Code ↗", url: qrInfo.qrUrl }]);
     }
 
@@ -1620,47 +1697,77 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
 
     var replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : null;
 
-    if (msg.length > 3900) {
-      msg = msg.slice(0, 3850) + String.fromCharCode(10) + "... (تم اختصار باقي البيانات)";
-    }
-
-    // Try 0: If image URL exists, send directly via sendPhoto
-    if (detectedImageUrl) {
+    // 1. المحاولة الأولى: إرسال الصورة مباشرة كـ multipart/form-data عبر sendPhoto أو sendDocument
+    if (photoBlob) {
       try {
-        var photoUrl = "https://api.telegram.org/bot" + token + "/sendPhoto";
-        var photoCaption = msg;
-        if (photoCaption.length > 950) {
-          photoCaption = photoCaption.slice(0, 900) + String.fromCharCode(10) + "... (تفاصيل المشترك)";
+        var mimeType = (photoBlob.getContentType() || "").toLowerCase();
+        var isPdfDoc = mimeType.indexOf("pdf") !== -1 || photoBlob.getName().toLowerCase().indexOf(".pdf") !== -1;
+        var methodEndpoint = isPdfDoc ? "sendDocument" : "sendPhoto";
+        var fileParamKey = isPdfDoc ? "document" : "photo";
+
+        var captionLimit = 950;
+        var photoCaption = fullHtmlMessage;
+        if (photoCaption.length > captionLimit) {
+          photoCaption = photoCaption.slice(0, captionLimit - 50) + String.fromCharCode(10) + "... (تم اختصار باقي التفاصيل)";
         }
+
         var photoPayloadObj = {
           chat_id: chatId,
-          photo: detectedImageUrl,
           caption: photoCaption,
           parse_mode: "HTML"
         };
+        photoPayloadObj[fileParamKey] = photoBlob;
         if (topicId) photoPayloadObj.message_thread_id = Number(topicId);
-        if (replyMarkup) photoPayloadObj.reply_markup = replyMarkup;
+        if (replyMarkup) photoPayloadObj.reply_markup = JSON.stringify(replyMarkup);
 
         var photoOptions = {
           method: "post",
-          contentType: "application/json",
-          payload: JSON.stringify(photoPayloadObj),
+          payload: photoPayloadObj,
           muteHttpExceptions: true
         };
-        var pRes = UrlFetchApp.fetch(photoUrl, photoOptions);
+
+        var pRes = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/" + methodEndpoint, photoOptions);
         var pData = JSON.parse(pRes.getContentText());
+
         if (pData && pData.ok) {
-          return { success: true, result: pData.result, type: "photo" };
+          Logger.log("Telegram " + methodEndpoint + " sent successfully with image!");
+          return { success: true, result: pData.result, type: methodEndpoint };
+        } else {
+          Logger.log("sendPhoto HTML caption failed, retrying with Plain text caption: " + (pData ? pData.description : ""));
+          // إعادة المحاولة بنص مجرد للـ Caption في حال وجود وسوم HTML غير مدعومة
+          var plainCaption = photoCaption.replace(/<[^>]+>/g, "");
+          var plainPhotoPayload = {
+            chat_id: chatId,
+            caption: plainCaption
+          };
+          plainPhotoPayload[fileParamKey] = photoBlob;
+          if (topicId) plainPhotoPayload.message_thread_id = Number(topicId);
+          if (replyMarkup) plainPhotoPayload.reply_markup = JSON.stringify(replyMarkup);
+
+          var pRes2 = UrlFetchApp.fetch("https://api.telegram.org/bot" + token + "/" + methodEndpoint, {
+            method: "post",
+            payload: plainPhotoPayload,
+            muteHttpExceptions: true
+          });
+          var pData2 = JSON.parse(pRes2.getContentText());
+          if (pData2 && pData2.ok) {
+            return { success: true, result: pData2.result, type: methodEndpoint };
+          }
         }
-      } catch(photoErr) {
-        Logger.log("sendPhoto error in GAS: " + photoErr.message);
+      } catch (photoErr) {
+        Logger.log("sendPhoto exception in GAS: " + photoErr.message);
       }
+    }
+
+    // 2. المحاولة الثانية: إرسال الرسالة كنص HTML عبر sendMessage إذا لم تكن هناك صورة
+    if (fullHtmlMessage.length > 3900) {
+      fullHtmlMessage = fullHtmlMessage.slice(0, 3850) + String.fromCharCode(10) + "... (تم اختصار باقي البيانات)";
     }
 
     var url = "https://api.telegram.org/bot" + token + "/sendMessage";
     var payloadObj = {
       chat_id: chatId,
-      text: msg,
+      text: fullHtmlMessage,
       parse_mode: "HTML"
     };
     if (topicId) payloadObj.message_thread_id = Number(topicId);
@@ -1674,12 +1781,11 @@ function sendTelegramNotificationToAdmin(data, rowValues, currentHeaders, custom
     };
 
     var res = UrlFetchApp.fetch(url, options);
-    var resText = res.getContentText();
-    var resData = JSON.parse(resText);
+    var resData = JSON.parse(res.getContentText());
 
     // Fallback to plain text if HTML parsing failed
     if (!resData.ok) {
-      var plainText = msg.replace(/<[^>]+>/g, "");
+      var plainText = fullHtmlMessage.replace(/<[^>]+>/g, "");
       var fbPayload = {
         chat_id: chatId,
         text: plainText

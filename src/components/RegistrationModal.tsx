@@ -1066,18 +1066,36 @@ export default function RegistrationModal({
       
       // Find attachment or file if present
       let attachmentVal = "";
-      for (const [k, v] of Object.entries(answers)) {
-        if (typeof v === "string" && (v.startsWith("http") || v.startsWith("data:"))) {
-          if (k !== "فيس بوك" && k !== "Facebook") {
-            attachmentVal = v;
-            break;
-          }
-        }
-      }
+
+      // 1. Check uploadedFileInfo for verified drive URL
       for (const info of Object.values(uploadedFileInfo)) {
         if (info && (info as any).driveFileUrl) {
           attachmentVal = (info as any).driveFileUrl;
           break;
+        }
+      }
+
+      // 2. Check formatted answers for file types or Drive links
+      if (!attachmentVal) {
+        const fileAnswer = formattedAnswers.find((fa) => {
+          const qLower = (fa.question || "").toLowerCase();
+          const isFileQ = (fa.type === "file" || fa.type === "ملف" || fa.type === "رفع ملف" || qLower.includes("ملف") || qLower.includes("صورة") || qLower.includes("مرفق"));
+          return isFileQ && fa.answer && (fa.answer.startsWith("http") || fa.answer.startsWith("data:"));
+        });
+        if (fileAnswer) {
+          attachmentVal = fileAnswer.answer;
+        }
+      }
+
+      // 3. Fallback scan across all answers
+      if (!attachmentVal) {
+        for (const [k, v] of Object.entries(answers)) {
+          if (typeof v === "string" && (v.startsWith("http") || v.startsWith("data:"))) {
+            if (k !== "فيس بوك" && k !== "Facebook" && !k.toLowerCase().includes("face") && !k.toLowerCase().includes("link")) {
+              attachmentVal = v;
+              break;
+            }
+          }
         }
       }
 
