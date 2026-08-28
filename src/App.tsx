@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Landmark, ArrowUp, Loader2, Sparkles, AlertCircle, BookOpen, GraduationCap, Users, Award, PenTool, Book, Compass, ShieldCheck, Star } from "lucide-react";
+import { Landmark, ArrowUp, Loader2, Sparkles, AlertCircle, BookOpen, GraduationCap, Users, Award, PenTool, Book, Compass, ShieldCheck, Star, Shield, Lock } from "lucide-react";
 import Header from "./components/Header";
 import HomeCard from "./components/HomeCard";
 import AboutSection from "./components/AboutSection";
@@ -9,6 +9,10 @@ import CoursesSection from "./components/CoursesSection";
 import ToolsSection from "./components/ToolsSection";
 import ContactSection from "./components/ContactSection";
 import SubscriberPortal from "./components/SubscriberPortal";
+import SubscriberFullPage from "./components/SubscriberFullPage";
+import IntegrationSettingsModal from "./components/IntegrationSettingsModal";
+import RegistrationModal from "./components/RegistrationModal";
+import AdminLoginModal from "./components/AdminLoginModal";
 import { AppData, SubscriberState } from "./types";
 import { fetchAllAppDataDirect, loginSubscriberDirect } from "./utils/sheetParser";
 
@@ -75,9 +79,178 @@ export default function App() {
     links: [],
   });
 
+  // Admin authentication & settings state
+  const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
+  const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
+
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
+  const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
+
+  // Configuration state
+  const [currentScriptUrl, setCurrentScriptUrl] = useState("");
+  const [currentSpreadsheetId, setCurrentSpreadsheetId] = useState("1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY");
+  const [currentDriveFolderId, setCurrentDriveFolderId] = useState("1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7");
+
+  // Fetch configuration from server on mount
+  useEffect(() => {
+    const fetchConfig = async () => {
+      try {
+        const res = await fetch("/api/config");
+        if (res.ok) {
+          const cfg = await res.json();
+          if (cfg.spreadsheetId) setCurrentSpreadsheetId(cfg.spreadsheetId);
+          if (cfg.scriptUrl !== undefined) setCurrentScriptUrl(cfg.scriptUrl);
+          if (cfg.driveFolderId !== undefined) setCurrentDriveFolderId(cfg.driveFolderId);
+          if (cfg.isAdmin) setIsAdminLoggedIn(true);
+        }
+      } catch (e) {
+        console.warn("Could not fetch /api/config, checking localStorage:", e);
+        const localUrl = localStorage.getItem("thnoon_script_url");
+        const localSheet = localStorage.getItem("thnoon_spreadsheet_id");
+        const localFolder = localStorage.getItem("thnoon_drive_folder_id");
+        if (localUrl) setCurrentScriptUrl(localUrl);
+        if (localSheet) setCurrentSpreadsheetId(localSheet);
+        if (localFolder) setCurrentDriveFolderId(localFolder);
+      }
+    };
+    fetchConfig();
+
+    // Check saved admin session
+    const savedAdminAuth =
+      localStorage.getItem("thnoon_admin_auth") === "true" ||
+      sessionStorage.getItem("thnoon_admin_auth") === "true";
+
+    if (savedAdminAuth) {
+      setIsAdminLoggedIn(true);
+    }
+
+    // Background pre-fetch form questions so form is ultra fast
+    fetch("/api/form-questions")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
+          localStorage.setItem("thnoon_cached_registration_questions", JSON.stringify(data.questions));
+        }
+      })
+      .catch(() => {});
+
+    // Check URL parameters for direct link to registration form or admin settings
+    try {
+      const searchParams = new URLSearchParams(window.location.search);
+      const hash = window.location.hash;
+
+      if (
+        searchParams.get("register") === "true" ||
+        searchParams.get("register") === "1" ||
+        searchParams.get("form") === "register" ||
+        searchParams.get("form") === "registration"
+      ) {
+        setIsRegistrationOpen(true);
+      }
+
+      const isAdminRequested =
+        searchParams.get("admin") === "true" ||
+        searchParams.get("admin") === "1" ||
+        searchParams.get("page") === "admin" ||
+        searchParams.get("page") === "settings" ||
+        searchParams.get("settings") === "true" ||
+        searchParams.get("secret") === "admin" ||
+        hash === "#admin" ||
+        hash === "#settings";
+
+      if (isAdminRequested) {
+        if (savedAdminAuth) {
+          setIsAdminLoggedIn(true);
+          setIsSettingsOpen(true);
+        } else {
+          setIsAdminLoginOpen(true);
+        }
+      }
+    } catch (e) {
+      console.warn("Error parsing URL search params:", e);
+    }
+
+    // Keyboard shortcut for discrete Admin login: Ctrl + Shift + A or Alt + A
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if ((e.ctrlKey && e.shiftKey && (e.key === "A" || e.key === "a")) || (e.altKey && (e.key === "a" || e.key === "A"))) {
+        e.preventDefault();
+        const isAuth =
+          localStorage.getItem("thnoon_admin_auth") === "true" ||
+          sessionStorage.getItem("thnoon_admin_auth") === "true";
+        if (isAuth) {
+          setIsAdminLoggedIn(true);
+          setIsSettingsOpen(true);
+        } else {
+          setIsAdminLoginOpen(true);
+        }
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const handleAdminLoginSuccess = () => {
+    setIsAdminLoggedIn(true);
+    setIsAdminLoginOpen(false);
+    setIsSettingsOpen(true);
+  };
+
+  const handleAdminLogout = () => {
+    setIsAdminLoggedIn(false);
+    setIsSettingsOpen(false);
+    localStorage.removeItem("thnoon_admin_auth");
+    sessionStorage.removeItem("thnoon_admin_auth");
+    fetch("/api/admin/logout", { method: "POST" }).catch(() => {});
+  };
+
+  const reloadData = async () => {
+    try {
+      setIsLoading(true);
+      const response = await fetch("/api/data");
+      if (response.ok) {
+        const data = await response.json();
+        setAppData(data);
+      } else {
+        const directData = await fetchAllAppDataDirect();
+        setAppData(directData);
+      }
+    } catch (err) {
+      console.error("Failed to reload data:", err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleSaveConfig = async (newScriptUrl: string, newSpreadsheetId: string, newDriveFolderId?: string) => {
+    setCurrentScriptUrl(newScriptUrl);
+    setCurrentSpreadsheetId(newSpreadsheetId);
+    if (newDriveFolderId) {
+      setCurrentDriveFolderId(newDriveFolderId);
+      localStorage.setItem("thnoon_drive_folder_id", newDriveFolderId);
+    }
+    localStorage.setItem("thnoon_script_url", newScriptUrl);
+    localStorage.setItem("thnoon_spreadsheet_id", newSpreadsheetId);
+
+    try {
+      await fetch("/api/config", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          scriptUrl: newScriptUrl,
+          spreadsheetId: newSpreadsheetId,
+          driveFolderId: newDriveFolderId || currentDriveFolderId
+        })
+      });
+    } catch (err) {
+      console.warn("Server config POST failed, updated client locally:", err);
+    }
+
+    // Refresh data with updated config
+    await reloadData();
+  };
 
   // Fetch initial database content with direct client-side fallback for static deploys (Vercel/GitHub Pages)
   useEffect(() => {
@@ -131,6 +304,8 @@ export default function App() {
           setSubscriber({
             isLoggedIn: true,
             subscriberName: parsed.subscriberName,
+            topicId: parsed.topicId,
+            content: parsed.content,
             links,
             exitButtonText: parsed.exitButtonText,
             exitButtonComment: parsed.exitButtonComment,
@@ -217,6 +392,8 @@ export default function App() {
         setSubscriber({
           isLoggedIn: true,
           subscriberName: data.subscriberName,
+          topicId: data.topicId,
+          content: data.content,
           links,
           exitButtonText: data.exitButtonText,
           exitButtonComment: data.exitButtonComment,
@@ -291,6 +468,19 @@ export default function App() {
     line: "https://line.me",
   };
 
+  // If Subscriber is logged in, directly render the Full Dedicated Subscriber Page
+  if (subscriber.isLoggedIn) {
+    return (
+      <SubscriberFullPage
+        subscriber={subscriber}
+        onLogout={handleLogout}
+        logoUrl={profile.logoUrl}
+        institutionTitle={profile.title}
+        socialLinks={socialLinks}
+      />
+    );
+  }
+
   return (
     <div className="min-h-screen bg-[#090d14] text-slate-100 selection:bg-amber-500 selection:text-slate-950 flex flex-col justify-between overflow-x-hidden">
       
@@ -305,6 +495,9 @@ export default function App() {
         subscriberName={subscriber.subscriberName}
         onLogout={handleLogout}
         onOpenDashboard={() => setIsDashboardOpen(true)}
+        onOpenSettings={() => setIsSettingsOpen(true)}
+        isAdmin={isAdminLoggedIn}
+        onAdminLogout={handleAdminLogout}
         customTexts={appData?.customTexts}
       />
 
@@ -499,19 +692,64 @@ export default function App() {
             <p className="text-slate-600 font-sans text-[10px]">
               {appData?.customTexts?.navbarTitle || "مؤسسة يوسف ذنون"} {appData?.customTexts?.navbarSubtitle || "للخط العربي والآثار الإسلامية"}
             </p>
+            {/* Discrete Admin Link trigger */}
+            <div className="pt-2 flex justify-center md:justify-start">
+              <button
+                onClick={() => {
+                  if (isAdminLoggedIn) {
+                    setIsSettingsOpen(true);
+                  } else {
+                    setIsAdminLoginOpen(true);
+                  }
+                }}
+                className="text-slate-700 hover:text-amber-500/80 transition-colors text-[10px] flex items-center gap-1 opacity-70 hover:opacity-100 font-mono"
+                title="بوابة إعدادات المشرف (خاص بالإدارة)"
+              >
+                <Lock className="w-3 h-3 text-slate-600 hover:text-amber-500" />
+                <span>{isAdminLoggedIn ? "لوحة المشرف (متصل)" : "دخول المشرف"}</span>
+              </button>
+            </div>
           </div>
         </div>
       </footer>
 
-      {/* 5. Subscriber Portals Logic component triggers */}
+      {/* Admin Login Modal (Protected access for settings) */}
+      <AdminLoginModal
+        isOpen={isAdminLoginOpen}
+        onClose={() => setIsAdminLoginOpen(false)}
+        onSuccess={handleAdminLoginSuccess}
+      />
+
+      {/* Integration & Settings Modal */}
+      <IntegrationSettingsModal
+        isOpen={isSettingsOpen}
+        onClose={() => setIsSettingsOpen(false)}
+        currentScriptUrl={currentScriptUrl}
+        currentSpreadsheetId={currentSpreadsheetId}
+        currentDriveFolderId={currentDriveFolderId}
+        onSaveConfig={handleSaveConfig}
+        onAdminLogout={handleAdminLogout}
+      />
+
+      {/* 5. Subscriber Login Modal */}
       <SubscriberPortal
         isOpen={isLoginOpen}
         onClose={() => setIsLoginOpen(false)}
         subscriber={subscriber}
         onLogin={handleLogin}
         onLogout={handleLogout}
-        isDashboardOpen={isDashboardOpen}
-        onCloseDashboard={() => setIsDashboardOpen(false)}
+        onOpenRegistration={() => {
+          setIsLoginOpen(false);
+          setIsRegistrationOpen(true);
+        }}
+      />
+
+      {/* 6. Dynamic Registration Modal (RegistrationQuestions Sheet) */}
+      <RegistrationModal
+        isOpen={isRegistrationOpen}
+        onClose={() => setIsRegistrationOpen(false)}
+        scriptUrl={currentScriptUrl}
+        driveFolderId={currentDriveFolderId}
       />
 
       {/* 6. Back-to-Top circular button */}

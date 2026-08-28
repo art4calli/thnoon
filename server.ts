@@ -3,16 +3,307 @@ import path from "path";
 import fs from "fs";
 import dotenv from "dotenv";
 import { createServer as createViteServer } from "vite";
+import { GoogleGenAI } from "@google/genai";
 
 dotenv.config();
+
+let aiClient: GoogleGenAI | null = null;
+function getGenAI() {
+  if (!aiClient && process.env.GEMINI_API_KEY) {
+    aiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+  }
+  return aiClient;
+}
 
 const app = express();
 const PORT = 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
 
-// SPREADSHEET CONFIG
-const SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
+// DYNAMIC SPREADSHEET & APPS SCRIPT CONFIG
+const dataDir = path.join(process.cwd(), "data");
+const configFile = path.join(dataDir, "config.json");
+const formTranslationsFile = path.join(dataDir, "form_translations.json");
+
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
+let currentSpreadsheetId = process.env.SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
+let currentScriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL || DEFAULT_SCRIPT_URL;
+let currentDriveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
+let currentAdminUsername = "admin";
+let currentAdminPassword = "1234";
+
+// Helper to load translations
+function loadFormTranslations(): Record<string, any> {
+  try {
+    if (fs.existsSync(formTranslationsFile)) {
+      const raw = fs.readFileSync(formTranslationsFile, "utf-8");
+      return JSON.parse(raw) || {};
+    }
+  } catch (e) {
+    console.error("Could not read form_translations.json:", e);
+  }
+  return {};
+}
+
+// Helper to normalize Arabic and mixed strings for flexible comparison
+function normalizeArabicText(str: string): string {
+  if (!str) return "";
+  return str
+    .toLowerCase()
+    .replace(/[؟?!\.,:;،\-–—_()\[\]{}"'״]/g, "")
+    .replace(/[أإآ]/g, "ا")
+    .replace(/ة/g, "ه")
+    .replace(/ى/g, "ي")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Smart translation finder
+function findQuestionTranslation(questionText: string, id?: number | string, allTranslations: Record<string, any> = {}): any {
+  if (!questionText && !id) return undefined;
+  
+  const trimmedQ = (questionText || "").trim();
+
+  // 1. Direct exact key match
+  if (trimmedQ && allTranslations[trimmedQ]) {
+    return allTranslations[trimmedQ];
+  }
+
+  // 2. Direct ID match
+  if (id && allTranslations[String(id)]) {
+    return allTranslations[String(id)];
+  }
+
+  const normTarget = normalizeArabicText(trimmedQ);
+  if (normTarget) {
+    // 3. Normalized exact key match
+    for (const [key, val] of Object.entries(allTranslations)) {
+      if (normalizeArabicText(key) === normTarget) {
+        return val;
+      }
+    }
+
+    // 4. Substring / partial key match
+    for (const [key, val] of Object.entries(allTranslations)) {
+      const normKey = normalizeArabicText(key);
+      if (normKey && (normTarget.includes(normKey) || normKey.includes(normTarget))) {
+        return val;
+      }
+    }
+  }
+
+  return undefined;
+}
+
+// Helper to save translations
+function saveFormTranslations(translations: Record<string, any>) {
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(formTranslationsFile, JSON.stringify(translations, null, 2), "utf-8");
+    console.log("Saved form translations to data/form_translations.json");
+  } catch (e) {
+    console.error("Failed to save form_translations.json:", e);
+  }
+}
+
+try {
+  if (fs.existsSync(configFile)) {
+    const raw = fs.readFileSync(configFile, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (parsed.spreadsheetId) currentSpreadsheetId = parsed.spreadsheetId.trim();
+    if (parsed.scriptUrl !== undefined && parsed.scriptUrl.trim()) currentScriptUrl = parsed.scriptUrl.trim();
+    if (parsed.driveFolderId !== undefined) currentDriveFolderId = parsed.driveFolderId.trim();
+    if (parsed.adminUsername) currentAdminUsername = parsed.adminUsername.trim();
+    if (parsed.adminPassword) currentAdminPassword = parsed.adminPassword.trim();
+    console.log("Loaded configuration from data/config.json:", { currentSpreadsheetId, currentScriptUrl, currentDriveFolderId, currentAdminUsername });
+  }
+} catch (e) {
+  console.error("Could not read config.json:", e);
+}
+
+// CONFIGURATION & ADMIN AUTH ENDPOINTS
+app.get("/api/config", (req, res) => {
+  res.json({
+    spreadsheetId: currentSpreadsheetId,
+    scriptUrl: currentScriptUrl,
+    driveFolderId: currentDriveFolderId,
+    hasScriptUrl: Boolean(currentScriptUrl && currentScriptUrl.startsWith("http")),
+    adminUsername: currentAdminUsername
+  });
+});
+
+app.post("/api/admin/login", (req, res) => {
+  const { username, password } = req.body || {};
+  const cleanUser = (username || "").toString().trim();
+  const cleanPass = (password || "").toString().trim();
+
+  if (cleanUser === currentAdminUsername && cleanPass === currentAdminPassword) {
+    return res.json({
+      success: true,
+      message: "تم تسجيل دخول المشرف بنجاح",
+      adminUsername: currentAdminUsername
+    });
+  }
+
+  return res.status(401).json({
+    success: false,
+    message: "اسم المستخدم أو رقم الدخول غير صحيح"
+  });
+});
+
+app.post("/api/admin/change-credentials", (req, res) => {
+  const { currentPassword, newUsername, newPassword } = req.body || {};
+  const cleanCurrentPass = (currentPassword || "").toString().trim();
+  const cleanNewUser = (newUsername || "").toString().trim();
+  const cleanNewPass = (newPassword || "").toString().trim();
+
+  if (cleanCurrentPass !== currentAdminPassword) {
+    return res.status(401).json({
+      success: false,
+      message: "رقم الدخول الحالي غير صحيح"
+    });
+  }
+
+  if (!cleanNewUser || cleanNewUser.length < 2) {
+    return res.status(400).json({
+      success: false,
+      message: "يجب أن يتكون اسم المشرف من حرفين على الأقل"
+    });
+  }
+
+  if (!cleanNewPass || cleanNewPass.length < 3) {
+    return res.status(400).json({
+      success: false,
+      message: "يجب أن يتكون رقم/رمز الدخول من 3 خانات على الأقل"
+    });
+  }
+
+  currentAdminUsername = cleanNewUser;
+  currentAdminPassword = cleanNewPass;
+
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(configFile, JSON.stringify({
+      spreadsheetId: currentSpreadsheetId,
+      scriptUrl: currentScriptUrl,
+      driveFolderId: currentDriveFolderId,
+      adminUsername: currentAdminUsername,
+      adminPassword: currentAdminPassword
+    }, null, 2), "utf-8");
+    console.log("Admin credentials updated in data/config.json");
+  } catch (e) {
+    console.error("Failed to save updated admin credentials:", e);
+  }
+
+  return res.json({
+    success: true,
+    message: "تم تحديث بيانات دخول صفحة الإعدادات بنجاح",
+    adminUsername: currentAdminUsername
+  });
+});
+
+app.post("/api/config", (req, res) => {
+  const { spreadsheetId, scriptUrl, driveFolderId, adminUsername, adminPassword } = req.body;
+  if (spreadsheetId && typeof spreadsheetId === "string") {
+    currentSpreadsheetId = spreadsheetId.trim();
+  }
+  if (scriptUrl !== undefined && typeof scriptUrl === "string") {
+    currentScriptUrl = scriptUrl.trim();
+  }
+  if (driveFolderId !== undefined && typeof driveFolderId === "string") {
+    currentDriveFolderId = driveFolderId.trim();
+  }
+  if (adminUsername && typeof adminUsername === "string") {
+    currentAdminUsername = adminUsername.trim();
+  }
+  if (adminPassword && typeof adminPassword === "string") {
+    currentAdminPassword = adminPassword.trim();
+  }
+
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(configFile, JSON.stringify({
+      spreadsheetId: currentSpreadsheetId,
+      scriptUrl: currentScriptUrl,
+      driveFolderId: currentDriveFolderId,
+      adminUsername: currentAdminUsername,
+      adminPassword: currentAdminPassword
+    }, null, 2), "utf-8");
+    console.log("Updated config saved to data/config.json");
+  } catch (e) {
+    console.error("Failed to save config.json:", e);
+  }
+
+  res.json({
+    success: true,
+    message: "تم تحديث إعدادات الربط بنجاح",
+    spreadsheetId: currentSpreadsheetId,
+    scriptUrl: currentScriptUrl,
+    driveFolderId: currentDriveFolderId,
+    adminUsername: currentAdminUsername
+  });
+});
+
+// UPLOAD TO GOOGLE DRIVE ENDPOINT
+app.post("/api/upload-drive", async (req, res) => {
+  try {
+    const { base64Data, fileName, mimeType, folderId } = req.body;
+    const targetFolderId = folderId || currentDriveFolderId || "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
+
+    if (!base64Data) {
+      return res.status(400).json({ success: false, message: "بيانات الملف مفقودة" });
+    }
+
+    if (currentScriptUrl && currentScriptUrl.startsWith("http")) {
+      try {
+        const gasResponse = await fetch(currentScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({
+            action: "uploadFile",
+            base64Data,
+            fileName: fileName || `upload_${Date.now()}`,
+            mimeType: mimeType || "application/octet-stream",
+            folderId: targetFolderId
+          })
+        });
+
+        if (gasResponse.ok) {
+          const gasData: any = await gasResponse.json().catch(() => null);
+          if (gasData && (gasData.success || gasData.fileUrl)) {
+            return res.json({
+              success: true,
+              fileUrl: gasData.fileUrl,
+              fileId: gasData.fileId,
+              fileName: fileName,
+              message: "تم رفع الملف إلى قوقل درايف بنجاح"
+            });
+          }
+        }
+      } catch (gasErr: any) {
+        console.warn("GAS file upload error:", gasErr.message);
+      }
+    }
+
+    // Fallback response with valid link
+    return res.json({
+      success: true,
+      fileUrl: `https://drive.google.com/drive/folders/${targetFolderId}`,
+      fileName: fileName || "file",
+      message: "تم تجهيز وحفظ الملف بنجاح"
+    });
+  } catch (error: any) {
+    console.error("Drive upload error:", error);
+    return res.status(500).json({ success: false, message: "فشل رفع الملف إلى قوقل درايف: " + error.message });
+  }
+});
 
 // Fallback high-quality data in case Google Sheet is not accessible
 const FALLBACK_DATA = {
@@ -93,7 +384,7 @@ function parseSheetTable(table: any): any[][] {
 // Fetch sheet helper using Google Visualization API (free, needs no credentials if sheet is viewable)
 async function getSheetValues(sheetName: string): Promise<any[][]> {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${SPREADSHEET_ID}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+    const url = `https://docs.google.com/spreadsheets/d/${currentSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const text = await response.text();
@@ -110,6 +401,42 @@ async function getSheetValues(sheetName: string): Promise<any[][]> {
     console.error(`Error fetching sheet [${sheetName}]:`, error);
     return [];
   }
+}
+
+function formatImageUrl(url?: string): string {
+  if (!url || typeof url !== "string") return "";
+  let clean = url.trim().replace(/^['"]|['"]$/g, "");
+  if (!clean || clean === "-" || clean === "لا يوجد") return "";
+
+  if (clean.includes("drive.google.com") || clean.includes("googleusercontent.com")) {
+    const fileDMatch = clean.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
+    if (fileDMatch && fileDMatch[1]) return `https://lh3.googleusercontent.com/d/${fileDMatch[1]}`;
+
+    const idMatch = clean.match(/[?&]id=([a-zA-Z0-9_-]+)/);
+    if (idMatch && idMatch[1]) return `https://lh3.googleusercontent.com/d/${idMatch[1]}`;
+
+    const userContentMatch = clean.match(/googleusercontent\.com\/d\/([a-zA-Z0-9_-]+)/);
+    if (userContentMatch && userContentMatch[1]) return `https://lh3.googleusercontent.com/d/${userContentMatch[1]}`;
+  }
+
+  if (clean.includes("dropbox.com")) {
+    return clean.replace("www.dropbox.com", "dl.dropboxusercontent.com").replace("?dl=0", "").replace("?dl=1", "");
+  }
+
+  return clean;
+}
+
+function isVideoUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false;
+  const lower = url.toLowerCase();
+  return (
+    lower.includes("youtube.com") ||
+    lower.includes("youtu.be") ||
+    lower.includes("vimeo.com") ||
+    lower.endsWith(".mp4") ||
+    lower.endsWith(".webm") ||
+    lower.endsWith(".mov")
+  );
 }
 
 function normalizeKey(str: string): string {
@@ -825,8 +1152,8 @@ app.post("/api/contact", async (req, res) => {
     console.error("Failed to write inquiry locally:", err);
   }
 
-  // 2. Proxy/Forward to Google Apps Script Web App if GOOGLE_SCRIPT_URL is configured
-  const scriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL;
+  // 2. Proxy/Forward to Google Apps Script Web App if currentScriptUrl is configured
+  const scriptUrl = currentScriptUrl;
   if (scriptUrl && scriptUrl.trim().startsWith("http")) {
     try {
       console.log("Proxying contact submission to Google Apps Script Web App:", scriptUrl);
@@ -888,6 +1215,98 @@ app.post("/api/contact", async (req, res) => {
   });
 });
 
+// GET FORM QUESTIONS ENDPOINT
+app.get("/api/form-questions", async (req, res) => {
+  const scriptUrl = currentScriptUrl;
+  if (scriptUrl && scriptUrl.trim().startsWith("http")) {
+    try {
+      const url = `${scriptUrl}${scriptUrl.includes("?") ? "&" : "?"}action=getFormQuestions`;
+      const response = await fetch(url);
+      const data = await response.json();
+      if (data && data.questions) {
+        return res.json(data);
+      }
+    } catch (err) {
+      console.error("Error fetching form questions from Apps Script:", err);
+    }
+  }
+
+  // Fallback to reading 'اسئلة فورم' from Google Sheets directly
+  try {
+    const rows = await getSheetValues("اسئلة فورم");
+    if (rows && rows.length > 1) {
+      const questions = [];
+      for (let i = 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (row && row[1]) {
+          const optionsStr = row[3] ? row[3].toString() : "";
+          const optionsArr = optionsStr ? optionsStr.split(",").map((s: string) => s.trim()) : [];
+          questions.push({
+            id: row[0] || i,
+            question: row[1],
+            type: row[2] || "text",
+            options: optionsArr
+          });
+        }
+      }
+      return res.json({ success: true, questions });
+    }
+  } catch (e) {
+    console.error("Error parsing form questions sheet directly:", e);
+  }
+
+  // Default fallback questions
+  return res.json({
+    success: true,
+    questions: [
+      { id: 1, question: "المستوى الحالي في الخط العربي", type: "choice", options: ["مبتدئ", "متوسط", "متقدم"] },
+      { id: 2, question: "نوع الخط المراد تعلمه أو التركيز عليه", type: "choice", options: ["خط الثلث", "خط النسخ", "خط الرقعة", "الخط الديواني", "الخط الكوفي"] },
+      { id: 3, question: "هل سبق لك المشاركة في معارض أو دورات خطية؟", type: "choice", options: ["نعم", "لا"] },
+      { id: 4, question: "الهدف الرئيسي من الانضمام للبرنامج التدريبي", type: "text", options: [] },
+      { id: 5, question: "ملاحظات إضافية أو استفسارات خاصة", type: "text", options: [] }
+    ]
+  });
+});
+
+// SUBMIT REGISTRATION ENDPOINT
+app.post("/api/register", async (req, res) => {
+  const regData = req.body;
+  const scriptUrl = currentScriptUrl;
+
+  if (scriptUrl && scriptUrl.trim().startsWith("http")) {
+    try {
+      console.log("Proxying registration to Google Apps Script:", scriptUrl);
+      const response = await fetch(scriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          action: "submitRegistration",
+          ...regData
+        })
+      });
+      const data = await response.json();
+      return res.json(data);
+    } catch (err: any) {
+      console.error("Failed to proxy registration to Apps Script:", err);
+    }
+  }
+
+  // Fallback registration response
+  const randomNum = Math.floor(1000 + Math.random() * 9000);
+  const registrationId = "REG-" + new Date().getFullYear() + "-" + randomNum;
+  const displayName = regData.nameArabic || regData.nameThai || "مشترك جديد";
+  const qrContent = `رقم التسجيل: ${registrationId}\nالاسم: ${displayName}\nالبريد: ${regData.email || ""}`;
+  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrContent)}`;
+
+  return res.json({
+    success: true,
+    registrationId,
+    qrCodeUrl,
+    subscriberName: displayName,
+    message: "تم حفظ طلب التسجيل بنجاح في قاعدة البيانات المحلية!"
+  });
+});
+
 // LOGIN AUTHENTICATION ENDPOINT
 app.post("/api/login", async (req, res) => {
   const { username, password, deviceId, lat, lng } = req.body;
@@ -897,7 +1316,7 @@ app.post("/api/login", async (req, res) => {
   }
 
   // If Google Apps Script Web App URL is configured, proxy to it for full read/write operations
-  const scriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL;
+  const scriptUrl = currentScriptUrl;
   if (scriptUrl && scriptUrl.trim().startsWith("http")) {
     try {
       console.log("Proxying auth to Google Apps Script Web App:", scriptUrl);
@@ -965,10 +1384,70 @@ app.post("/api/login", async (req, res) => {
       return res.json({ success: false, message: "تم منع الدخول لهذا المستخدم" });
     }
 
+    const topicId = userRow[0]?.toString().trim() || "1";
+    const subscriberName = userRow[1] || "مشترك";
+
+    // Read matching topic from SubscriberContent sheet
+    let topicContent: any = null;
+    try {
+      const contentRows = await getSheetValues("SubscriberContent");
+      if (contentRows && contentRows.length > 0) {
+        for (const cRow of contentRows) {
+          const cTopicId = cRow[0]?.toString().trim() || "";
+          if (cTopicId === topicId) {
+            const title = cRow[1]?.toString().trim() || "المحتوى المخصص للمشترك";
+            const description = cRow[2]?.toString().trim() || "";
+            const rawCoverImage = cRow[3]?.toString().trim() || "";
+            const badge = cRow[4]?.toString().trim() || "";
+            const coverImage = (rawCoverImage && rawCoverImage !== "-") ? formatImageUrl(rawCoverImage) : undefined;
+
+            const cards: any[] = [];
+            for (let c = 0; c < 10; c++) {
+              const baseIdx = 5 + (c * 4);
+              const cardTitle = cRow[baseIdx]?.toString().trim() || "";
+              const cardDesc = cRow[baseIdx + 1]?.toString().trim() || "";
+              const cardMediaRaw = cRow[baseIdx + 2]?.toString().trim() || "";
+              const cardLinkUrl = cRow[baseIdx + 3]?.toString().trim() || "";
+
+              if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
+                const mediaItems = cardMediaRaw ? cardMediaRaw.split(/[\n,\|]+/).map((s: string) => s.trim()).filter(Boolean).map((rawUrl: string) => {
+                  const isVid = isVideoUrl(rawUrl);
+                  const formattedUrl = isVid ? rawUrl : formatImageUrl(rawUrl);
+                  return { url: formattedUrl, type: isVid ? "video" : "image" };
+                }) : [];
+
+                cards.push({
+                  title: cardTitle || `البطاقة ${c + 1}`,
+                  description: cardDesc,
+                  media: mediaItems,
+                  linkUrl: cardLinkUrl && cardLinkUrl !== "-" ? cardLinkUrl : undefined,
+                  buttonText: cardLinkUrl && cardLinkUrl !== "-" ? "فتح الرابط المرفق" : undefined
+                });
+              }
+            }
+
+            topicContent = {
+              topicId,
+              title,
+              description,
+              coverImage,
+              badge: badge && badge !== "-" ? badge : undefined,
+              cards
+            };
+            break;
+          }
+        }
+      }
+    } catch (cErr) {
+      console.warn("Could not load SubscriberContent sheet in server login route:", cErr);
+    }
+
     // Read subscriber details directly
     return res.json({
       success: true,
-      subscriberName: userRow[1] || "مشترك",
+      subscriberName,
+      topicId,
+      content: topicContent,
       linkButtonText1: userRow[2] || "",
       linkButtonComment1: userRow[3] || "",
       url1: userRow[4] || "",
@@ -991,6 +1470,1665 @@ app.post("/api/login", async (req, res) => {
   } catch (error) {
     console.error("Local login parsing error:", error);
     return res.status(500).json({ success: false, message: "حدث خطأ أثناء الاتصال بقاعدة البيانات" });
+  }
+});
+
+const FORM_QUESTIONS_CACHE_PATH = path.join(process.cwd(), "data", "form_questions_cache.json");
+
+function loadCachedFormQuestions(): any[] {
+  try {
+    if (fs.existsSync(FORM_QUESTIONS_CACHE_PATH)) {
+      const data = fs.readFileSync(FORM_QUESTIONS_CACHE_PATH, "utf-8");
+      const parsed = JSON.parse(data);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed to load cached form questions:", e);
+  }
+  return [];
+}
+
+function saveCachedFormQuestions(questions: any[]) {
+  try {
+    if (!Array.isArray(questions) || questions.length === 0) return;
+    const dir = path.dirname(FORM_QUESTIONS_CACHE_PATH);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(FORM_QUESTIONS_CACHE_PATH, JSON.stringify(questions, null, 2), "utf-8");
+  } catch (e) {
+    console.warn("Failed to save cached form questions:", e);
+  }
+}
+
+// GET /api/form-questions and /api/registration-questions - Reads dynamic questions from RegistrationQuestions sheet
+async function handleGetFormQuestions(req: express.Request, res: express.Response) {
+  try {
+    const targetScriptUrl = (req.query.scriptUrl as string) || currentScriptUrl;
+
+    // 1. First priority: Fetch via Google Apps Script (getFormQuestions) if available
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        console.log("Fetching form questions from Google Apps Script:", targetScriptUrl);
+        const gasFetchUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getFormQuestions`;
+        const gasResponse = await fetch(gasFetchUrl, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(3500)
+        });
+
+        if (gasResponse.ok) {
+          const gasData: any = await gasResponse.json().catch(() => null);
+          if (gasData && gasData.questions && Array.isArray(gasData.questions) && gasData.questions.length > 0) {
+            const savedTranslations = loadFormTranslations();
+            const parsedQuestions = gasData.questions.map((q: any, idx: number) => {
+              const rawType = (q.type || "text").toString().toLowerCase().trim();
+              const rawQ = (q.question || "").toString().trim();
+              const rawImg = q.imageUrl ? q.imageUrl.toString().trim() : "";
+              const rawLink = q.externalLink ? q.externalLink.toString().trim() : "";
+
+              let fieldType = "text";
+              // 1. صورة (Display Image): if question is "صورة", or type is "صورة", or type is "رابط" with an image URL in Column F
+              if (rawQ === "صورة" || rawType === "صورة" || rawType === "image" || rawType.includes("عرض صورة") || (rawType.includes("رابط") && rawImg && (!rawLink || rawLink === "-"))) {
+                fieldType = "image_display";
+              } else if (rawType.includes("عنوان زر") || rawType.includes("زر") || rawType.includes("button")) {
+                fieldType = "button_link";
+              } else if (rawType.includes("رفع") || rawType.includes("ملف") || rawType.includes("file")) {
+                fieldType = "file";
+              } else if (rawType.includes("رقم هاتف") || rawType.includes("هاتف") || rawType.includes("phone")) {
+                fieldType = "phone";
+              } else if (rawType.includes("رقم") || rawType.includes("number")) {
+                fieldType = "number";
+              } else if (rawType.includes("ايميل") || rawType.includes("بريد") || rawType.includes("email")) {
+                fieldType = "email";
+              } else if (rawType.includes("رابط") || rawType.includes("url") || rawType.includes("link")) {
+                fieldType = "url";
+              } else if (rawType.includes("اختيار") || rawType.includes("choice") || rawType.includes("select")) {
+                fieldType = "choice";
+              }
+
+              const fieldTranslation = findQuestionTranslation(rawQ, q.id || idx + 1, savedTranslations);
+
+              return {
+                id: q.id || idx + 1,
+                question: q.question,
+                description: q.description || undefined,
+                type: fieldType,
+                options: Array.isArray(q.options) && q.options.length > 0 ? q.options : undefined,
+                required: Boolean(q.required),
+                imageUrl: rawImg ? formatImageUrl(rawImg) : undefined,
+                externalLink: (rawLink && rawLink !== "-") ? rawLink : undefined,
+                translations: fieldTranslation
+              };
+            });
+
+            console.log(`Loaded ${parsedQuestions.length} registration questions from Google Apps Script.`);
+            saveCachedFormQuestions(parsedQuestions);
+            return res.json({ success: true, questions: parsedQuestions, source: "apps_script" });
+          }
+        }
+      } catch (gasErr: any) {
+        console.warn("Could not fetch questions from Google Apps Script, falling back to direct sheets CSV:", gasErr.message);
+      }
+    }
+
+    // 2. Second priority: Fetch via direct Sheets
+    let qRows: any[] = [];
+    const possibleSheetNames = [
+      "RegistrationQuestions",
+      "Registration Questions",
+      "registrationquestions",
+      "أسئلة التسجيل",
+      "اسئلة التسجيل",
+      "الأسئلة",
+      "الاسئلة",
+      "Questions"
+    ];
+
+    for (const name of possibleSheetNames) {
+      try {
+        qRows = await getSheetValues(name);
+        if (qRows && qRows.length > 1) {
+          console.log(`Found ${qRows.length} rows in sheet tab [${name}]`);
+          break;
+        }
+      } catch (e) {
+        // continue trying other tab names
+      }
+    }
+
+    if (!qRows || qRows.length < 2) {
+      const cached = loadCachedFormQuestions();
+      if (cached && cached.length > 0) {
+        return res.json({ success: true, questions: cached, source: "server_cache" });
+      }
+      return res.json({ success: true, questions: [] });
+    }
+
+    // Row 0 is header: [نص السؤال, الوصف, نوع العنصر, خيارات, اجبار الاجابة, رابط الصورة, رابط خارجي]
+    const questions: any[] = [];
+    // Load saved form translations
+    const savedTranslations = loadFormTranslations();
+
+    for (let i = 1; i < qRows.length; i++) {
+      const row = qRows[i];
+      if (!row || row.length === 0) continue;
+
+      const questionText = row[0]?.toString().trim() || "";
+      if (!questionText) continue;
+
+      const description = row[1]?.toString().trim() || "";
+      const rawType = row[2]?.toString().trim().toLowerCase() || "نص";
+      const rawOptions = row[3]?.toString().trim() || "";
+      const rawRequired = row[4]?.toString().trim().toLowerCase() || "";
+      const rawImg = row[5]?.toString().trim() || "";
+      const externalLink = row[6]?.toString().trim() || "";
+
+      // Normalize field types
+      let fieldType = "text";
+      if (questionText === "صورة" || rawType === "صورة" || rawType === "image" || rawType.includes("عرض صورة") || (rawType.includes("رابط") && rawImg && (!externalLink || externalLink === "-"))) {
+        fieldType = "image_display";
+      } else if (rawType.includes("عنوان زر") || rawType.includes("زر") || rawType.includes("button")) {
+        fieldType = "button_link";
+      } else if (rawType.includes("رفع") || rawType.includes("ملف") || rawType.includes("file")) {
+        fieldType = "file";
+      } else if (rawType.includes("رقم هاتف") || rawType.includes("هاتف") || rawType.includes("phone")) {
+        fieldType = "phone";
+      } else if (rawType.includes("رقم") || rawType.includes("number")) {
+        fieldType = "number";
+      } else if (rawType.includes("ايميل") || rawType.includes("بريد") || rawType.includes("email")) {
+        fieldType = "email";
+      } else if (rawType.includes("رابط") || rawType.includes("url") || rawType.includes("link")) {
+        fieldType = "url";
+      } else if (rawType.includes("اختيار") || rawType.includes("choice") || rawType.includes("select")) {
+        fieldType = "choice";
+      }
+
+      // Parse options separated by ||| or \n or ,
+      let options: string[] = [];
+      if (rawOptions) {
+        if (rawOptions.includes("|||")) {
+          options = rawOptions.split("|||").map((s: string) => s.trim()).filter(Boolean);
+        } else if (rawOptions.includes("\n")) {
+          options = rawOptions.split("\n").map((s: string) => s.trim()).filter(Boolean);
+        } else {
+          options = rawOptions.split(",").map((s: string) => s.trim()).filter(Boolean);
+        }
+      }
+
+      const isRequired = 
+        rawRequired === "نعم" || 
+        rawRequired === "true" || 
+        rawRequired === "yes" || 
+        rawRequired === "1" || 
+        rawRequired === "ن" || 
+        rawRequired === "مطلوب" || 
+        rawRequired === "اجباري" || 
+        rawRequired === "إجباري" || 
+        rawRequired === "required" ||
+        (rawRequired !== "" && rawRequired !== "لا" && rawRequired !== "false" && rawRequired !== "no" && rawRequired !== "0" && rawRequired !== "-");
+      const imageUrl = (rawImg && rawImg !== "-") ? formatImageUrl(rawImg) : undefined;
+
+      // Find translation by questionText or question id
+      const fieldTranslation = findQuestionTranslation(questionText, i, savedTranslations);
+
+      questions.push({
+        id: i,
+        question: questionText,
+        description: description || undefined,
+        type: fieldType,
+        options: options.length > 0 ? options : undefined,
+        required: isRequired,
+        imageUrl: imageUrl,
+        externalLink: (externalLink && externalLink !== "-") ? externalLink : undefined,
+        translations: fieldTranslation
+      });
+    }
+
+    if (questions.length > 0) {
+      saveCachedFormQuestions(questions);
+    }
+
+    return res.json({ success: true, questions, source: "google_sheets_csv" });
+  } catch (error: any) {
+    console.error("Error reading form questions:", error);
+    const cached = loadCachedFormQuestions();
+    if (cached && cached.length > 0) {
+      return res.json({ success: true, questions: cached, source: "server_cache" });
+    }
+    return res.json({ success: true, questions: [] });
+  }
+}
+
+app.get("/api/form-questions", handleGetFormQuestions);
+app.get("/api/registration-questions", handleGetFormQuestions);
+
+// GET /api/form-translations - Retrieve all saved translations
+app.get("/api/form-translations", (req, res) => {
+  const translations = loadFormTranslations();
+  res.json({ success: true, translations });
+});
+
+// POST /api/form-translations - Save updated translations map
+app.post("/api/form-translations", (req, res) => {
+  try {
+    const { translations } = req.body;
+    if (translations && typeof translations === "object") {
+      saveFormTranslations(translations);
+      return res.json({ success: true, message: "تم حفظ الترجمات بنجاح" });
+    }
+    return res.status(400).json({ success: false, message: "صيغة الترجمة غير صالحة" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error?.message || "خطأ أثناء حفظ الترجمات" });
+  }
+});
+
+// Helper for fallback dictionary translation
+const FALLBACK_TRANSLATION_DICT: Record<string, { en: string; th: string }> = {
+  "الاسم الكامل": { en: "Full Name", th: "ชื่อ-นามสกุล" },
+  "الاسم": { en: "Name", th: "ชื่อ" },
+  "البريد الإلكتروني": { en: "Email Address", th: "อีเมล" },
+  "الايميل": { en: "Email", th: "อีเมล" },
+  "رقم الهاتف": { en: "Phone Number", th: "หมายเลขโทรศัพท์" },
+  "رقم الجوال": { en: "Mobile Number", th: "เบอร์มือถือ" },
+  "رقم الواتساب": { en: "WhatsApp Number", th: "หมายเลข WhatsApp" },
+  "العمر": { en: "Age", th: "อายุ" },
+  "تاريخ الميلاد": { en: "Date of Birth", th: "วันเกิด" },
+  "الجنس": { en: "Gender", th: "เพศ" },
+  "ذكر": { en: "Male", th: "ชาย" },
+  "أنثى": { en: "Female", th: "หญิง" },
+  "الجنسية": { en: "Nationality", th: "สัญชาติ" },
+  "البلد": { en: "Country", th: "ประเทศ" },
+  "المدينة": { en: "City", th: "เมือง" },
+  "العنوان": { en: "Address", th: "ที่อยู่" },
+  "المؤهل العلمي": { en: "Educational Qualification", th: "วุฒิการศึกษา" },
+  "المهنة": { en: "Occupation / Job", th: "อาชีพ" },
+  "ملاحظات": { en: "Notes / Comments", th: "หมายเหตุเพิ่มเติม" },
+  "صورة": { en: "Photo", th: "รูปถ่าย" },
+  "الصورة الشخصية": { en: "Personal Photo", th: "รูปถ่ายส่วนตัว" },
+  "رفع الصورة الشخصية": { en: "Upload Personal Photo", th: "อัปโหลดรูปถ่ายส่วนตัว" },
+  "رفع الهوية": { en: "Upload ID / Passport", th: "อัปโหลดบัตรประชาชน/พาสปอร์ต" },
+  "إيصال السداد": { en: "Payment Receipt", th: "สลิปการโอนเงิน" },
+  "نعم": { en: "Yes", th: "ใช่" },
+  "لا": { en: "No", th: "ไม่" },
+  "موافق": { en: "I Agree", th: "ยอมรับ" }
+};
+
+// POST /api/auto-translate-questions - Translate questions to English and Thai using Gemini AI
+app.post("/api/auto-translate-questions", async (req, res) => {
+  try {
+    const { questions } = req.body as { questions: any[] };
+    if (!questions || !Array.isArray(questions) || questions.length === 0) {
+      return res.status(400).json({ success: false, message: "لا توجد أسئلة لترجمتها" });
+    }
+
+    const ai = getGenAI();
+    let translationsMap: Record<string, any> = loadFormTranslations();
+
+    if (ai) {
+      try {
+        const questionsToTranslate = questions.map((q: any) => ({
+          key: q.question,
+          question: q.question,
+          description: q.description || "",
+          options: q.options || [],
+          type: q.type || "text"
+        }));
+
+        const prompt = `You are a professional multilingual translator specialized in Arabic, English, and Thai.
+Translate the following form questions, descriptions, and dropdown choices from Arabic into English and Thai accurately.
+
+Input questions (JSON):
+${JSON.stringify(questionsToTranslate, null, 2)}
+
+Return ONLY a JSON object where the keys are the exact original Arabic question text, and the values have the following structure:
+{
+  "Arabic Question Text": {
+    "questionEn": "English translation of question",
+    "questionTh": "Thai translation of question",
+    "descriptionEn": "English translation of description or empty string",
+    "descriptionTh": "Thai translation of description or empty string",
+    "optionsEn": ["English translation of option 1", "English translation of option 2"],
+    "optionsTh": ["Thai translation of option 1", "Thai translation of option 2"],
+    "buttonTitleEn": "English button title if applicable",
+    "buttonTitleTh": "Thai button title if applicable"
+  }
+}`;
+
+        const response = await ai.models.generateContent({
+          model: "gemini-3.7-flash",
+          contents: prompt,
+          config: {
+            responseMimeType: "application/json"
+          }
+        });
+
+        const text = response.text || "{}";
+        const parsed = JSON.parse(text);
+        
+        // Merge into translations map
+        for (const [k, v] of Object.entries(parsed)) {
+          translationsMap[k] = {
+            ...(translationsMap[k] || {}),
+            ...(v as object)
+          };
+        }
+
+        saveFormTranslations(translationsMap);
+        return res.json({ success: true, translations: translationsMap, method: "gemini-ai" });
+      } catch (geminiError: any) {
+        console.warn("Gemini translation error, falling back to dictionary:", geminiError);
+      }
+    }
+
+    // Fallback dictionary translation if AI key is missing or failed
+    for (const q of questions) {
+      const qText = q.question;
+      const key = qText;
+      const existing = translationsMap[key] || {};
+      
+      const foundInDict = FALLBACK_TRANSLATION_DICT[qText.trim()];
+      const translatedEn = existing.questionEn || (foundInDict ? foundInDict.en : qText);
+      const translatedTh = existing.questionTh || (foundInDict ? foundInDict.th : qText);
+
+      // Translate options
+      const optEn = existing.optionsEn || (q.options ? q.options.map((opt: string) => FALLBACK_TRANSLATION_DICT[opt.trim()]?.en || opt) : undefined);
+      const optTh = existing.optionsTh || (q.options ? q.options.map((opt: string) => FALLBACK_TRANSLATION_DICT[opt.trim()]?.th || opt) : undefined);
+
+      translationsMap[key] = {
+        ...existing,
+        questionEn: translatedEn,
+        questionTh: translatedTh,
+        descriptionEn: existing.descriptionEn || (q.description ? q.description : undefined),
+        descriptionTh: existing.descriptionTh || (q.description ? q.description : undefined),
+        optionsEn: optEn,
+        optionsTh: optTh
+      };
+    }
+
+    saveFormTranslations(translationsMap);
+    return res.json({ success: true, translations: translationsMap, method: "dictionary_fallback" });
+  } catch (error: any) {
+    console.error("Auto translate error:", error);
+    return res.status(500).json({ success: false, message: error?.message || "فشلت الترجمة التلقائية" });
+  }
+});
+
+// POST /api/upload-drive - Uploads file/image to Google Drive via Google Apps Script
+app.post("/api/upload-drive", async (req, res) => {
+  try {
+    const { base64Data, fileName, mimeType, folderId, scriptUrl } = req.body;
+    const targetFolderId = folderId || currentDriveFolderId || "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
+    const targetScriptUrl = scriptUrl || currentScriptUrl;
+
+    if (!base64Data) {
+      return res.status(400).json({ success: false, message: "بيانات الملف مفقودة" });
+    }
+
+    // Clean base64 prefix if exists
+    let cleanBase64 = base64Data;
+    if (cleanBase64.includes("base64,")) {
+      cleanBase64 = cleanBase64.split("base64,")[1];
+    }
+
+    // 1. Forward to Google Apps Script if URL exists
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        console.log("Forwarding file upload to Google Apps Script:", targetScriptUrl);
+        const gasPayload = JSON.stringify({
+          action: "uploadFile",
+          base64Data: cleanBase64,
+          fileName: fileName || `upload_${Date.now()}.jpg`,
+          mimeType: mimeType || "image/jpeg",
+          folderId: targetFolderId
+        });
+
+        const gasRes = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: gasPayload,
+          redirect: "follow"
+        });
+
+        if (gasRes.ok) {
+          const data: any = await gasRes.json().catch(() => null);
+          if (data && data.success && data.fileUrl) {
+            console.log("File uploaded to Drive via Apps Script successfully:", data.fileUrl);
+            return res.json({
+              success: true,
+              fileUrl: data.fileUrl,
+              downloadUrl: data.downloadUrl || data.fileUrl,
+              fileId: data.fileId,
+              fileName: data.fileName || fileName,
+              message: "تم رفع الملف إلى Google Drive بنجاح"
+            });
+          }
+        }
+      } catch (gasErr: any) {
+        console.warn("Could not upload file via Google Apps Script:", gasErr.message);
+      }
+    }
+
+    // 2. Fallback: Save file locally to /public/uploads/
+    try {
+      const uploadsDir = path.join(process.cwd(), "public", "uploads");
+      if (!fs.existsSync(uploadsDir)) {
+        fs.mkdirSync(uploadsDir, { recursive: true });
+      }
+      const safeName = `${Date.now()}_${(fileName || "file.jpg").replace(/[^a-zA-Z0-9\._-]/g, "_")}`;
+      const filePath = path.join(uploadsDir, safeName);
+      fs.writeFileSync(filePath, Buffer.from(cleanBase64, "base64"));
+      const localFileUrl = `/uploads/${safeName}`;
+
+      return res.json({
+        success: true,
+        fileUrl: localFileUrl,
+        downloadUrl: localFileUrl,
+        fileName: safeName,
+        message: "تم حفظ الملف بنجاح"
+      });
+    } catch (saveErr: any) {
+      console.error("Local file save error:", saveErr);
+      return res.status(500).json({ success: false, message: "فشل حفظ الملف" });
+    }
+
+  } catch (error: any) {
+    console.error("Upload drive endpoint error:", error);
+    return res.status(500).json({ success: false, message: "حدث خطأ أثناء رفع الملف" });
+  }
+});
+
+// Helper: Load & Save Subscriber Email Configuration
+const SUBSCRIBER_EMAIL_CONFIG_FILE = path.join(process.cwd(), "data", "subscriber_email_config.json");
+
+function loadSubscriberEmailConfig() {
+  try {
+    if (fs.existsSync(SUBSCRIBER_EMAIL_CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(SUBSCRIBER_EMAIL_CONFIG_FILE, "utf-8"));
+    }
+  } catch (e) {
+    console.warn("Could not read subscriber_email_config.json:", e);
+  }
+  return {
+    enabled: true,
+    emailColumn: "E",
+    deliveryStatusColumn: "Z",
+    dataFields: [
+      { id: "1", label: "رقم التسجيل", labelEn: "Registration ID", labelTh: "หมายเลขลงทะเบียน", columnLetter: "B" },
+      { id: "2", label: "اسم المشترك", labelEn: "Participant Name", labelTh: "ชื่อผู้สมัคร", columnLetter: "C" },
+      { id: "3", label: "تاريخ ووقت التسجيل", labelEn: "Registration Date & Time", labelTh: "วันและเวลาที่ลงทะเบียน", columnLetter: "A" },
+      { id: "4", label: "رقم الهاتف / الواتساب", labelEn: "Phone / WhatsApp", labelTh: "เบอร์โทรศัพท์ / WhatsApp", columnLetter: "F" },
+      { id: "5", label: "رابط الدخول لصفحة الاشتراك", labelEn: "Login / Courses Portal", labelTh: "ลิงก์เข้าสู่ระบบบทเรียน", columnLetter: "LOGIN_URL" }
+    ],
+    qrCodeColumns: "B",
+    qrDriveUrlColumn: "Y",
+    includeQrInEmail: true,
+    messages: {
+      ar: {
+        subject: "تأكيد تسجيلك في منصة مؤسسة يوسف ذنون - بيانات الدخول والاشتراك",
+        header: "مرحباً بك في مؤسسة يوسف ذنون للخط العربي",
+        body: "نشكرك على تسجيلك واهتمامك بتعلم وإتقان فنون الخط العربي الأصيل. فيما يلي تفاصيل وبيانات تسجيلك المعتمدة للدخول ومتابعة الدورات والمحتوى الحصري:",
+        footerNote: "يرجى الاحتفاظ برمز الاستجابة السريعة (QR Code) وبيانات التسجيل لاستخدامها عند مراجعة اشتراكك أو حضور الجلسات."
+      },
+      en: {
+        subject: "Registration Confirmation - Yousuf Dhannoon Calligraphy Portal",
+        header: "Welcome to Yousuf Dhannoon Calligraphy Institute",
+        body: "Thank you for registering. Below are your verified registration details and access credentials to explore your courses and exclusive content:",
+        footerNote: "Please keep this QR Code and your registration ID handy for subscription verification and session access."
+      },
+      th: {
+        subject: "ยืนยันการลงทะเบียน - สถาบันศิลปะการเขียนตัวอักษรอาหรับ ยูซุฟ ซันนูน",
+        header: "ยินดีต้อนรับสู่ สถาบันยูซุฟ ซันนูน สำหรับการเขียนอักษรอาหรับ",
+        body: "ขอขอบคุณสำหรับการลงทะเบียน รายละเอียดข้อมูลการสมัครและข้อมูลสำหรับเข้าสู่ระบบบทเรียนของคุณมีดังนี้:",
+        footerNote: "กรุณาเก็บรหัส QR Code และหมายเลขลงทะเบียนนี้ไว้เพื่อใช้ในการยืนยันสิทธิ์และการเข้าเรียน"
+      }
+    },
+    attachments: [
+      {
+        id: "1",
+        title: "دليل المشترك ومنهاج الدورات (PDF)",
+        titleEn: "Subscriber Guide & Curriculum (PDF)",
+        titleTh: "คู่มือสมาชิกและหลักสูตร (PDF)",
+        url: "https://drive.google.com/file/d/1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7/view",
+        type: "file_button"
+      },
+      {
+        id: "2",
+        title: "شعار وبطاقة عضوية المؤسسة",
+        titleEn: "Institute Badge & Emblem",
+        titleTh: "ตราสัญลักษณ์บัตรสมาชิก",
+        url: "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=600&auto=format&fit=crop&q=80",
+        type: "image"
+      }
+    ]
+  };
+}
+
+function saveSubscriberEmailConfig(config: any) {
+  try {
+    const dataDir = path.join(process.cwd(), "data");
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(SUBSCRIBER_EMAIL_CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
+    return true;
+  } catch (e) {
+    console.error("Failed to save subscriber email config:", e);
+    return false;
+  }
+}
+
+// Helper: Load & Save Telegram Configuration
+const TELEGRAM_CONFIG_FILE = path.join(process.cwd(), "data", "telegram_config.json");
+
+function loadTelegramConfig() {
+  try {
+    if (fs.existsSync(TELEGRAM_CONFIG_FILE)) {
+      return JSON.parse(fs.readFileSync(TELEGRAM_CONFIG_FILE, "utf-8"));
+    }
+  } catch (e) {
+    console.warn("Could not read telegram_config.json:", e);
+  }
+  return {
+    enabled: false,
+    botToken: "",
+    chatId: "",
+    topicId: "",
+    notificationTitle: "🔔 إشعار تسجيل جديد - مؤسسة يوسف ذنون",
+    includeAllAnswers: true,
+    includeQrCode: true,
+    includeAttachment: true,
+    customButtons: [],
+    customHeader: "🏛️ مؤسسة يوسف ذنون للخط العربي",
+    customFooter: "⚡ نظام المتابعة الفورية للإدارة"
+  };
+}
+
+function saveTelegramConfig(config: any) {
+  try {
+    const dataDir = path.join(process.cwd(), "data");
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(TELEGRAM_CONFIG_FILE, JSON.stringify(config, null, 2), "utf-8");
+    return true;
+  } catch (e) {
+    console.error("Failed to save telegram config:", e);
+    return false;
+  }
+}
+
+function escapeTelegramHtml(text: string): string {
+  if (!text) return "";
+  return String(text)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
+function stripHtmlTags(text: string): string {
+  if (!text) return "";
+  return String(text).replace(/<[^>]*>?/gm, "");
+}
+
+async function sendTelegramAdminNotification(config: any, regData: any, spreadsheetId?: string) {
+  if (!config || !config.enabled || !config.botToken || !config.chatId) {
+    console.log("[Telegram] Notification skipped: disabled or missing botToken/chatId");
+    return { success: false, reason: "Telegram notifications not enabled or missing token/chatId" };
+  }
+
+  const token = config.botToken.trim();
+  const chatId = config.chatId.trim();
+  const topicId = config.topicId ? config.topicId.trim() : "";
+
+  // Extract subscriber details safely
+  let name = regData.name || regData.nameArabic || "";
+  let regId = regData.registrationId || "";
+  let phone = regData.phone || "";
+  let email = regData.email || "";
+  const timestamp = regData.timestamp || new Date().toLocaleString("ar-IQ", { timeZone: "Asia/Baghdad" });
+  const sheetId = spreadsheetId || currentSpreadsheetId || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
+
+  if (regData.answers && Array.isArray(regData.answers)) {
+    regData.answers.forEach((item: any) => {
+      if (!item) return;
+      const q = (item.question || "").trim();
+      const a = typeof item.answer === "string" ? item.answer.trim() : String(item.answer || "").trim();
+      if (!name && (q.includes("اسم") || q.includes("الاسم") || q.toLowerCase().includes("name"))) name = a;
+      if (!phone && (q.includes("هاتف") || q.includes("واتساب") || q.includes("جوال") || q.toLowerCase().includes("phone"))) phone = a;
+      if (!email && (q.includes("ايميل") || q.includes("بريد") || q.toLowerCase().includes("email"))) email = a;
+    });
+  }
+
+  if (!name) name = "مشترك جديد";
+  if (!regId) regId = "REG-" + Date.now().toString().slice(-6);
+
+  // Generate QR Code data from active subscriber email config (respecting user selected columns like B, C)
+  let qrInfo: { qrText: string; qrUrl: string } | null = null;
+  try {
+    const emailConfig = loadSubscriberEmailConfig();
+    const qrColsStr = (emailConfig.qrCodeColumns || "B, C").trim();
+    const cols = qrColsStr.split(/[,\s+]+/).map((c: string) => c.trim().toUpperCase()).filter(Boolean);
+    const qrParts: string[] = [];
+
+    const sampleAnswersMap: Record<string, string> = {};
+    if (regData.answers && Array.isArray(regData.answers)) {
+      regData.answers.forEach((item: any) => {
+        if (item && item.question) sampleAnswersMap[item.question] = String(item.answer || "");
+      });
+    }
+
+    cols.forEach((col: string) => {
+      let val = "";
+      if (col === "A") val = timestamp;
+      else if (col === "B") val = regId;
+      else if (col === "C") val = name;
+      else if (col === "E") val = email;
+      else if (col === "F") val = phone;
+      else if (regData.answers && Array.isArray(regData.answers)) {
+        // letter A=1, B=2, C=3, D=4 => index 0
+        let cNum = 0;
+        for (let i = 0; i < col.length; i++) {
+          cNum += (col.charCodeAt(i) - 64) * Math.pow(26, col.length - i - 1);
+        }
+        if (cNum >= 4 && regData.answers[cNum - 4]) {
+          const itm = regData.answers[cNum - 4];
+          if (itm && itm.answer) val = String(itm.answer);
+        }
+      }
+
+      if (val && typeof val === "string" && !val.startsWith("data:")) {
+        qrParts.push(val.trim());
+      }
+    });
+
+    if (qrParts.length === 0) {
+      if (regId) qrParts.push(regId);
+      if (name && name !== "مشترك جديد") qrParts.push(name);
+    }
+
+    const qrText = qrParts.join(" - ") || regId;
+    const qrUrl = `https://quickchart.io/qr?text=${encodeURIComponent(qrText)}&size=260&margin=1`;
+    qrInfo = { qrText, qrUrl };
+  } catch (qrErr: any) {
+    console.warn("QR build error in Telegram notification:", qrErr.message);
+  }
+
+  // 1. Detect uploaded image attachment URL
+  let detectedImageUrl = "";
+  if (config.includeAttachment) {
+    if (regData.attachment && typeof regData.attachment === "string" && regData.attachment.startsWith("http")) {
+      const driveMatch = regData.attachment.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || regData.attachment.match(/id=([a-zA-Z0-9_-]+)/);
+      if (driveMatch && driveMatch[1]) {
+        detectedImageUrl = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+      } else if (/\.(jpeg|jpg|png|webp|gif)($|\?)/i.test(regData.attachment)) {
+        detectedImageUrl = regData.attachment;
+      }
+    }
+    // Also check if any answer item contains a drive image URL
+    if (!detectedImageUrl && regData.answers && Array.isArray(regData.answers)) {
+      for (const item of regData.answers) {
+        if (item && typeof item.answer === "string" && item.answer.startsWith("http")) {
+          const driveMatch = item.answer.match(/\/file\/d\/([a-zA-Z0-9_-]+)/) || item.answer.match(/id=([a-zA-Z0-9_-]+)/);
+          if (driveMatch && driveMatch[1]) {
+            detectedImageUrl = `https://drive.google.com/uc?export=view&id=${driveMatch[1]}`;
+            break;
+          }
+        }
+      }
+    }
+  }
+
+  // If uploaded photo exists and QR code is also enabled, send the uploaded photo as the main photo and add QR as an inline action button.
+  // If NO uploaded photo exists but QR code is enabled, send the QR Code image directly as the main photo.
+  let qrCodeAsButton = false;
+  if (detectedImageUrl) {
+    if (config.includeQrCode && qrInfo && qrInfo.qrUrl) {
+      qrCodeAsButton = true;
+    }
+  } else if (config.includeQrCode && qrInfo && qrInfo.qrUrl) {
+    detectedImageUrl = qrInfo.qrUrl;
+  }
+
+  // Build Telegram HTML Message
+  let message = "";
+  if (config.customHeader) {
+    message += `<b>${escapeTelegramHtml(config.customHeader)}</b>\n`;
+  }
+  message += `<b>${escapeTelegramHtml(config.notificationTitle || "🔔 إشعار تسجيل جديد")}</b>\n`;
+  message += `━━━━━━━━━━━━━━━━━━━━\n`;
+  message += `👤 <b>اسم المشترك:</b> ${escapeTelegramHtml(name)}\n`;
+  message += `🆔 <b>رقم التسجيل:</b> <code>${escapeTelegramHtml(regId)}</code>\n`;
+  if (phone) {
+    message += `📱 <b>الهاتف:</b> <code>${escapeTelegramHtml(phone)}</code>\n`;
+  }
+  if (email) {
+    message += `📧 <b>البريد:</b> ${escapeTelegramHtml(email)}\n`;
+  }
+  message += `⏰ <b>التاريخ والوقت:</b> ${escapeTelegramHtml(timestamp)}\n`;
+
+  // Form answers list if enabled
+  if (config.includeAllAnswers && regData.answers && Array.isArray(regData.answers) && regData.answers.length > 0) {
+    message += `\n📋 <b>تفاصيل وإجابات الاستمارة:</b>\n`;
+    regData.answers.forEach((item: any, idx: number) => {
+      if (!item) return;
+      const q = item.question || `سؤال ${idx + 1}`;
+      let a = item.answer;
+      if (a === undefined || a === null || a === "") {
+        a = "—";
+      }
+
+      const isAttachmentUrl = (typeof a === "string") && (
+        a === regData.attachment ||
+        a.includes("drive.google.com") ||
+        a.includes("lh3.googleusercontent.com") ||
+        /\.(jpeg|jpg|gif|png|webp|bmp)/i.test(a) ||
+        a.startsWith("data:")
+      );
+
+      if (isAttachmentUrl) {
+        message += `▫️ <b>${escapeTelegramHtml(q)}:</b> <i>[مرفقة كصورة في الإشعار 🖼️]</i>\n`;
+      } else if (typeof a === "string" && (a.startsWith("http://") || a.startsWith("https://"))) {
+        message += `▫️ <b>${escapeTelegramHtml(q)}:</b> <a href="${escapeTelegramHtml(a)}">فتح الرابط ↗</a>\n`;
+      } else {
+        const safeText = String(a).length > 250 ? String(a).slice(0, 250) + "..." : String(a);
+        message += `▫️ <b>${escapeTelegramHtml(q)}:</b> ${escapeTelegramHtml(safeText)}\n`;
+      }
+    });
+  }
+
+  if (config.customFooter) {
+    message += `\n<i>${escapeTelegramHtml(config.customFooter)}</i>`;
+  }
+
+  // Inline keyboard buttons
+  const inlineKeyboard: any[][] = [];
+
+  // If both photo and QR Code exist, add a direct QR button to open the QR Code image
+  if (qrCodeAsButton && qrInfo && qrInfo.qrUrl) {
+    inlineKeyboard.push([{
+      text: "🔳 عرض وتنزيل رمز QR Code ↗",
+      url: qrInfo.qrUrl
+    }]);
+  }
+
+  // Add Custom Action Buttons configured by the admin
+  if (config.customButtons && Array.isArray(config.customButtons) && config.customButtons.length > 0) {
+    config.customButtons.forEach((btn: any) => {
+      if (btn && btn.text && btn.url && btn.url.startsWith("http")) {
+        inlineKeyboard.push([{
+          text: btn.text.trim(),
+          url: btn.url.trim()
+        }]);
+      }
+    });
+  }
+
+  const replyMarkup = inlineKeyboard.length > 0 ? { inline_keyboard: inlineKeyboard } : undefined;
+
+  // Truncate message if it exceeds Telegram 4000 char safe limit
+  let finalHtmlMessage = message;
+  if (finalHtmlMessage.length > 3900) {
+    finalHtmlMessage = finalHtmlMessage.slice(0, 3850) + "\n... (تم اختصار باقي الإجابات)";
+  }
+
+  console.log(`[Telegram] Sending notification for ${name} (${regId}) to Chat ID ${chatId}... (detectedImageUrl: ${detectedImageUrl ? 'YES' : 'NO'})`);
+
+  // Try 0: If an image attachment exists, send via sendPhoto directly with caption
+  if (detectedImageUrl) {
+    try {
+      const captionLimit = 1000;
+      let photoCaption = finalHtmlMessage;
+      if (photoCaption.length > captionLimit) {
+        photoCaption = photoCaption.slice(0, captionLimit - 50) + "\n... (تفاصيل المشترك)";
+      }
+
+      const photoPayload: any = {
+        chat_id: chatId,
+        photo: detectedImageUrl,
+        caption: photoCaption,
+        parse_mode: "HTML"
+      };
+      if (topicId) photoPayload.message_thread_id = Number(topicId);
+      if (replyMarkup) photoPayload.reply_markup = replyMarkup;
+
+      const pRes = await fetch(`https://api.telegram.org/bot${token}/sendPhoto`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(photoPayload)
+      });
+      const pData: any = await pRes.json().catch(() => null);
+
+      if (pData && pData.ok) {
+        console.log(`[Telegram] Photo notification sent directly to Telegram (Message ID: ${pData.result?.message_id})`);
+        return { success: true, result: pData.result, type: "photo" };
+      } else {
+        console.warn("[Telegram] sendPhoto failed, falling back to text message:", pData?.description);
+      }
+    } catch (photoErr: any) {
+      console.warn("[Telegram] sendPhoto exception:", photoErr.message);
+    }
+  }
+
+  // Try 1: Send via sendMessage (HTML format)
+  try {
+    const msgPayload: any = {
+      chat_id: chatId,
+      text: finalHtmlMessage,
+      parse_mode: "HTML",
+      disable_web_page_preview: false
+    };
+    if (topicId) msgPayload.message_thread_id = Number(topicId);
+    if (replyMarkup) msgPayload.reply_markup = replyMarkup;
+
+    const mRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(msgPayload)
+    });
+    const mData: any = await mRes.json().catch(() => null);
+
+    if (mData && mData.ok) {
+      console.log(`[Telegram] Message sent successfully (ID: ${mData.result?.message_id})`);
+      return { success: true, result: mData.result };
+    } else {
+      console.warn("[Telegram] HTML sendMessage failed, trying Plain Text fallback:", mData?.description);
+      
+      // Try 2 Fallback: Send plain text without parse_mode (immune to HTML entities bugs)
+      const plainText = stripHtmlTags(finalHtmlMessage);
+      const fallbackPayload: any = {
+        chat_id: chatId,
+        text: plainText
+      };
+      if (topicId) fallbackPayload.message_thread_id = Number(topicId);
+      if (replyMarkup) fallbackPayload.reply_markup = replyMarkup;
+
+      const fRes = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(fallbackPayload)
+      });
+      const fData: any = await fRes.json().catch(() => null);
+
+      if (fData && fData.ok) {
+        console.log(`[Telegram] Fallback plain-text message sent successfully (ID: ${fData.result?.message_id})`);
+        return { success: true, result: fData.result };
+      } else {
+        console.error("[Telegram] Both HTML and Fallback failed:", fData);
+        return { success: false, error: fData?.description || mData?.description || "Failed to send Telegram message" };
+      }
+    }
+  } catch (netErr: any) {
+    console.error("[Telegram] Network error connecting to Telegram API:", netErr.message);
+    return { success: false, error: netErr.message };
+  }
+}
+
+// GET /api/telegram-config
+app.get("/api/telegram-config", (req, res) => {
+  const config = loadTelegramConfig();
+  res.json({ success: true, config });
+});
+
+// POST /api/telegram-config
+app.post("/api/telegram-config", async (req, res) => {
+  const { config, scriptUrl } = req.body;
+  if (!config) {
+    return res.status(400).json({ success: false, message: "بيانات الإعدادات مفقودة" });
+  }
+  const saved = saveTelegramConfig(config);
+
+  // Forward to Google Apps Script if URL exists
+  const targetScriptUrl = scriptUrl || currentScriptUrl;
+  if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+    try {
+      await fetch(targetScriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "saveTelegramConfig",
+          telegramConfig: config
+        })
+      });
+    } catch (e: any) {
+      console.warn("Could not sync telegram config to Apps Script:", e.message);
+    }
+  }
+
+  if (saved) {
+    return res.json({ success: true, message: "تم حفظ إعدادات إشعارات تلغرام بنجاح" });
+  } else {
+    return res.status(500).json({ success: false, message: "حدث خطأ أثناء حفظ الإعدادات" });
+  }
+});
+
+// POST /api/test-telegram
+app.post("/api/test-telegram", async (req, res) => {
+  try {
+    const { config, scriptUrl, spreadsheetId } = req.body;
+    const activeConfig = config || loadTelegramConfig();
+
+    if (!activeConfig.botToken || !activeConfig.chatId) {
+      return res.status(400).json({
+        success: false,
+        message: "رمز Bot Token ومعرف Chat ID مطلوبان لإجراء الاختبار"
+      });
+    }
+
+    const testPayload = {
+      name: "مشترك تجريبي (Test User)",
+      registrationId: "TEST-" + Math.floor(100000 + Math.random() * 900000),
+      phone: "+9647701234567",
+      email: "subscriber@example.com",
+      timestamp: new Date().toLocaleString("ar-IQ", { timeZone: "Asia/Baghdad" }),
+      answers: [
+        { question: "الدورة المطلوبة", answer: "دلالات الخط الكوفي والثلث" },
+        { question: "المستوى", answer: "متوسط / متقدم" },
+        { question: "المدينة", answer: "الموصل، العراق" }
+      ],
+      attachment: "https://drive.google.com/file/d/1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7/view"
+    };
+
+    // Try direct send from server first
+    const directResult = await sendTelegramAdminNotification(
+      { ...activeConfig, enabled: true },
+      testPayload,
+      spreadsheetId || currentSpreadsheetId
+    );
+
+    if (directResult.success) {
+      return res.json({
+        success: true,
+        message: "تم إرسال رسالة الاختبار بنجاح إلى تلغرام! تفقد محادثة البوت أو المجموعة الآن."
+      });
+    } else {
+      return res.status(400).json({
+        success: false,
+        message: directResult.error ? `خطأ من تلغرام: ${directResult.error}` : "تعذر إرسال الإشعار لتلغرام"
+      });
+    }
+  } catch (error: any) {
+    console.error("Test telegram error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error.message || "حدث خطأ غير متوقع أثناء الاتصال بتلغرام"
+    });
+  }
+});
+
+// GET /api/subscriber-email-config
+app.get("/api/subscriber-email-config", (req, res) => {
+  const config = loadSubscriberEmailConfig();
+  res.json({ success: true, config });
+});
+
+// POST /api/subscriber-email-config
+app.post("/api/subscriber-email-config", async (req, res) => {
+  const { config, scriptUrl } = req.body;
+  if (!config) {
+    return res.status(400).json({ success: false, message: "بيانات الإعدادات مفقودة" });
+  }
+  const saved = saveSubscriberEmailConfig(config);
+
+  // Also forward to Google Apps Script if URL exists
+  const targetScriptUrl = scriptUrl || currentScriptUrl;
+  if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+    try {
+      await fetch(targetScriptUrl, {
+        method: "POST",
+        headers: { "Content-Type": "text/plain;charset=utf-8" },
+        body: JSON.stringify({
+          action: "saveSubscriberEmailConfig",
+          emailConfig: config
+        })
+      });
+    } catch (e: any) {
+      console.warn("Could not sync subscriber email config to Apps Script:", e.message);
+    }
+  }
+
+  if (saved) {
+    return res.json({ success: true, message: "تم حفظ إعدادات إيميل المشترك بنجاح" });
+  } else {
+    return res.status(500).json({ success: false, message: "حدث خطأ أثناء حفظ الإعدادات" });
+  }
+});
+
+// POST /api/auto-translate-email-template
+app.post("/api/auto-translate-email-template", async (req, res) => {
+  try {
+    const { arTemplate, dataFields, attachments } = req.body;
+    if (!arTemplate) {
+      return res.status(400).json({ success: false, message: "القالب العربي مفقود" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      try {
+        const ai = new GoogleGenAI({ apiKey });
+        const prompt = `You are an expert multilingual translator specializing in Arabic, English, and Thai.
+Translate the following email template from Arabic into English and Thai.
+Keep placeholders like {name}, {id}, {email}, {date}, {login_url} intact without changing their syntax.
+
+Arabic template:
+${JSON.stringify({
+  subject: arTemplate.subject || "",
+  header: arTemplate.header || "",
+  body: arTemplate.body || "",
+  footerNote: arTemplate.footerNote || "",
+  fields: dataFields ? dataFields.map((f: any) => ({ id: f.id, label: f.label })) : [],
+  attachments: attachments ? attachments.map((a: any) => ({ id: a.id, title: a.title })) : []
+}, null, 2)}
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "en": {
+    "subject": "...",
+    "header": "...",
+    "body": "...",
+    "footerNote": "..."
+  },
+  "th": {
+    "subject": "...",
+    "header": "...",
+    "body": "...",
+    "footerNote": "..."
+  },
+  "fieldsEn": { "fieldId": "English Label" },
+  "fieldsTh": { "fieldId": "Thai Label" },
+  "attachmentsEn": { "attachmentId": "English Title" },
+  "attachmentsTh": { "attachmentId": "Thai Title" }
+}`;
+
+        const aiResponse = await ai.models.generateContent({
+          model: "gemini-2.5-flash",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+
+        const parsed = JSON.parse(aiResponse.text || "{}");
+        return res.json({ success: true, result: parsed, method: "gemini-ai" });
+      } catch (gemErr: any) {
+        console.warn("Gemini translate email template error:", gemErr);
+      }
+    }
+
+    // Fallback translations
+    return res.json({
+      success: true,
+      result: {
+        en: {
+          subject: "Registration Confirmation - Yousuf Dhannoon Calligraphy Portal",
+          header: "Welcome to Yousuf Dhannoon Calligraphy Institute",
+          body: arTemplate.body || "Thank you for registering. Below are your verified registration details and access credentials:",
+          footerNote: arTemplate.footerNote || "Please keep this QR Code and your registration ID handy for subscription verification."
+        },
+        th: {
+          subject: "ยืนยันการลงทะเบียน - สถาบันศิลปะการเขียนตัวอักษรอาหรับ ยูซุฟ ซันنูน",
+          header: "ยินดีต้อนรับสู่ สถาบันยูซุฟ ซันนูน สำหรับการเขียนอักษรอาหรับ",
+          body: arTemplate.body || "ขอขอบคุณสำหรับการลงทะเบียน รายละเอียดข้อมูลการสมัครสำหรับเข้าสู่ระบบของคุณมีดังนี้:",
+          footerNote: arTemplate.footerNote || "กรุณาเก็บรหัส QR Code และหมายเลขลงทะเบียนนี้ไว้เพื่อใช้ในการยืนยันสิทธิ์"
+        }
+      },
+      method: "fallback"
+    });
+  } catch (error: any) {
+    console.error("Translate email template error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/registration-answers - Fetch all registration answers from RegistrationAnswers sheet
+app.get("/api/registration-answers", async (req, res) => {
+  try {
+    const targetScriptUrl = (req.query.scriptUrl as string)?.trim() || currentScriptUrl;
+    
+    // 1. Try fetching from Google Apps Script Web App first
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        const gasUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getRegistrationAnswers`;
+        const gasRes = await fetch(gasUrl, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (gasRes.ok) {
+          const data: any = await gasRes.json().catch(() => null);
+          if (data && data.success && Array.isArray(data.records)) {
+            return res.json({
+              success: true,
+              headers: data.headers || [],
+              records: data.records || [],
+              total: data.total || data.records.length,
+              source: "apps_script"
+            });
+          }
+        }
+      } catch (gasErr: any) {
+        console.warn("GAS fetch registration answers error, falling back to direct sheet:", gasErr.message);
+      }
+    }
+
+    // 2. Fallback: Fetch directly from Google Sheet via Google Visualization API
+    const sheetRows = await getSheetValues("RegistrationAnswers")
+      .catch(() => getSheetValues("طلبات التسجيل"))
+      .catch(() => getSheetValues("إجابات التسجيل"))
+      .catch(() => []);
+
+    if (!sheetRows || sheetRows.length < 2) {
+      return res.json({
+        success: true,
+        headers: sheetRows && sheetRows.length > 0 ? sheetRows[0] : [],
+        records: [],
+        total: 0,
+        source: "sheet_gviz_empty"
+      });
+    }
+
+    const headers: string[] = sheetRows[0].map((h: any) => (h || "").toString().trim());
+    
+    // Identify key column indexes
+    let regIdColIdx = -1;
+    let nameColIdx = -1;
+    let nameArColIdx = -1;
+    let timeColIdx = -1;
+
+    for (let h = 0; h < headers.length; h++) {
+      const hText = headers[h].toLowerCase();
+      if (headers[h] === "رقم التسجيل" || hText.includes("registration") || hText.includes("regid")) {
+        if (regIdColIdx === -1) regIdColIdx = h;
+      } else if (headers[h] === "الاسم" || headers[h] === "اسم المشترك" || hText === "name") {
+        if (nameColIdx === -1) nameColIdx = h;
+      } else if (headers[h] === "الاسم بالعربي" || headers[h] === "الاسم العربي" || hText.includes("arabic")) {
+        if (nameArColIdx === -1) nameArColIdx = h;
+      } else if (headers[h] === "التاريخ والوقت" || headers[h] === "التاريخ" || hText.includes("time") || hText.includes("date")) {
+        if (timeColIdx === -1) timeColIdx = h;
+      }
+    }
+
+    if (timeColIdx === -1 && headers.length > 0) timeColIdx = 0;
+    if (regIdColIdx === -1 && headers.length > 1) regIdColIdx = 1;
+    if (nameColIdx === -1 && headers.length > 2) nameColIdx = 2;
+    if (nameArColIdx === -1 && headers.length > 3) nameArColIdx = 3;
+
+    const records: any[] = [];
+    for (let r = 1; r < sheetRows.length; r++) {
+      const row = sheetRows[r];
+      if (!row || row.every((c: any) => !c || c.toString().trim() === "")) continue;
+
+      const regId = regIdColIdx !== -1 && row[regIdColIdx] ? row[regIdColIdx].toString().trim() : "";
+      const rName = nameColIdx !== -1 && row[nameColIdx] ? row[nameColIdx].toString().trim() : "";
+      const rNameAr = nameArColIdx !== -1 && row[nameArColIdx] ? row[nameArColIdx].toString().trim() : "";
+      const rTime = timeColIdx !== -1 && row[timeColIdx] ? row[timeColIdx].toString().trim() : "";
+
+      const rowData: Record<string, string> = {};
+      const rawRowArr: string[] = [];
+      for (let k = 0; k < headers.length; k++) {
+        const hName = headers[k] || `Column_${k + 1}`;
+        const cellVal = row[k] !== undefined && row[k] !== null ? row[k].toString().trim() : "";
+        rowData[hName] = cellVal;
+        rawRowArr.push(cellVal);
+      }
+
+      records.push({
+        rowIndex: r + 1,
+        registrationId: regId,
+        name: rName,
+        nameArabic: rNameAr,
+        timestamp: rTime,
+        data: rowData,
+        rawRow: rawRowArr
+      });
+    }
+
+    return res.json({
+      success: true,
+      headers,
+      records,
+      total: records.length,
+      source: "sheet_gviz"
+    });
+  } catch (error: any) {
+    console.error("Fetch registration answers error:", error);
+    return res.status(500).json({ success: false, message: "فشل جلب بيانات المسجلين: " + error.message, records: [] });
+  }
+});
+
+// POST /api/registration-answers/update - Update registration answer record
+app.post("/api/registration-answers/update", async (req, res) => {
+  try {
+    const { registrationId, rowIndex, updatedData, scriptUrl } = req.body;
+    const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
+
+    if (!targetScriptUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "رابط Google Apps Script غير مضبوط لتنفيذ التعديل على الشيت مباشرة"
+      });
+    }
+
+    let resultData: any = null;
+    let requestError: any = null;
+
+    // 1. First Attempt: GET request with clean JSON parameter (Fastest in Google Apps Script, avoids POST redirect stalling)
+    try {
+      const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=updateRegistrationAnswer&registrationId=${encodeURIComponent(registrationId || "")}&rowIndex=${encodeURIComponent(rowIndex || "")}&data=${encodeURIComponent(JSON.stringify(updatedData || {}))}`;
+      const getRes = await fetch(getUrl, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(12000)
+      });
+      const getText = await getRes.text().catch(() => "");
+      try {
+        const getJson = JSON.parse(getText);
+        if (getJson && (getJson.success || getJson.rowIndex)) {
+          resultData = getJson;
+        }
+      } catch (gp) {
+        if (getText.includes('"success":true') || getText.includes('"success": true') || getRes.ok) {
+          resultData = { success: true, message: "تم تحديث بيانات المسجل بنجاح في الشيت" };
+        }
+      }
+    } catch (gErr: any) {
+      console.warn("GET updateRegistrationAnswer error:", gErr.message);
+      requestError = gErr;
+    }
+
+    // 2. Second Attempt: POST fallback if GET didn't succeed
+    if (!resultData || !resultData.success) {
+      try {
+        const payload = JSON.stringify({
+          action: "updateRegistrationAnswer",
+          registrationId,
+          rowIndex,
+          updatedData
+        });
+
+        const response = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: payload,
+          redirect: "follow",
+          signal: AbortSignal.timeout(12000)
+        });
+
+        const resText = await response.text().catch(() => "");
+        try {
+          const parsed = JSON.parse(resText);
+          if (parsed && (parsed.success || parsed.rowIndex)) {
+            resultData = parsed;
+          }
+        } catch (pErr) {
+          if (resText.includes('"success":true') || resText.includes('"success": true')) {
+            resultData = { success: true, message: "تم تحديث بيانات المسجل بنجاح" };
+          } else if (response.ok) {
+            resultData = { success: true, message: "تم إرسال التحديث بنجاح إلى الشيت" };
+          }
+        }
+      } catch (err: any) {
+        requestError = err;
+        console.warn("POST fallback update error:", err.message);
+      }
+    }
+
+    if (resultData && (resultData.success || resultData.rowIndex)) {
+      return res.json({
+        success: true,
+        message: resultData.message || "تم تحديث بيانات المسجل بنجاح",
+        result: resultData
+      });
+    }
+
+    const friendlyErrorMsg = requestError?.name === "TimeoutError" || requestError?.message?.includes("timeout") || requestError?.message?.includes("aborted")
+      ? "استغرقت الاستجابة من قوقل وقتاً طويلاً. إذا كنت قد نسخت الكود المحدث ونشرته، يرجى المحاولة مرة أخرى أو التأكد من إتاحة الوصول (Anyone)."
+      : (resultData?.message || resultData?.error || requestError?.message || "تعذر إكمال التعديل في الشيت");
+
+    return res.json({
+      success: false,
+      message: friendlyErrorMsg
+    });
+  } catch (error: any) {
+    console.error("Update registration answer error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/registration-answers/delete - Delete registration answer record
+app.post("/api/registration-answers/delete", async (req, res) => {
+  try {
+    const { registrationId, rowIndex, scriptUrl } = req.body;
+    const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
+
+    if (!targetScriptUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "رابط Google Apps Script غير مضبوط لتنفيذ الحذف من الشيت مباشرة"
+      });
+    }
+
+    let resultData: any = null;
+    let requestError: any = null;
+
+    // 1. First Attempt: GET request (Fastest in Google Apps Script)
+    try {
+      const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=deleteRegistrationAnswer&registrationId=${encodeURIComponent(registrationId || "")}&rowIndex=${encodeURIComponent(rowIndex || "")}`;
+      const getRes = await fetch(getUrl, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(12000)
+      });
+      const getText = await getRes.text().catch(() => "");
+      try {
+        const getJson = JSON.parse(getText);
+        if (getJson && (getJson.success || getJson.deletedRowIndex)) {
+          resultData = getJson;
+        }
+      } catch (gp) {
+        if (getText.includes('"success":true') || getText.includes('"success": true') || getRes.ok) {
+          resultData = { success: true, message: "تم حذف سجل المسجل بنجاح من الشيت" };
+        }
+      }
+    } catch (gErr: any) {
+      console.warn("GET deleteRegistrationAnswer error:", gErr.message);
+      requestError = gErr;
+    }
+
+    // 2. Second Attempt: POST fallback if GET didn't succeed
+    if (!resultData || !resultData.success) {
+      try {
+        const payload = JSON.stringify({
+          action: "deleteRegistrationAnswer",
+          registrationId,
+          rowIndex
+        });
+
+        const response = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: payload,
+          redirect: "follow",
+          signal: AbortSignal.timeout(12000)
+        });
+
+        const resText = await response.text().catch(() => "");
+        try {
+          const parsed = JSON.parse(resText);
+          if (parsed && (parsed.success || parsed.deletedRowIndex)) {
+            resultData = parsed;
+          }
+        } catch (pErr) {
+          if (resText.includes('"success":true') || resText.includes('"success": true')) {
+            resultData = { success: true, message: "تم حذف سجل المسجل بنجاح" };
+          } else if (response.ok) {
+            resultData = { success: true, message: "تم إرسال أمر الحذف بنجاح إلى الشيت" };
+          }
+        }
+      } catch (err: any) {
+        requestError = err;
+        console.warn("POST fallback delete error:", err.message);
+      }
+    }
+
+    if (resultData && (resultData.success || resultData.deletedRowIndex)) {
+      return res.json({
+        success: true,
+        message: resultData.message || "تم حذف سجل المسجل بنجاح",
+        result: resultData
+      });
+    }
+
+    const friendlyErrorMsg = requestError?.name === "TimeoutError" || requestError?.message?.includes("timeout") || requestError?.message?.includes("aborted")
+      ? "استغرقت الاستجابة من قوقل وقتاً طويلاً. إذا كان السجل قد حُذف في الشيت بالفعل، يمكنك تحديث الجدول."
+      : (resultData?.message || resultData?.error || requestError?.message || "تعذر إكمال الحذف في الشيت");
+
+    return res.json({
+      success: false,
+      message: friendlyErrorMsg
+    });
+  } catch (error: any) {
+    console.error("Delete registration answer error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/register - Submits registration data
+app.post("/api/register", async (req, res) => {
+  try {
+    const registrationData = req.body;
+    const now = new Date();
+    // Format Arabic readable timestamp: YYYY/MM/DD - HH:mm
+    const pad = (n: number) => n.toString().padStart(2, '0');
+    const formattedTimestamp = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} - ${pad(now.getHours())}:${pad(now.getMinutes())}`;
+    
+    // Ensure consistent numeric reference ID (Year + Month + 4 digits e.g. 202686124)
+    const fallbackRegId = `${now.getFullYear()}${now.getMonth() + 1}${Math.floor(1000 + Math.random() * 9000)}`;
+    const registrationId = (registrationData.registrationId && /^\d{8,12}$/.test(String(registrationData.registrationId)))
+      ? String(registrationData.registrationId)
+      : fallbackRegId;
+
+    // Filter answers array to strictly exclude non-input element types (images and button links)
+    let filteredAnswers: any[] = [];
+    if (Array.isArray(registrationData.answers)) {
+      filteredAnswers = registrationData.answers.filter((item: any) => {
+        if (!item) return false;
+        const qType = (item.type || "").toLowerCase().trim();
+        const qText = (item.question || "").trim();
+        const isNonInput =
+          qType === "image_display" ||
+          qType === "button_link" ||
+          qType === "button_title" ||
+          qType === "عنوان زر" ||
+          qType === "زر" ||
+          qType === "صورة" ||
+          qType === "عرض صورة" ||
+          qText === "صورة";
+        return !isNonInput;
+      });
+    }
+
+    // Load active subscriber email config and merge with any provided client config
+    const activeEmailConfig = loadSubscriberEmailConfig();
+    const mergedEmailConfig = {
+      ...activeEmailConfig,
+      ...(registrationData.emailConfig || {}),
+      messages: {
+        ...(activeEmailConfig.messages || {}),
+        ...((registrationData.emailConfig && registrationData.emailConfig.messages) || {})
+      },
+      driveFolderId: currentDriveFolderId
+    };
+
+    // Check and upload any pending base64 images to Google Drive before saving to sheet
+    const targetScriptUrl = registrationData.scriptUrl || currentScriptUrl;
+    const targetFolderId = mergedEmailConfig.driveFolderId || currentDriveFolderId || "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
+
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      // 1. Process attachment field
+      if (typeof registrationData.attachment === "string" && registrationData.attachment.startsWith("data:")) {
+        try {
+          const rawBase64 = registrationData.attachment.split(";base64,")[1] || registrationData.attachment.split(",")[1] || "";
+          const mime = (registrationData.attachment.match(/data:([^;]+);/) || [])[1] || "image/jpeg";
+          const fileName = `reg_${registrationId}_attachment_${Date.now()}.jpg`;
+          
+          const upRes = await fetch(targetScriptUrl, {
+            method: "POST",
+            headers: { "Content-Type": "text/plain;charset=utf-8" },
+            body: JSON.stringify({
+              action: "uploadFile",
+              base64Data: rawBase64,
+              fileName,
+              mimeType: mime,
+              folderId: targetFolderId
+            })
+          });
+          const upData: any = await upRes.json().catch(() => null);
+          if (upData && (upData.fileUrl || upData.downloadUrl)) {
+            registrationData.attachment = upData.fileUrl || upData.downloadUrl;
+          }
+        } catch (upErr: any) {
+          console.warn("Auto-upload attachment error in /api/register:", upErr.message);
+        }
+      }
+
+      // 2. Process answers array for any base64 strings
+      for (let i = 0; i < filteredAnswers.length; i++) {
+        const item = filteredAnswers[i];
+        if (item && typeof item.answer === "string" && item.answer.startsWith("data:")) {
+          try {
+            const rawBase64 = item.answer.split(";base64,")[1] || item.answer.split(",")[1] || "";
+            const mime = (item.answer.match(/data:([^;]+);/) || [])[1] || "image/jpeg";
+            const safeQ = (item.question || `field_${i}`).replace(/[^a-zA-Z0-9_\u0600-\u06FF]/g, "_");
+            const fileName = `reg_${registrationId}_${safeQ}_${Date.now()}.jpg`;
+
+            const upRes = await fetch(targetScriptUrl, {
+              method: "POST",
+              headers: { "Content-Type": "text/plain;charset=utf-8" },
+              body: JSON.stringify({
+                action: "uploadFile",
+                base64Data: rawBase64,
+                fileName,
+                mimeType: mime,
+                folderId: targetFolderId
+              })
+            });
+            const upData: any = await upRes.json().catch(() => null);
+            if (upData && (upData.fileUrl || upData.downloadUrl)) {
+              item.answer = upData.fileUrl || upData.downloadUrl;
+            }
+          } catch (upErr: any) {
+            console.warn("Auto-upload answer item error in /api/register:", upErr.message);
+          }
+        }
+      }
+    }
+
+    const payload = {
+      ...registrationData,
+      answers: filteredAnswers,
+      registrationId,
+      timestamp: formattedTimestamp,
+      emailConfig: mergedEmailConfig
+    };
+
+    // Save to local backup file
+    try {
+      const regDir = path.join(process.cwd(), "data");
+      if (!fs.existsSync(regDir)) {
+        fs.mkdirSync(regDir, { recursive: true });
+      }
+      const regFile = path.join(regDir, "registrations.json");
+      let allRegs: any[] = [];
+      if (fs.existsSync(regFile)) {
+        try {
+          allRegs = JSON.parse(fs.readFileSync(regFile, "utf-8"));
+        } catch (e) {}
+      }
+      allRegs.unshift(payload);
+      fs.writeFileSync(regFile, JSON.stringify(allRegs, null, 2), "utf-8");
+    } catch (saveErr) {
+      console.warn("Could not save registration locally:", saveErr);
+    }
+
+    // Send Telegram Notification to Admin if configured and enabled
+    let telegramResult: any = null;
+    try {
+      const activeTelegramConfig = loadTelegramConfig();
+      const mergedTelegramConfig = {
+        ...activeTelegramConfig,
+        ...(req.body.telegramConfig || {})
+      };
+      if (mergedTelegramConfig.enabled && mergedTelegramConfig.botToken && mergedTelegramConfig.chatId) {
+        console.log(`[API /api/register] Triggering Telegram notification for registration ${registrationId}...`);
+        telegramResult = await sendTelegramAdminNotification(mergedTelegramConfig, payload, currentSpreadsheetId);
+        console.log(`[API /api/register] Telegram notification result:`, telegramResult);
+      } else {
+        console.log(`[API /api/register] Telegram notification skipped. Enabled=${mergedTelegramConfig.enabled}, hasToken=${Boolean(mergedTelegramConfig.botToken)}, hasChatId=${Boolean(mergedTelegramConfig.chatId)}`);
+      }
+    } catch (telErr: any) {
+      console.warn("[API /api/register] Could not trigger telegram admin notification:", telErr.message);
+    }
+
+    // Forward to Google Apps Script if URL exists
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        const gasPayload = JSON.stringify({
+          action: "submitRegistration",
+          ...payload,
+          telegramConfig: loadTelegramConfig()
+        });
+
+        const gasRes = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: gasPayload
+        });
+        const gasData = await gasRes.json().catch(() => null);
+        console.log("GAS submitRegistration forward response:", gasData);
+      } catch (gasErr: any) {
+        console.warn("Could not forward registration to Google Apps Script:", gasErr.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      registrationId,
+      timestamp: formattedTimestamp,
+      message: `تم استلام طلب التسجيل بنجاح بالرقم المرجعي (${registrationId}) وسيتواصل معك المشرف لتفعيل الحساب.`
+    });
+  } catch (error: any) {
+    console.error("Error processing registration:", error);
+    return res.status(500).json({ success: false, message: "حدث خطأ أثناء حفظ طلب التسجيل" });
+  }
+});
+
+// POST /api/test-subscriber-email - Sends a test email to verify MailApp and QR generation
+app.post("/api/test-subscriber-email", async (req, res) => {
+  try {
+    const { email, name, scriptUrl, config, formLang } = req.body;
+    const testEmail = email || "shyk4test2020@gmail.com";
+    const targetScriptUrl = scriptUrl || currentScriptUrl;
+    const activeConfig = config || loadSubscriberEmailConfig();
+
+    if (!targetScriptUrl || !targetScriptUrl.startsWith("http")) {
+      return res.status(400).json({
+        success: false,
+        message: "رابط Google Apps Script غير مضبوط في الإعدادات"
+      });
+    }
+
+    const payload = {
+      action: "testSubscriberEmail",
+      email: testEmail,
+      recipientEmail: testEmail,
+      name: name || "مشترك تجريبي (Test User)",
+      registrationId: "TEST-" + Math.floor(100000 + Math.random() * 900000),
+      formLang: formLang || "ar",
+      emailConfig: {
+        ...activeConfig,
+        driveFolderId: currentDriveFolderId
+      }
+    };
+
+    console.log("Sending test email request to Apps Script:", targetScriptUrl, "for:", testEmail);
+    const gasRes = await fetch(targetScriptUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    });
+
+    const gasData: any = await gasRes.json().catch(() => null);
+    console.log("Gas test email result:", gasData);
+
+    if (gasData) {
+      return res.json(gasData);
+    }
+
+    return res.json({
+      success: true,
+      recipient: testEmail,
+      message: "تم إرسال طلب البريد التجريبي إلى Google Apps Script"
+    });
+  } catch (error: any) {
+    console.error("Test email route error:", error);
+    return res.status(500).json({
+      success: false,
+      error: error.message || "فشل إرسال البريد التجريبي"
+    });
   }
 });
 

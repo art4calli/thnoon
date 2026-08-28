@@ -4,6 +4,7 @@
  */
 
 import { AppData, SheetRow } from "../types";
+import { formatImageUrl, isVideoUrl } from "./imageUtils";
 
 const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 
@@ -798,6 +799,59 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
   };
 }
 
+export function parseMediaUrls(mediaRaw: string): { url: string; type?: "image" | "video" }[] {
+  if (!mediaRaw || typeof mediaRaw !== "string") return [];
+  const items = mediaRaw.split(/[\n,\|]+/).map(s => s.trim()).filter(Boolean);
+  return items.map(rawUrl => {
+    const isVid = isVideoUrl(rawUrl);
+    const formattedUrl = isVid ? rawUrl : formatImageUrl(rawUrl);
+    return {
+      url: formattedUrl,
+      type: isVid ? ("video" as const) : ("image" as const)
+    };
+  });
+}
+
+export function parseSubscriberTopicContent(row: any[]): SubscriberTopicContent {
+  const topicId = row[0] ? row[0].toString().trim() : "1";
+  const title = row[1] ? row[1].toString().trim() : "المحتوى المخصص للمشترك";
+  const description = row[2] ? row[2].toString().trim() : "";
+  const rawCoverImage = row[3] ? row[3].toString().trim() : "";
+  const badge = row[4] ? row[4].toString().trim() : "";
+
+  const coverImage = (rawCoverImage && rawCoverImage !== "-") ? formatImageUrl(rawCoverImage) : undefined;
+
+  const cards: SubscriberCard[] = [];
+
+  // Up to 10 cards starting at column F (index 5)
+  for (let c = 0; c < 10; c++) {
+    const baseIdx = 5 + (c * 4);
+    const cardTitle = row[baseIdx] ? row[baseIdx].toString().trim() : "";
+    const cardDesc = row[baseIdx + 1] ? row[baseIdx + 1].toString().trim() : "";
+    const cardMediaRaw = row[baseIdx + 2] ? row[baseIdx + 2].toString().trim() : "";
+    const cardLinkUrl = row[baseIdx + 3] ? row[baseIdx + 3].toString().trim() : "";
+
+    if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
+      cards.push({
+        title: cardTitle || `البطاقة ${c + 1}`,
+        description: cardDesc,
+        media: parseMediaUrls(cardMediaRaw),
+        linkUrl: (cardLinkUrl && cardLinkUrl !== "-") ? cardLinkUrl : undefined,
+        buttonText: (cardLinkUrl && cardLinkUrl !== "-") ? "فتح الرابط المرفق" : undefined
+      });
+    }
+  }
+
+  return {
+    topicId,
+    title,
+    description,
+    coverImage,
+    badge: (badge && badge !== "-") ? badge : undefined,
+    cards
+  };
+}
+
 // Client-side authentication fallback (Apps Script proxy OR Direct Sheets validation)
 export async function loginSubscriberDirect(usernameInput: string, passwordInput: string, deviceId: string): Promise<any> {
   const scriptUrl = import.meta.env.VITE_GOOGLE_SCRIPT_URL || "";
@@ -858,9 +912,31 @@ export async function loginSubscriberDirect(usernameInput: string, passwordInput
           return { success: false, message: "تم منع الدخول لهذا المستخدم" };
         }
 
+        const topicId = row[0] ? row[0].toString().trim() : "1";
+        const subscriberName = row[1] || "مشترك";
+
+        // Try to fetch matching topic content from SubscriberContent sheet
+        let topicContent: SubscriberTopicContent | undefined = undefined;
+        try {
+          const contentRows = await getSheetValuesDirect("SubscriberContent");
+          if (contentRows && contentRows.length > 0) {
+            for (const cRow of contentRows) {
+              const cTopicId = cRow[0] ? cRow[0].toString().trim() : "";
+              if (cTopicId === topicId) {
+                topicContent = parseSubscriberTopicContent(cRow);
+                break;
+              }
+            }
+          }
+        } catch (cErr) {
+          console.warn("Could not load SubscriberContent sheet directly:", cErr);
+        }
+
         return {
           success: true,
-          subscriberName: row[1] || "مشترك",
+          subscriberName,
+          topicId,
+          content: topicContent,
           linkButtonText1: row[2] || "",
           linkButtonComment1: row[3] || "",
           url1: row[4] || "",

@@ -144,9 +144,28 @@ export interface AppData {
   customTexts?: CustomTexts;
 }
 
+export interface SubscriberCard {
+  title: string;
+  description: string;
+  media: { url: string; type?: "image" | "video" }[];
+  linkUrl?: string;
+  buttonText?: string;
+}
+
+export interface SubscriberTopicContent {
+  topicId: string;
+  title: string;
+  description: string;
+  coverImage?: string;
+  badge?: string;
+  cards: SubscriberCard[];
+}
+
 export interface SubscriberState {
   isLoggedIn: boolean;
   subscriberName?: string;
+  topicId?: string;
+  content?: SubscriberTopicContent;
   links: {
     text: string;
     comment: string;
@@ -155,3 +174,101 @@ export interface SubscriberState {
   exitButtonText?: string;
   exitButtonComment?: string;
 }
+
+export interface QuestionTranslation {
+  questionEn?: string;
+  questionTh?: string;
+  descriptionEn?: string;
+  descriptionTh?: string;
+  optionsEn?: string[];
+  optionsTh?: string[];
+  buttonTitleEn?: string;
+  buttonTitleTh?: string;
+}
+
+export type FormTranslationsMap = Record<string, QuestionTranslation>;
+
+export interface RegistrationQuestion {
+  id: string | number;
+  question: string;         // Column A: نص السؤال
+  description?: string;     // Column B: الوصف (تحت السؤال بحجم خط أقل ولون مختلف)
+  type: "text" | "number" | "phone" | "email" | "url" | "choice" | "file" | "button_title" | string; // Column C: نوع العنصر
+  options?: string[];       // Column D: خيارات
+  required: boolean;        // Column E: اجبار الاجابة (نعم / لا)
+  imageUrl?: string;        // Column F: رابط الصورة
+  externalLink?: string;    // Column G: رابط خارجي
+  translations?: QuestionTranslation; // Multilingual translations (EN, TH)
+}
+
+export interface EmailFieldMapping {
+  id: string;
+  label: string;          // نص التسمية (مثال: رقم التسجيل، اسم المشترك، اسم الدورة)
+  labelEn?: string;
+  labelTh?: string;
+  columnLetter: string;   // حرف العامود في الشيت (مثال: B, C, D)
+}
+
+export interface EmailAttachmentLink {
+  id: string;
+  title: string;          // عنوان المرفق / الزر (مثال: دليل المشترك PDF)
+  titleEn?: string;
+  titleTh?: string;
+  url: string;            // الرابط
+  type: "image" | "file_button" | "link"; // نوع المرفق: صورة مضمنة | زر فتح ملف | رابط
+}
+
+export interface EmailLanguageTemplate {
+  subject: string;
+  header: string;
+  body: string;
+  footerNote: string;
+}
+
+export interface SubscriberEmailConfig {
+  enabled: boolean;
+  emailColumn: string;              // عامود الايميل في ورقة RegistrationAnswers (مثال: E)
+  deliveryStatusColumn: string;     // عامود تسجيل نص (تم الإرسال) (مثال: Z)
+  dataFields: EmailFieldMapping[];  // قائمة الحقول (نص التسمية + حرف العامود)
+  qrCodeColumns: string;            // الأعمدة أو البيانات التي سيتم توليد الـ QR Code منها (مثال: B أو A,B)
+  qrDriveUrlColumn: string;         // عامود حفظ رابط صورة كيو آر كود في قوقل درايف (مثال: Y)
+  includeQrInEmail: boolean;        // تضمين صورة QR كود في نص الإيميل
+  messages: {
+    ar: EmailLanguageTemplate;
+    en: EmailLanguageTemplate;
+    th: EmailLanguageTemplate;
+  };
+  attachments: EmailAttachmentLink[];
+}
+
+export interface TelegramCustomButton {
+  id: string;
+  text: string;
+  url: string;
+}
+
+export interface TelegramConfig {
+  enabled: boolean;
+  botToken: string;              // رمز توكن البوت من @BotFather
+  chatId: string;                // معرف الدردشة / المجموعة / القناة المستلمة
+  topicId?: string;              // معرف الموضوع (Thread/Topic ID) للمجموعات المقسمة
+  notificationTitle: string;     // عنوان الإشعار
+  includeAllAnswers: boolean;    // إرفاق وتضمين جميع إجابات وحقول الاستمارة
+  includeQrCode: boolean;        // إرفاق صورة رمز الـ QR
+  includeAttachment: boolean;    // إرفاق رابط أو صورة الملف المرفوع من المشترك
+  includeWhatsappButton?: boolean;// (اختياري / ملغى)
+  includeSheetButton?: boolean;   // (اختياري / ملغى)
+  customButtons?: TelegramCustomButton[]; // أزرار روابط مخصصة إضافية
+  customHeader?: string;         // ترويسة إضافية للرسالة
+  customFooter?: string;         // تذييل إضافي للرسالة
+}
+
+export interface RegistrationAnswerRecord {
+  rowIndex: number;            // رقم الصف في ورقة الشيت (2, 3...)
+  registrationId: string;      // رقم التسجيل
+  name: string;                // الاسم
+  nameArabic: string;          // الاسم بالعربي
+  timestamp?: string;          // التاريخ والوقت
+  data: Record<string, string>; // تفاصيل الحقول كاملة
+  rawRow?: string[];           // القيم الخام للصف
+}
+

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, Image as ImageIcon, Play, ShoppingBag, Phone, HelpCircle, LogIn, Menu, X, Landmark, Globe, Sparkles } from "lucide-react";
+import { BookOpen, Image as ImageIcon, Play, ShoppingBag, Phone, HelpCircle, LogIn, Menu, X, Landmark, Globe, Sparkles, Settings, ShieldCheck } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ProfileData, SocialLinks, CustomTexts } from "../types";
 
@@ -13,6 +13,9 @@ interface HeaderProps {
   subscriberName?: string;
   onLogout: () => void;
   onOpenDashboard: () => void;
+  onOpenSettings?: () => void;
+  isAdmin?: boolean;
+  onAdminLogout?: () => void;
   customTexts?: CustomTexts;
 }
 
@@ -25,6 +28,9 @@ export default function Header({
   subscriberName,
   onLogout,
   onOpenDashboard,
+  onOpenSettings,
+  isAdmin = false,
+  onAdminLogout,
   customTexts,
 }: HeaderProps) {
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -154,8 +160,30 @@ export default function Header({
             })}
           </nav>
 
-          {/* User Authentication Actions */}
-          <div className="hidden sm:flex items-center gap-3">
+          {/* User Authentication Actions & Admin Mode */}
+          <div className="hidden sm:flex items-center gap-2">
+            {isAdmin && onOpenSettings && (
+              <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/40 px-2.5 py-1.5 rounded-full">
+                <button
+                  onClick={onOpenSettings}
+                  title="فتح لوحة إعدادات المشرف"
+                  className="text-amber-400 hover:text-amber-300 font-sans text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                >
+                  <Settings className="w-3.5 h-3.5 text-amber-400 animate-spin-slow" />
+                  <span>لوحة الإعدادات</span>
+                </button>
+                {onAdminLogout && (
+                  <button
+                    onClick={onAdminLogout}
+                    title="تسجيل خروج المشرف"
+                    className="text-[10px] bg-slate-900/80 hover:bg-slate-900 text-slate-400 hover:text-red-400 px-2 py-0.5 rounded-full transition-colors"
+                  >
+                    خروج المشرف
+                  </button>
+                )}
+              </div>
+            )}
+
             {isLoggedIn ? (
               <div className="flex items-center gap-2">
                 <button
@@ -222,7 +250,33 @@ export default function Header({
               );
             })}
 
-            <div className="border-t border-slate-800/80 my-4"></div>
+            {isAdmin && onOpenSettings && (
+              <div className="flex flex-col gap-2 bg-slate-900 border border-amber-500/30 rounded-xl p-3">
+                <button
+                  onClick={() => {
+                    onOpenSettings();
+                    setIsMobileMenuOpen(false);
+                  }}
+                  className="flex items-center gap-3 font-sans text-sm font-semibold text-amber-400"
+                >
+                  <Settings className="w-5 h-5 text-amber-500" />
+                  <span>لوحة إعدادات المشرف والربط</span>
+                </button>
+                {onAdminLogout && (
+                  <button
+                    onClick={() => {
+                      onAdminLogout();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="text-xs text-red-400 text-right pr-8 hover:underline"
+                  >
+                    تسجيل خروج المشرف
+                  </button>
+                )}
+              </div>
+            )}
+
+            <div className="border-t border-slate-800/80 my-2"></div>
 
             {isLoggedIn ? (
               <div className="flex flex-col gap-3">
