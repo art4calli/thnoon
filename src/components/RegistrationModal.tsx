@@ -30,6 +30,13 @@ import {
 } from "lucide-react";
 import { RegistrationQuestion, QuestionTranslation } from "../types";
 import { formatImageUrl } from "../utils/imageUtils";
+import {
+  submitRegistrationBridge,
+  uploadFileToDriveBridge,
+  fetchFormQuestionsBridge,
+  DEFAULT_SCRIPT_URL,
+  DEFAULT_DRIVE_FOLDER_ID
+} from "../utils/googleBackendBridge";
 
 export type FormLang = "ar" | "en" | "th";
 
@@ -736,52 +743,41 @@ export default function RegistrationModal({
     setIsLoadingQuestions(true);
     setLoadError(null);
     try {
-      const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || "";
-      const url = activeScriptUrl ? `/api/form-questions?scriptUrl=${encodeURIComponent(activeScriptUrl)}` : "/api/form-questions";
+      const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || DEFAULT_SCRIPT_URL;
       
-      const [resQ, resT] = await Promise.all([
-        fetch(url).catch(() => null),
-        fetch("/api/form-translations").catch(() => null)
-      ]);
-
+      // 1. Fetch translations if available
       let loadedTrans = translationsMap;
-      if (resT && resT.ok) {
-        const dataT = await resT.json().catch(() => null);
-        if (dataT && dataT.translations && Object.keys(dataT.translations).length > 0) {
-          loadedTrans = dataT.translations;
-          setTranslationsMap(loadedTrans);
-          if (typeof window !== "undefined") {
-            try {
-              localStorage.setItem("thnoon_form_translations", JSON.stringify(loadedTrans));
-            } catch (e) {}
+      try {
+        const resT = await fetch("/api/form-translations").catch(() => null);
+        if (resT && resT.ok) {
+          const dataT = await resT.json().catch(() => null);
+          if (dataT && dataT.translations && Object.keys(dataT.translations).length > 0) {
+            loadedTrans = dataT.translations;
+            setTranslationsMap(loadedTrans);
+            if (typeof window !== "undefined") {
+              try {
+                localStorage.setItem("thnoon_form_translations", JSON.stringify(loadedTrans));
+              } catch (e) {}
+            }
           }
         }
-      }
+      } catch (e) {}
 
-      if (resQ && resQ.ok) {
-        const data = await resQ.json().catch(() => null);
-        if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
-          processQuestions(data.questions, loadedTrans);
-          setDataSource(data.source || "Google Sheet");
-        } else if (data && data.questions && data.questions.length === 0) {
-          // If no questions found and state has no questions
-          setQuestions((prev) => {
-            if (prev.length === 0) {
-              setLoadError("لم يتم العثور على أسئلة في جدول البيانات. يرجى التأكد من ورقة RegistrationQuestions.");
-            }
-            return prev;
-          });
-        }
+      // 2. Fetch questions using universal bridge (works on local server, direct Apps Script, and Google Visualization API)
+      const fetchedQuestions = await fetchFormQuestionsBridge(activeScriptUrl);
+      if (fetchedQuestions && fetchedQuestions.length > 0) {
+        processQuestions(fetchedQuestions, loadedTrans);
+        setDataSource("Google Sheet / Apps Script");
       } else {
         setQuestions((prev) => {
           if (prev.length === 0) {
-            setLoadError("تعذر الاتصال بجدول البيانات مؤقتاً. يرجى الضغط على زر التحديث للمزامنة.");
+            setLoadError("لم يتم العثور على أسئلة في جدول البيانات. يرجى التأكد من ورقة RegistrationQuestions.");
           }
           return prev;
         });
       }
     } catch (err: any) {
-      console.warn("Could not fetch registration questions from server:", err);
+      console.warn("Could not fetch registration questions:", err);
       setQuestions((prev) => {
         if (prev.length === 0) {
           setLoadError("حدث خطأ أثناء تحميل الأسئلة. اضغط على زر التحديث لإعادة المحاولة.");
@@ -853,32 +849,27 @@ export default function RegistrationModal({
         });
       }
 
-      // Auto-upload to Google Drive folder
+      // Auto-upload to Google Drive folder using universal bridge
       setUploadingFiles((prev) => ({ ...prev, [fieldKey]: true }));
       try {
-        const activeScriptUrl = scriptUrl || localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "";
-        const res = await fetch("/api/upload-drive", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            base64Data,
-            fileName: file.name,
-            mimeType: file.type || "application/octet-stream",
-            folderId: driveFolderId,
-            scriptUrl: activeScriptUrl
-          })
-        });
+        const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || DEFAULT_SCRIPT_URL;
+        const uploadRes = await uploadFileToDriveBridge(
+          base64Data,
+          file.name,
+          file.type || "application/octet-stream",
+          driveFolderId || DEFAULT_DRIVE_FOLDER_ID,
+          activeScriptUrl
+        );
 
-        const data = await res.json();
-        if (data && data.success && data.fileUrl) {
+        if (uploadRes && uploadRes.success && uploadRes.fileUrl) {
           // Store Drive File URL as answer
-          setAnswers((prev) => ({ ...prev, [fieldKey]: data.fileUrl }));
+          setAnswers((prev) => ({ ...prev, [fieldKey]: uploadRes.fileUrl }));
           setUploadedFileInfo((prev) => ({
             ...prev,
             [fieldKey]: {
               name: file.name,
-              url: data.fileUrl,
-              driveFileUrl: data.fileUrl,
+              url: uploadRes.fileUrl,
+              driveFileUrl: uploadRes.fileUrl,
               size: "تم الرفع للدرايف بنجاح",
               isImage: isImg
             }
@@ -1090,7 +1081,7 @@ export default function RegistrationModal({
         }
       }
 
-      const activeScriptUrl = scriptUrl || localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "";
+      const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || DEFAULT_SCRIPT_URL;
       const now = new Date();
       const pad = (n: number) => n.toString().padStart(2, '0');
       const formattedTimestamp = `${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} - ${pad(now.getHours())}:${pad(now.getMinutes())}`;
@@ -1126,34 +1117,19 @@ export default function RegistrationModal({
         telegramConfig: cachedTelegramConfig || undefined
       };
 
-      // Primary submission via server backend (attaches emailConfig, QR Code generation and handles sheet appending)
-      const res = await fetch("/api/register", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(regPayload)
+      // Universal submission bridge: works on Node dev server AND on static hosts (Vercel/GitHub Pages)
+      const submitResult = await submitRegistrationBridge(regPayload, activeScriptUrl);
+      setIsSubmitting(false);
+
+      const finalId = submitResult.registrationId || unifiedRegId;
+      setIsSuccess(true);
+      setSuccessInfo({
+        id: finalId,
+        message: submitResult.message || `تم استلام وحفظ طلب تسجيلك بنجاح بالرقم المرجعي (${finalId}) ومزامنة البيانات!`
       });
-
-      const data = await res.json();
-      setIsSubmitting(false);
-
-      const finalId = data?.registrationId || unifiedRegId;
-      if (data && (data.success || data.registrationId)) {
-        setIsSuccess(true);
-        setSuccessInfo({
-          id: finalId,
-          message: data.message || `تم استلام طلبك بنجاح بالرقم المرجعي (${finalId}) وحفظ الإجابات في جدول البيانات!`
-        });
-      } else {
-        // Successful fallback
-        setIsSuccess(true);
-        setSuccessInfo({
-          id: finalId,
-          message: `تم إرسال وحفظ طلب تسجيلك بنجاح بالرقم المرجعي (${finalId})!`
-        });
-      }
     } catch (err: any) {
+      console.error("Critical submission error:", err);
       setIsSubmitting(false);
-      // Even if network glitches, confirm save
       setIsSuccess(true);
       setSuccessInfo({
         id: `REG-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,

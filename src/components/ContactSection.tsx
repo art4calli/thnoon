@@ -5,6 +5,7 @@ import {
   Star, Award, Landmark, PenTool, GraduationCap, Users, ShieldCheck, Sparkles
 } from "lucide-react";
 import { SheetRow, SocialLinks, ContactDetails, CustomTexts } from "../types";
+import { submitContactInquiryBridge } from "../utils/googleBackendBridge";
 
 interface ContactSectionProps {
   cards: SheetRow[];
@@ -87,104 +88,24 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
     setIsSending(true);
     setErrorMessage("");
     
-    // 1. Try to send to local server API first
     try {
-      const response = await fetch("/api/contact", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name, email, subject, message })
-      });
-      
-      if (response.ok) {
-        const data = await response.json();
-        if (data.success) {
-          if (data.synced === false) {
-            setErrorMessage(data.message || "حدثت مشكلة أثناء المزامنة التلقائية مع جوجل شيت. الرجاء التحقق من الرابط والصلاحيات.");
-            setIsSending(false);
-            return;
-          }
-          setSentSuccess(true);
-          setName("");
-          setEmail("");
-          setSubject("");
-          setMessage("");
-          setTimeout(() => setSentSuccess(false), 7000);
-          setIsSending(false);
-          return;
-        } else {
-          setErrorMessage(data.message || "فشل إرسال الاستفسار. الرجاء المحاولة مجدداً.");
-          setIsSending(false);
-          return;
-        }
+      const res = await submitContactInquiryBridge({ name, email, subject, message });
+      if (res.success) {
+        setSentSuccess(true);
+        setName("");
+        setEmail("");
+        setSubject("");
+        setMessage("");
+        setTimeout(() => setSentSuccess(false), 7000);
+      } else {
+        setErrorMessage(res.message || "فشل إرسال الاستفسار. الرجاء المحاولة مجدداً.");
       }
-    } catch (err) {
-      console.warn("Backend /api/contact is offline, trying direct Google Apps Script fallback...", err);
+    } catch (err: any) {
+      console.warn("Contact form submission error:", err);
+      setErrorMessage(err?.message || "حدث خطأ في الاتصال بالخادم.");
+    } finally {
+      setIsSending(false);
     }
-
-    // 2. Fallback: Try to send directly to Google Apps Script if VITE_GOOGLE_SCRIPT_URL is configured
-    const clientScriptUrl = import.meta.env.VITE_GOOGLE_SCRIPT_URL || "";
-    if (clientScriptUrl && clientScriptUrl.trim().startsWith("http")) {
-      try {
-        console.log("Attempting direct client-side POST to Google Apps Script...");
-        const response = await fetch(clientScriptUrl, {
-          method: "POST",
-          mode: "cors",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            action: "submitInquiry",
-            name,
-            email,
-            subject,
-            message,
-            timestamp: new Date().toISOString()
-          })
-        });
-        
-        if (response.ok) {
-          const data = await response.json();
-          if (data.success) {
-            setSentSuccess(true);
-            setName("");
-            setEmail("");
-            setSubject("");
-            setMessage("");
-            setTimeout(() => setSentSuccess(false), 7000);
-            setIsSending(false);
-            return;
-          } else {
-            setErrorMessage(data.message || "فشل تسجيل الاستفسار في جدول البيانات.");
-            setIsSending(false);
-            return;
-          }
-        }
-      } catch (err) {
-        console.warn("Direct Apps Script POST failed. Trying direct GET fallback...", err);
-        try {
-          // Direct GET request fallback (often more resilient to CORS redirections)
-          const getUrl = `${clientScriptUrl}?action=submitInquiry&name=${encodeURIComponent(name)}&email=${encodeURIComponent(email)}&subject=${encodeURIComponent(subject)}&message=${encodeURIComponent(message)}`;
-          const response = await fetch(getUrl);
-          if (response.ok) {
-            const data = await response.json();
-            if (data.success) {
-              setSentSuccess(true);
-              setName("");
-              setEmail("");
-              setSubject("");
-              setMessage("");
-              setTimeout(() => setSentSuccess(false), 7000);
-              setIsSending(false);
-              return;
-            }
-          }
-        } catch (getErr) {
-          console.error("Direct Apps Script GET fallback failed:", getErr);
-        }
-      }
-    }
-
-    // 3. Both endpoints failed
-    setErrorMessage("حدث خطأ في الاتصال بالخادم. يرجى التأكد من إضافة رابط الـ GOOGLE_SCRIPT_URL في إعدادات التطبيق أو المحادثة.");
-    setIsSending(false);
   };
 
   const socialPlatforms = [

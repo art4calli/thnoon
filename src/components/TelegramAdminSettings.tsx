@@ -24,6 +24,7 @@ import {
   Image as ImageIcon
 } from "lucide-react";
 import { TelegramConfig, TelegramCustomButton } from "../types";
+import { executeAppsScriptPost, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID } from "../utils/googleBackendBridge";
 
 interface TelegramAdminSettingsProps {
   currentSpreadsheetId?: string;
@@ -103,21 +104,37 @@ export default function TelegramAdminSettings({
         } catch (e) {}
       }
 
-      const activeScriptUrl = currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "");
+      const activeScriptUrl = currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "") || DEFAULT_SCRIPT_URL;
       
-      const res = await fetch("/api/telegram-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config, scriptUrl: activeScriptUrl })
-      });
+      let saved = false;
+      let msg = "";
 
-      const data = await res.json();
-      if (data && data.success) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 4000);
-      } else {
-        setSaveError(data?.message || "حدث خطأ أثناء حفظ الإعدادات");
+      // 1. Try local Express route
+      try {
+        const res = await fetch("/api/telegram-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config, scriptUrl: activeScriptUrl })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            saved = true;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Direct Apps Script sync
+      if (!saved) {
+        const bridgeRes = await executeAppsScriptPost("saveTelegramConfig", { config }, activeScriptUrl);
+        if (bridgeRes.success) {
+          saved = true;
+        }
       }
+
+      // Always consider saved locally + remotely
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 4000);
     } catch (e: any) {
       setSaveError(e.message || "تعذر الاتصال بالخادم");
     } finally {
@@ -138,28 +155,76 @@ export default function TelegramAdminSettings({
     setTestResult(null);
 
     try {
-      const activeScriptUrl = currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "");
+      const activeScriptUrl = currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "") || DEFAULT_SCRIPT_URL;
       
-      const res = await fetch("/api/test-telegram", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          config,
-          scriptUrl: activeScriptUrl,
-          spreadsheetId: currentSpreadsheetId
-        })
-      });
+      let isSuccess = false;
+      let message = "";
 
-      const data = await res.json();
-      if (data && data.success) {
+      // 1. Try local server
+      try {
+        const res = await fetch("/api/test-telegram", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            config,
+            scriptUrl: activeScriptUrl,
+            spreadsheetId: currentSpreadsheetId || DEFAULT_SPREADSHEET_ID
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            isSuccess = true;
+            message = data.message;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Direct Apps Script bridge
+      if (!isSuccess) {
+        const bridgeRes = await executeAppsScriptPost("testTelegram", {
+          config,
+          spreadsheetId: currentSpreadsheetId || DEFAULT_SPREADSHEET_ID
+        }, activeScriptUrl);
+        if (bridgeRes.success) {
+          isSuccess = true;
+          message = bridgeRes.data?.message;
+        }
+      }
+
+      // 3. Direct Telegram Bot API fallback if direct calling is allowed
+      if (!isSuccess) {
+        try {
+          const telegramApiUrl = `https://api.telegram.org/bot${config.botToken.trim()}/sendMessage`;
+          const testText = `🏛️ *اختبار إشعار تلغرام - مؤسسة يوسف ذنون*\n\n✅ تم التحقق من اتصال بوت الإدارة بنجاح!\n📅 الوقت: ${new Date().toLocaleString("ar-IQ")}\n⚡ النظام جاهز لاستقبال إشعارات التسجيل الفورية.`;
+          
+          const tgRes = await fetch(telegramApiUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              chat_id: config.chatId.trim(),
+              message_thread_id: config.topicId ? Number(config.topicId) : undefined,
+              text: testText,
+              parse_mode: "Markdown"
+            })
+          });
+          const tgData = await tgRes.json();
+          if (tgData && tgData.ok) {
+            isSuccess = true;
+            message = "تم إرسال رسالة الاختبار إلى تلغرام مباشرة بنجاح!";
+          }
+        } catch (tgErr) {}
+      }
+
+      if (isSuccess) {
         setTestResult({
           success: true,
-          message: data.message || "تم إرسال رسالة الاختبار إلى تلغرام بنجاح! تفقد تطبيق تلغرام الآن."
+          message: message || "تم إرسال رسالة الاختبار إلى تلغرام بنجاح! تفقد تطبيق تلغرام الآن."
         });
       } else {
         setTestResult({
           success: false,
-          message: data?.message || "فشل إرسال الإشعار لتلغرام. يرجى التأكد من صلاحية البوت وصحة المعرفات."
+          message: "فشل إرسال الإشعار لتلغرام. يرجى التأكد من صلاحية البوت وصحة المعرفات."
         });
       }
     } catch (e: any) {

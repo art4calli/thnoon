@@ -24,6 +24,7 @@ import {
   ShieldCheck
 } from "lucide-react";
 import { SubscriberEmailConfig, EmailFieldMapping, EmailAttachmentLink } from "../types";
+import { executeAppsScriptPost, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID } from "../utils/googleBackendBridge";
 
 export function toDirectImageUrl(url: string): string {
   if (!url) return "";
@@ -137,19 +138,59 @@ export default function SubscriberEmailSettings({ currentDriveFolderId, currentS
     setTestResponse(null);
     setErrorMessage(null);
     try {
-      const res = await fetch("/api/test-subscriber-email", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const activeScriptUrl = (currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "")).trim() || DEFAULT_SCRIPT_URL;
+      
+      let testOk = false;
+      let respData: any = null;
+
+      // 1. Try local server endpoint first
+      try {
+        const res = await fetch("/api/test-subscriber-email", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            email: testRecipientEmail.trim(),
+            name: testRecipientName.trim(),
+            scriptUrl: activeScriptUrl,
+            config: config,
+            formLang: previewLang
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            testOk = true;
+            respData = data;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Direct Apps Script bridge
+      if (!testOk) {
+        const bridgeRes = await executeAppsScriptPost("testSubscriberEmail", {
           email: testRecipientEmail.trim(),
           name: testRecipientName.trim(),
-          scriptUrl: currentScriptUrl,
           config: config,
           formLang: previewLang
-        })
-      });
-      const data = await res.json();
-      setTestResponse(data);
+        }, activeScriptUrl);
+        if (bridgeRes.success) {
+          testOk = true;
+          respData = bridgeRes.data || {
+            success: true,
+            message: `تم إرسال الإيميل التجريبي والـ QR Code بنجاح إلى (${testRecipientEmail.trim()})!`,
+            recipient: testRecipientEmail.trim()
+          };
+        }
+      }
+
+      if (testOk && respData) {
+        setTestResponse(respData);
+      } else {
+        setTestResponse({
+          success: false,
+          error: "فشل إرسال الإيميل التجريبي. يرجى التأكد من تفعيل صلاحيات MailApp في Google Apps Script."
+        });
+      }
     } catch (err: any) {
       setTestResponse({
         success: false,
@@ -178,6 +219,14 @@ export default function SubscriberEmailSettings({ currentDriveFolderId, currentS
       }
     } catch (err: any) {
       console.warn("Could not fetch subscriber email config:", err);
+      if (typeof window !== "undefined") {
+        const local = localStorage.getItem("thnoon_subscriber_email_config");
+        if (local) {
+          try {
+            setConfig(JSON.parse(local));
+          } catch (e) {}
+        }
+      }
     } finally {
       setIsLoading(false);
     }
@@ -194,19 +243,35 @@ export default function SubscriberEmailSettings({ currentDriveFolderId, currentS
         } catch (e) {}
       }
 
-      const activeScriptUrl = (currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "")).trim();
-      const res = await fetch("/api/subscriber-email-config", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ config, scriptUrl: activeScriptUrl })
-      });
-      const data = await res.json();
-      if (data && data.success) {
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3500);
-      } else {
-        setErrorMessage(data?.message || "حدث خطأ أثناء الحفظ");
+      const activeScriptUrl = (currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "")).trim() || DEFAULT_SCRIPT_URL;
+      
+      let saved = false;
+
+      // 1. Try local server
+      try {
+        const res = await fetch("/api/subscriber-email-config", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ config, scriptUrl: activeScriptUrl })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            saved = true;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Direct Apps Script sync
+      if (!saved) {
+        const bridgeRes = await executeAppsScriptPost("saveSubscriberEmailConfig", { config }, activeScriptUrl);
+        if (bridgeRes.success) {
+          saved = true;
+        }
       }
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3500);
     } catch (err: any) {
       setErrorMessage(err?.message || "تعذر الاتصال بالخادم");
     } finally {

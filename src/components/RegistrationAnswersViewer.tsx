@@ -38,6 +38,12 @@ import {
   Square
 } from "lucide-react";
 import { RegistrationAnswerRecord } from "../types";
+import {
+  fetchRegistrationAnswersBridge,
+  executeAppsScriptPost,
+  DEFAULT_SCRIPT_URL,
+  DEFAULT_SPREADSHEET_ID
+} from "../utils/googleBackendBridge";
 
 interface RegistrationAnswersViewerProps {
   scriptUrl?: string;
@@ -172,13 +178,10 @@ export default function RegistrationAnswersViewer({
     setIsLoading(true);
     setError(null);
     try {
-      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || "";
-      const url = activeScript 
-        ? `/api/registration-answers?scriptUrl=${encodeURIComponent(activeScript)}` 
-        : "/api/registration-answers";
+      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || DEFAULT_SCRIPT_URL;
+      const activeSpreadsheet = spreadsheetId || (typeof window !== "undefined" ? localStorage.getItem("thnoon_spreadsheet_id") : "") || DEFAULT_SPREADSHEET_ID;
       
-      const res = await fetch(url);
-      const data = await res.json();
+      const data = await fetchRegistrationAnswersBridge(activeScript, activeSpreadsheet);
 
       if (data && data.success) {
         setRecords(data.records || []);
@@ -447,20 +450,46 @@ export default function RegistrationAnswersViewer({
     setEditSuccessMsg(null);
 
     try {
-      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || "";
-      const res = await fetch("/api/registration-answers/update", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
+      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || DEFAULT_SCRIPT_URL;
+      
+      let isSuccess = false;
+      let msg = "";
+
+      // 1. Try local server endpoint first if available
+      try {
+        const res = await fetch("/api/registration-answers/update", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            registrationId: editingRecord.registrationId,
+            rowIndex: editingRecord.rowIndex,
+            updatedData: editFormData,
+            scriptUrl: activeScript
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            isSuccess = true;
+            msg = data.message;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Direct Apps Script fallback
+      if (!isSuccess) {
+        const bridgeRes = await executeAppsScriptPost("updateRegistrationAnswer", {
           registrationId: editingRecord.registrationId,
           rowIndex: editingRecord.rowIndex,
-          updatedData: editFormData,
-          scriptUrl: activeScript
-        })
-      });
+          updatedData: editFormData
+        }, activeScript);
+        if (bridgeRes.success) {
+          isSuccess = true;
+          msg = bridgeRes.data?.message;
+        }
+      }
 
-      const data = await res.json();
-      if (data && data.success) {
+      if (isSuccess) {
         setEditSuccessMsg("تم حفظ التعديلات بنجاح في ورقة RegistrationAnswers!");
         setActionSuccessBanner(`تم تحديث بيانات المسجل [${editingRecord.name || editingRecord.registrationId}] بنجاح`);
         setTimeout(() => setActionSuccessBanner(null), 5000);
@@ -494,7 +523,7 @@ export default function RegistrationAnswersViewer({
           setEditSuccessMsg(null);
         }, 1200);
       } else {
-        setEditErrorMsg(data.message || "تعذر حفظ التعديلات في الشيت");
+        setEditErrorMsg(msg || "تعذر حفظ التعديلات في الشيت");
       }
     } catch (err: any) {
       setEditErrorMsg("حدث خطأ أثناء الاتصال بالخادم لتحديث السجل: " + err.message);
@@ -519,19 +548,44 @@ export default function RegistrationAnswersViewer({
     const targetToDelete = deletingRecord;
 
     try {
-      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || "";
-      const res = await fetch("/api/registration-answers/delete", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          registrationId: targetToDelete.registrationId,
-          rowIndex: targetToDelete.rowIndex,
-          scriptUrl: activeScript
-        })
-      });
+      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || DEFAULT_SCRIPT_URL;
+      
+      let isSuccess = false;
+      let msg = "";
 
-      const data = await res.json();
-      if (data && data.success) {
+      // 1. Try local server
+      try {
+        const res = await fetch("/api/registration-answers/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            registrationId: targetToDelete.registrationId,
+            rowIndex: targetToDelete.rowIndex,
+            scriptUrl: activeScript
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success) {
+            isSuccess = true;
+            msg = data.message;
+          }
+        }
+      } catch (e) {}
+
+      // 2. Direct Apps script fallback
+      if (!isSuccess) {
+        const bridgeRes = await executeAppsScriptPost("deleteRegistrationAnswer", {
+          registrationId: targetToDelete.registrationId,
+          rowIndex: targetToDelete.rowIndex
+        }, activeScript);
+        if (bridgeRes.success) {
+          isSuccess = true;
+          msg = bridgeRes.data?.message;
+        }
+      }
+
+      if (isSuccess) {
         setActionSuccessBanner(`تم حذف سجل المسجل [${targetToDelete.name || targetToDelete.registrationId}] بنجاح من الشيت`);
         setTimeout(() => setActionSuccessBanner(null), 5000);
 
@@ -550,7 +604,7 @@ export default function RegistrationAnswersViewer({
 
         setDeletingRecord(null);
       } else {
-        setDeleteErrorMsg(data.message || "تعذر حذف السجل من جدول البيانات");
+        setDeleteErrorMsg(msg || "تعذر حذف السجل من جدول البيانات");
       }
     } catch (err: any) {
       setDeleteErrorMsg("حدث خطأ أثناء الاتصال بالخادم لحذف السجل: " + err.message);
