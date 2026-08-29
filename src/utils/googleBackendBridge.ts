@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyOsaOtfN1TOP-psYOKrneTtXSqn837lMTV3r-YVGf_d8wWDCavMqtQz9WkFpxOIXPTVw/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxtZDNWfT7zD0yuDCJ2UUs9i3rAU_K1aixjI5RDtamgXSq46lZUhjBsYutLVqRQlm7row/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 

@@ -776,9 +776,11 @@ function submitRegistration(data) {
 
         // تسجيل البيانات المطلوبة بدقة:
         // 0. رقم الموضوع في العامود A (العمود 1) ليكون 1 افتراضياً لكل مشترك جديد
+        var requestedTopic = (data.topicId !== undefined && data.topicId !== null) ? data.topicId : (data.topic || 1);
         var curTopicA = settingsSheet.getRange(targetSettingsRow, 1).getValue();
-        if (curTopicA === "" || curTopicA === null || curTopicA === undefined) {
-          settingsSheet.getRange(targetSettingsRow, 1).setValue(1);
+        var curTopicStr = (curTopicA !== null && curTopicA !== undefined) ? curTopicA.toString().trim() : "";
+        if (curTopicStr === "" || curTopicStr === "0" || curTopicStr === "null" || curTopicStr === "undefined") {
+          settingsSheet.getRange(targetSettingsRow, 1).setValue(Number(requestedTopic) || 1);
         }
         // 1. اسم المشترك في العامود B (العمود 2)
         settingsSheet.getRange(targetSettingsRow, 2).setValue(displayName);
@@ -1833,7 +1835,17 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
       }
     }
 
-    var rawTopicId = userData[0] ? userData[0].toString().trim() : '1';
+    var rawTopicVal = (userData[0] !== undefined && userData[0] !== null) ? userData[0].toString().trim() : '';
+    var rawTopicId = (rawTopicVal && rawTopicVal !== "0" && rawTopicVal !== "null" && rawTopicVal !== "undefined") ? rawTopicVal : '1';
+    
+    // إذا كان العامود A فارغاً في ورقة Settings، نضع 1 فوراً وتلقائياً ونحفظ
+    if (!rawTopicVal || rawTopicVal === "" || rawTopicVal === "0") {
+      try {
+        settingsSheet.getRange(userRow, 1).setValue(1);
+        SpreadsheetApp.flush();
+      } catch(e) {}
+    }
+
     function cleanTopicStr(s) {
       if (!s) return '1';
       var str = s.toString().trim().replace(/['"]/g, '');

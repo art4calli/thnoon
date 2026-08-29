@@ -1114,6 +1114,8 @@ export default function RegistrationModal({
 
       const regPayload = {
         registrationId: unifiedRegId,
+        topicId: 1,
+        topic: 1,
         name: nameVal,
         nameArabic: nameArVal,
         age: ageVal,
