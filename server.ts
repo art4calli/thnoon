@@ -1448,6 +1448,27 @@ app.post("/api/login", async (req, res) => {
       }
     }
 
+    function isDeviceMatching(regDev: string, curDevId: string): boolean {
+      if (!regDev || !curDevId) return false;
+      const reg = regDev.toString().toLowerCase().trim();
+      const cur = curDevId.toString().toLowerCase().trim();
+      const cleanCur = cur.replace(/^dev-/, "");
+      if (reg === cur || reg.includes(cur) || cur.includes(reg)) return true;
+      if (reg.includes(`[id:${cur}]`) || reg.includes(`[id: ${cur}]`)) return true;
+      if (cleanCur.length >= 8) {
+        if (reg.includes(`[id:${cleanCur}]`) || reg.includes(`[id: ${cleanCur}]`)) return true;
+        if (reg.includes(cleanCur)) return true;
+      }
+      const idMatch = reg.match(/\[id:\s*([^\]]+)\]/i);
+      if (idMatch && idMatch[1]) {
+        const extracted = idMatch[1].toLowerCase().trim();
+        const extractedClean = extracted.replace(/^dev-/, "");
+        if (extracted === cur || extractedClean === cleanCur) return true;
+        if (cleanCur.length >= 8 && (extractedClean.includes(cleanCur) || cleanCur.includes(extractedClean))) return true;
+      }
+      return false;
+    }
+
     // Columns AD:AW - فحص الأجهزة المسجلة
     const curDevId = (deviceId || "").toString().trim();
     if (curDevId) {
@@ -1459,12 +1480,7 @@ app.post("/api/login", async (req, res) => {
         const regDev = userRow[devColIdx]?.toString().trim() || "";
         if (regDev) {
           registeredDeviceCount++;
-          if (
-            regDev === curDevId ||
-            regDev.includes(`[ID:${curDevId}]`) ||
-            regDev.includes(`[ID: ${curDevId}]`) ||
-            (curDevId.length >= 12 && regDev.includes(curDevId))
-          ) {
+          if (isDeviceMatching(regDev, curDevId)) {
             isKnownDevice = true;
             break;
           }

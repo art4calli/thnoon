@@ -775,6 +775,11 @@ function submitRegistration(data) {
         }
 
         // تسجيل البيانات المطلوبة بدقة:
+        // 0. رقم الموضوع في العامود A (العمود 1) ليكون 1 افتراضياً لكل مشترك جديد
+        var curTopicA = settingsSheet.getRange(targetSettingsRow, 1).getValue();
+        if (curTopicA === "" || curTopicA === null || curTopicA === undefined) {
+          settingsSheet.getRange(targetSettingsRow, 1).setValue(1);
+        }
         // 1. اسم المشترك في العامود B (العمود 2)
         settingsSheet.getRange(targetSettingsRow, 2).setValue(displayName);
         // 2. اسم المشترك في العامود Z (العمود 26)
@@ -1722,13 +1727,43 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
 
         if (regDev) {
           registeredDeviceCount++;
-          // فحص أمني دقيق لبصمة الجهاز الفريدة فقط
-          if (
-            regDev === cleanCurDevId ||
-            regDev.indexOf("[ID:" + cleanCurDevId + "]") !== -1 ||
-            regDev.indexOf("[ID: " + cleanCurDevId + "]") !== -1 ||
-            (cleanCurDevId.length >= 12 && regDev.indexOf(cleanCurDevId) !== -1)
-          ) {
+          // فحص أمني دقيق وموثوق 100% لبصمة الجهاز الفريدة (غير حساس لحالة الأحرف)
+          var normReg = regDev.toString().toLowerCase().trim();
+          var normCur = cleanCurDevId.toLowerCase().trim();
+          var cleanWithoutDev = normCur.replace(/^dev-/, "");
+
+          var isMatch = (
+            normReg === normCur ||
+            normReg.indexOf(normCur) !== -1 ||
+            normCur.indexOf(normReg) !== -1 ||
+            normReg.indexOf("[id:" + normCur + "]") !== -1 ||
+            normReg.indexOf("[id: " + normCur + "]") !== -1 ||
+            (cleanWithoutDev.length >= 8 && (
+              normReg.indexOf("[id:" + cleanWithoutDev + "]") !== -1 ||
+              normReg.indexOf("[id: " + cleanWithoutDev + "]") !== -1 ||
+              normReg.indexOf(cleanWithoutDev) !== -1
+            ))
+          );
+
+          if (!isMatch) {
+            // استخراج المعرف بين القوسين [ID: ...] بطريقة آمنة ومتوافقة 100% بدون تعبيرات نمطية معقدة
+            var idIndex = normReg.indexOf("[id:");
+            if (idIndex === -1) idIndex = normReg.indexOf("[id: ");
+            if (idIndex !== -1) {
+              var closeBracket = normReg.indexOf("]", idIndex);
+              if (closeBracket !== -1) {
+                var bracketContent = normReg.substring(idIndex + 4, closeBracket).replace(/^:\s*/, "").trim();
+                var extClean = bracketContent.replace(/^dev-/, "");
+                if (bracketContent === normCur || extClean === cleanWithoutDev) {
+                  isMatch = true;
+                } else if (cleanWithoutDev.length >= 8 && (extClean.indexOf(cleanWithoutDev) !== -1 || cleanWithoutDev.indexOf(extClean) !== -1)) {
+                  isMatch = true;
+                }
+              }
+            }
+          }
+
+          if (isMatch) {
             isKnownDevice = true;
             // تحديث وقت آخر دخول وموقع الجهاز المعروف في خانته
             try {

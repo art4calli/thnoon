@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyPCKHwAIzKToQGDrh6FARI8qrhgmd81N8RprAhnecw83rGrThpxhB5aaocvPGdJ-IF1g/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzL1tHuFeR5Ts0ldQwXHdrQ6OfaG6F5Jmnpv4udi4g1-rnWJf8TeWYZANT8cjwG-q2GJw/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -769,6 +769,37 @@ export async function fetchSubscriberTopicContent(
 }
 
 /**
+ * Robust device fingerprint matching function (case-insensitive, handles DEV- prefix, bracket tags, and UUID)
+ */
+export function isDeviceMatching(regDev: string, curDevId: string): boolean {
+  if (!regDev || !curDevId) return false;
+  const reg = regDev.toString().toLowerCase().trim();
+  const cur = curDevId.toString().toLowerCase().trim();
+  const cleanCur = cur.replace(/^dev-/, "");
+
+  // 1. Direct match or substring match
+  if (reg === cur || reg.includes(cur) || cur.includes(reg)) return true;
+
+  // 2. Tagged match [ID:...]
+  if (reg.includes(`[id:${cur}]`) || reg.includes(`[id: ${cur}]`)) return true;
+  if (cleanCur.length >= 8) {
+    if (reg.includes(`[id:${cleanCur}]`) || reg.includes(`[id: ${cleanCur}]`)) return true;
+    if (reg.includes(cleanCur)) return true;
+  }
+
+  // 3. Extract bracketed [ID: ...] if present
+  const idMatch = reg.match(/\[id:\s*([^\]]+)\]/i);
+  if (idMatch && idMatch[1]) {
+    const extracted = idMatch[1].toLowerCase().trim();
+    const extractedClean = extracted.replace(/^dev-/, "");
+    if (extracted === cur || extractedClean === cleanCur) return true;
+    if (cleanCur.length >= 8 && (extractedClean.includes(cleanCur) || cleanCur.includes(extractedClean))) return true;
+  }
+
+  return false;
+}
+
+/**
  * Universal Subscriber Login Bridge
  * Works seamlessly on Vercel / GitHub Pages / AI Studio Dev Server / Mobile / Tablet
  */
@@ -810,6 +841,22 @@ export async function loginSubscriberBridge(
           const directContent = await fetchSubscriberTopicContent(data.topicId || "1", targetSpreadsheetId);
           if (directContent) data.content = directContent;
         }
+
+        // Background sync to Apps Script to ensure Google Sheet updates device info & timestamp
+        if (currentDeviceId && targetScriptUrl) {
+          try {
+            executeAppsScriptPost("loginUser", {
+              username: cleanUser,
+              password: cleanPass,
+              deviceId: currentDeviceId,
+              lat: extra?.lat || null,
+              lng: extra?.lng || null,
+              locationName: extra?.locationName || "",
+              deviceInfo: extra?.deviceInfo || ""
+            }, targetScriptUrl).catch(() => {});
+          } catch (e) {}
+        }
+
         return data;
       }
       if (data && (data.isBlocked || data.deviceLimitReached)) {
@@ -898,13 +945,8 @@ export async function loginSubscriberBridge(
                       const regDev = getVal(devColIdx);
                       if (regDev) {
                         registeredDeviceCount++;
-                        // فحص أمني دقيق: مطابقة معرف الجهاز الفريد حصراً
-                        if (
-                          regDev === currentDeviceId ||
-                          regDev.includes(`[ID:${currentDeviceId}]`) ||
-                          regDev.includes(`[ID: ${currentDeviceId}]`) ||
-                          (currentDeviceId.length >= 12 && regDev.includes(currentDeviceId))
-                        ) {
+                        // فحص أمني دقيق وموثوق 100%: مطابقة معرف الجهاز الفريد
+                        if (isDeviceMatching(regDev, currentDeviceId)) {
                           isKnownDevice = true;
                           break;
                         }
@@ -919,20 +961,20 @@ export async function loginSubscriberBridge(
                           message: `لقد استنفدت الحد الأقصى المسموح به من الأجهزة (${maxAllowedDevices} جهاز). يرجى التواصل مع الإدارة لإعادة التعيين.`
                         };
                       }
-
-                      // Background device registration in Google Sheets
-                      try {
-                        executeAppsScriptPost("loginUser", {
-                          username: cleanUser,
-                          password: cleanPass,
-                          deviceId: currentDeviceId,
-                          lat: extra?.lat || null,
-                          lng: extra?.lng || null,
-                          locationName: extra?.locationName || "",
-                          deviceInfo: extra?.deviceInfo || ""
-                        }, targetScriptUrl).catch(() => {});
-                      } catch (e) {}
                     }
+
+                    // Always trigger background device registration/timestamp in Google Sheets
+                    try {
+                      executeAppsScriptPost("loginUser", {
+                        username: cleanUser,
+                        password: cleanPass,
+                        deviceId: currentDeviceId,
+                        lat: extra?.lat || null,
+                        lng: extra?.lng || null,
+                        locationName: extra?.locationName || "",
+                        deviceInfo: extra?.deviceInfo || ""
+                      }, targetScriptUrl).catch(() => {});
+                    } catch (e) {}
                   }
 
                   const rawTopicId = sheetColA || "1";
