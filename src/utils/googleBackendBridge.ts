@@ -13,7 +13,7 @@
 
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig } from "../types";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3-4QPCsuiCd44n-aldu1KGfaNfRxInZwIU0fkLKaP2ZjEdRcQTsB77mrsMcz_fQDu8Q/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzb19BAIh4RARy4Qwj4pWsdc-tWqop2WuRcJjrm2-6h98C1TF-qz-4nDGht2wUiD2E7SQ/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -733,14 +733,21 @@ export async function loginSubscriberBridge(
                 }
               }
 
-              const topicId = getVal(0) || "1";
+              const rawTopicId = getVal(0) || "1";
+              // Normalize topicId (trim, strip quotes, format numbers like 1.0 to 1)
+              const cleanTopicId = (rawTopicId: string) => {
+                const s = (rawTopicId || "").toString().trim().replace(/['"]/g, "");
+                const num = parseFloat(s);
+                return (!isNaN(num) && Number.isInteger(num)) ? String(num) : s;
+              };
+              const topicId = cleanTopicId(rawTopicId) || "1";
               const subscriberName = getVal(1) || cleanUser;
 
               // Read SubscriberContent sheet if exists
               let topicContent: any = null;
               try {
-                const contentUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=SubscriberContent`;
-                const contentRes = await fetch(contentUrl);
+                const contentUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=SubscriberContent&t=${Date.now()}`;
+                const contentRes = await fetch(contentUrl, { cache: "no-store" });
                 if (contentRes.ok) {
                   const cText = await contentRes.text();
                   const cStart = cText.indexOf("{");
@@ -750,9 +757,12 @@ export async function loginSubscriberBridge(
                     if (cJson && cJson.table && cJson.table.rows) {
                       for (const cRowItem of cJson.table.rows) {
                         const cr = cRowItem?.c || [];
-                        const getCVal = (idx: number) => (cr[idx] && cr[idx].v !== null && cr[idx].v !== undefined) ? cr[idx].v.toString().trim() : "";
-                        const cTopic = getCVal(0);
-                        if (cTopic === topicId) {
+                        const getCVal = (idx: number) => {
+                          if (!cr[idx] || cr[idx].v === null || cr[idx].v === undefined) return "";
+                          return cr[idx].f !== undefined ? cr[idx].f.toString().trim() : cr[idx].v.toString().trim();
+                        };
+                        const cTopic = cleanTopicId(getCVal(0));
+                        if (cTopic === topicId || getCVal(0) === rawTopicId || getCVal(0) === topicId) {
                           const title = getCVal(1) || "المحتوى المخصص للمشترك";
                           const description = getCVal(2);
                           const rawCover = getCVal(3);
@@ -784,7 +794,7 @@ export async function loginSubscriberBridge(
                           }
 
                           topicContent = {
-                            topicId: cTopic,
+                            topicId: cTopic || topicId,
                             title,
                             description,
                             coverImage,

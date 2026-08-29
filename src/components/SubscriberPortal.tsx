@@ -32,6 +32,7 @@ export default function SubscriberPortal({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLoading) return;
     if (!username || !password) {
       setError("الرجاء إدخال اسم المستخدم وكلمة المرور");
       return;
@@ -41,12 +42,12 @@ export default function SubscriberPortal({
     setIsLoading(true);
     try {
       const response = await onLogin(username, password);
-      setIsLoading(false);
       if (response.success) {
         setUsername("");
         setPassword("");
         onClose();
       } else {
+        setIsLoading(false);
         setError(response.message || "اسم المستخدم أو كلمة المرور غير صحيحة");
       }
     } catch (err: any) {
@@ -138,12 +139,25 @@ export default function SubscriberPortal({
               <button
                 type="submit"
                 disabled={isLoading}
-                className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer"
+                className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
               >
-                <LogIn className="w-4.5 h-4.5" />
-                <span>{isLoading ? "جاري التحقق وقراءة موضوع الطالب..." : "دخول وفتح صفحة المشترك"}</span>
+                {isLoading ? (
+                  <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                ) : (
+                  <LogIn className="w-4.5 h-4.5" />
+                )}
+                <span>{isLoading ? "جاري التحقق وقراءة موضوع الطالب، يرجى الانتظار..." : "دخول وفتح صفحة المشترك"}</span>
               </button>
             </form>
+
+            {/* Modal Loading Lock Overlay */}
+            {isLoading && (
+              <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6 text-center space-y-3">
+                <div className="w-12 h-12 border-3 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
+                <h4 className="font-serif font-bold text-amber-400 text-lg">جاري التحقق وقراءة بيانات الطالب...</h4>
+                <p className="text-slate-300 text-xs font-sans max-w-xs">يرجى الانتظار لحظات ريثما يتم جلب موضوعك المخصص من جدول البيانات وتجهيز صفحتك.</p>
+              </div>
+            )}
 
             <div className="mt-6 pt-4 border-t border-slate-800 text-center">
               <p className="text-slate-400 text-xs font-sans">

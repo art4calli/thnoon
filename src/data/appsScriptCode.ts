@@ -1727,7 +1727,14 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
       }
     }
 
-    var topicId = userData[0] ? userData[0].toString().trim() : '1';
+    var rawTopicId = userData[0] ? userData[0].toString().trim() : '1';
+    function cleanTopicStr(s) {
+      if (!s) return '1';
+      var str = s.toString().trim().replace(/['"]/g, '');
+      var num = parseFloat(str);
+      return (!isNaN(num) && Math.floor(num) === num) ? num.toString() : str;
+    }
+    var topicId = cleanTopicStr(rawTopicId);
     var topicContent = null;
     
     try {
@@ -1735,7 +1742,9 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
       if (contentSheet) {
         var cData = contentSheet.getDataRange().getValues();
         for (var c = 1; c < cData.length; c++) {
-          if (cData[c][0] && cData[c][0].toString().trim() === topicId) {
+          var rowTopicStr = cData[c][0] ? cData[c][0].toString().trim() : '';
+          var cleanedRowTopic = cleanTopicStr(rowTopicStr);
+          if (cleanedRowTopic === topicId || rowTopicStr === rawTopicId || rowTopicStr === topicId) {
             var cRow = cData[c];
             var cards = [];
             for (var k = 0; k < 10; k++) {

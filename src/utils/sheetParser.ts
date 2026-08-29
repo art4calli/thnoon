@@ -955,7 +955,13 @@ export async function loginSubscriberDirect(usernameInput: string, passwordInput
           }
         }
 
-        const topicId = row[0] ? row[0].toString().trim() : "1";
+        const rawTopicId = row[0] ? row[0].toString().trim() : "1";
+        const cleanTopicNum = (s: string) => {
+          const clean = (s || "").toString().trim().replace(/['"]/g, "");
+          const num = parseFloat(clean);
+          return (!isNaN(num) && Number.isInteger(num)) ? String(num) : clean;
+        };
+        const topicId = cleanTopicNum(rawTopicId) || "1";
         const subscriberName = row[1] || usernameInput;
 
         // Try to fetch matching topic content from SubscriberContent sheet
@@ -964,8 +970,9 @@ export async function loginSubscriberDirect(usernameInput: string, passwordInput
           const contentRows = await getSheetValuesDirect("SubscriberContent");
           if (contentRows && contentRows.length > 0) {
             for (const cRow of contentRows) {
-              const cTopicId = cRow[0] ? cRow[0].toString().trim() : "";
-              if (cTopicId === topicId) {
+              const rawCTopic = cRow[0] ? cRow[0].toString().trim() : "";
+              const cTopicId = cleanTopicNum(rawCTopic);
+              if (cTopicId === topicId || rawCTopic === rawTopicId || rawCTopic === topicId) {
                 topicContent = parseSubscriberTopicContent(cRow);
                 break;
               }

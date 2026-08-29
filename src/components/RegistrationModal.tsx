@@ -1793,13 +1793,42 @@ export default function RegistrationModal({
                     <button
                       type="submit"
                       disabled={isSubmitting}
-                      className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-base py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                      className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-base py-4 rounded-2xl shadow-xl transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
                     >
-                      <Send className="w-5 h-5" />
+                      {isSubmitting ? (
+                        <Loader2 className="w-5 h-5 animate-spin stroke-[2.5]" />
+                      ) : (
+                        <Send className="w-5 h-5 stroke-[2.5]" />
+                      )}
                       <span>{isSubmitting ? t.submittingBtn : (formLang === 'ar' ? customButtonTitle : t.submitBtn)}</span>
                     </button>
                   </div>
                 </form>
+              )}
+
+              {/* Full Modal Submitting Overlay to prevent double clicks and reassure the user */}
+              {isSubmitting && (
+                <div className="fixed inset-0 z-50 bg-slate-950/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center">
+                  <motion.div
+                    initial={{ scale: 0.9, opacity: 0 }}
+                    animate={{ scale: 1, opacity: 1 }}
+                    className="bg-slate-900 border-2 border-amber-500/40 rounded-3xl p-8 max-w-sm w-full shadow-2xl space-y-4"
+                  >
+                    <div className="w-16 h-16 bg-amber-500/10 border border-amber-500/30 rounded-2xl flex items-center justify-center mx-auto text-amber-400">
+                      <Loader2 className="w-8 h-8 animate-spin" />
+                    </div>
+                    <h3 className="font-serif font-bold text-xl text-amber-400">
+                      {formLang === 'ar' ? "جاري إرسال وحفظ طلب التسجيل..." : formLang === 'th' ? "กำลังบันทึกและส่งข้อมูล..." : "Submitting Registration..."}
+                    </h3>
+                    <p className="text-slate-300 font-sans text-xs sm:text-sm leading-relaxed">
+                      {formLang === 'ar'
+                        ? "يرجى الانتظار لحظات ريثما يتم تسجيل بياناتك وإرسال الإشعارات وحفظ المرفقات في السحابة."
+                        : formLang === 'th'
+                        ? "กรุณารอสักครู่ ระบบกำลังบันทึกข้อมูลและส่งการแจ้งเตือน..."
+                        : "Please wait a moment while your registration is being recorded and notifications are sent."}
+                    </p>
+                  </motion.div>
+                </div>
               )}
             </div>
 
