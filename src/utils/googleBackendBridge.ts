@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLEKwL4XRWk0HEKTmu88tout7TahFq_DYEy5biy9zbRYJ-QzPE3szTrxXU8pV5r6tg0A/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyPCKHwAIzKToQGDrh6FARI8qrhgmd81N8RprAhnecw83rGrThpxhB5aaocvPGdJ-IF1g/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -898,12 +898,12 @@ export async function loginSubscriberBridge(
                       const regDev = getVal(devColIdx);
                       if (regDev) {
                         registeredDeviceCount++;
+                        // فحص أمني دقيق: مطابقة معرف الجهاز الفريد حصراً
                         if (
                           regDev === currentDeviceId ||
-                          regDev.includes(currentDeviceId) ||
-                          currentDeviceId.includes(regDev) ||
-                          regDev.includes(devShortId) ||
-                          (extra?.deviceInfo && regDev.includes(extra.deviceInfo.slice(0, 20)))
+                          regDev.includes(`[ID:${currentDeviceId}]`) ||
+                          regDev.includes(`[ID: ${currentDeviceId}]`) ||
+                          (currentDeviceId.length >= 12 && regDev.includes(currentDeviceId))
                         ) {
                           isKnownDevice = true;
                           break;

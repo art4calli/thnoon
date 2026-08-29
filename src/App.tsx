@@ -383,9 +383,13 @@ export default function App() {
   const handleLogin = async (usernameInput: string, passwordInput: string) => {
     try {
       // Create a unique client fingerprint
-      let fingerprint = localStorage.getItem("deviceId");
+      let fingerprint = localStorage.getItem("thnoon_secure_device_id") || localStorage.getItem("deviceId");
       if (!fingerprint) {
-        fingerprint = crypto.randomUUID ? crypto.randomUUID() : Math.random().toString(36).substring(2) + Date.now().toString(36);
+        const randomPart = (typeof crypto !== "undefined" && crypto.randomUUID)
+          ? crypto.randomUUID()
+          : `id_${Math.random().toString(36).substring(2)}_${Date.now().toString(36)}`;
+        fingerprint = `DEV-${randomPart}`;
+        localStorage.setItem("thnoon_secure_device_id", fingerprint);
         localStorage.setItem("deviceId", fingerprint);
       }
 

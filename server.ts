@@ -1453,7 +1453,6 @@ app.post("/api/login", async (req, res) => {
     if (curDevId) {
       let isKnownDevice = false;
       let registeredDeviceCount = 0;
-      const devShortId = curDevId.length > 8 ? curDevId.slice(-8) : curDevId;
 
       for (let d = 0; d < maxAllowedDevices; d++) {
         const devColIdx = 30 + (d * 2);
@@ -1462,10 +1461,9 @@ app.post("/api/login", async (req, res) => {
           registeredDeviceCount++;
           if (
             regDev === curDevId ||
-            regDev.includes(curDevId) ||
-            curDevId.includes(regDev) ||
-            regDev.includes(devShortId) ||
-            (deviceInfo && regDev.includes(deviceInfo.slice(0, 20)))
+            regDev.includes(`[ID:${curDevId}]`) ||
+            regDev.includes(`[ID: ${curDevId}]`) ||
+            (curDevId.length >= 12 && regDev.includes(curDevId))
           ) {
             isKnownDevice = true;
             break;

@@ -1722,15 +1722,12 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
 
         if (regDev) {
           registeredDeviceCount++;
-          // فحص هل هذا الجهاز مطابق لأي من الخانات المسجلة مسبقاً
-          // الفحص يشمل البصمة الكاملة، أو آخر 8 محارف، أو تطابق تام
-          var devShortId = cleanCurDevId.length > 8 ? cleanCurDevId.slice(-8) : cleanCurDevId;
+          // فحص أمني دقيق لبصمة الجهاز الفريدة فقط
           if (
             regDev === cleanCurDevId ||
-            regDev.indexOf(cleanCurDevId) !== -1 ||
-            cleanCurDevId.indexOf(regDev) !== -1 ||
-            regDev.indexOf(devShortId) !== -1 ||
-            (deviceInfo && regDev.indexOf(deviceInfo.slice(0, 20)) !== -1)
+            regDev.indexOf("[ID:" + cleanCurDevId + "]") !== -1 ||
+            regDev.indexOf("[ID: " + cleanCurDevId + "]") !== -1 ||
+            (cleanCurDevId.length >= 12 && regDev.indexOf(cleanCurDevId) !== -1)
           ) {
             isKnownDevice = true;
             // تحديث وقت آخر دخول وموقع الجهاز المعروف في خانته
