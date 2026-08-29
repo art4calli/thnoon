@@ -1609,14 +1609,60 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
     var userRow = -1;
     var userRowIdx = -1;
     
+    // دوال المطابقة المرنة للأسماء والأرقام
+    function normArabic(str) {
+      if (!str) return "";
+      var s = str.toString().trim();
+      s = s.replace(/[\u200B-\u200D\uFEFF\u00A0\u200E\u200F]/g, "");
+      s = s.replace(/[\u064B-\u065F\u0670\u0640]/g, "");
+      s = s.replace(/[إأآٱ]/g, "ا");
+      s = s.replace(/[ة]/g, "ه");
+      s = s.replace(/[يى]/g, "ي");
+      var arDigits = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+      var faDigits = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+      for (var d = 0; d <= 9; d++) {
+        s = s.split(arDigits[d]).join(String(d));
+        s = s.split(faDigits[d]).join(String(d));
+      }
+      return s.trim().toLowerCase();
+    }
+
+    function normCode(str) {
+      if (!str) return "";
+      var s = str.toString().trim().replace(/['",\s\u200B-\u200D\uFEFF\u00A0\u200E\u200F]/g, "");
+      var arDigits = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+      var faDigits = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+      for (var d = 0; d <= 9; d++) {
+        s = s.split(arDigits[d]).join(String(d));
+        s = s.split(faDigits[d]).join(String(d));
+      }
+      if (s.indexOf(".0") !== -1 && s.slice(-2) === ".0") {
+        s = s.substring(0, s.length - 2);
+      }
+      return s.trim().toLowerCase();
+    }
+
+    var targetNormUser = normArabic(username);
+    var targetNormPass = normCode(password);
+
     for (var i = 0; i < usersData.length; i++) {
+      var sheetColB = (usersData[i][1] || "").toString().trim(); // Column B (index 1)
       var sheetUser = (usersData[i][25] || "").toString().trim(); // Column Z (index 25)
       var sheetPass = (usersData[i][26] || "").toString().trim(); // Column AA (index 26)
-      
-      if (sheetUser.toLowerCase() === username.toString().trim().toLowerCase()) {
-        if (sheetPass !== password.toString().trim()) {
-          return { success: false, message: 'كلمة المرور أو رقم التسجيل غير صحيح' };
-        }
+
+      var normZ = normArabic(sheetUser);
+      var normB = normArabic(sheetColB);
+      var normAA = normCode(sheetPass);
+
+      var uMatch = (normZ && (normZ === targetNormUser || normZ.indexOf(targetNormUser) !== -1 || targetNormUser.indexOf(normZ) !== -1)) ||
+                   (normB && (normB === targetNormUser || normB.indexOf(targetNormUser) !== -1 || targetNormUser.indexOf(normB) !== -1)) ||
+                   (targetNormPass && (normZ === targetNormPass || normB === targetNormPass));
+
+      var pMatch = (normAA && (normAA === targetNormPass || normAA.indexOf(targetNormPass) !== -1 || targetNormPass.indexOf(normAA) !== -1)) ||
+                   (sheetPass && password && sheetPass === password.toString().trim()) ||
+                   (!normAA && !targetNormPass);
+
+      if (uMatch && pMatch) {
         userRow = i + 2;
         userRowIdx = i;
         break;

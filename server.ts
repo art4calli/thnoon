@@ -1363,22 +1363,73 @@ app.post("/api/login", async (req, res) => {
       return res.status(500).json({ success: false, message: "فشل التحقق من قاعدة البيانات" });
     }
 
-    // Col Z is index 25, Col AA is 26, Col AB is 27 (حالة الاشتراك), Col AC is 28 (عدد الأجهزة)
+    function normalizeArabicText(str: any): string {
+      if (str === null || str === undefined) return "";
+      let s = str.toString().trim();
+      s = s.replace(/[\u200B-\u200D\uFEFF\u00A0\u200E\u200F]/g, "");
+      s = s.replace(/[\u064B-\u065F\u0670\u0640]/g, "");
+      s = s.replace(/[إأآٱ]/g, "ا");
+      s = s.replace(/[ة]/g, "ه");
+      s = s.replace(/[يى]/g, "ي");
+      const arabicIndic = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+      const persian = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+      for (let i = 0; i <= 9; i++) {
+        s = s.split(arabicIndic[i]).join(String(i));
+        s = s.split(persian[i]).join(String(i));
+      }
+      return s.trim().toLowerCase();
+    }
+
+    function normalizePasswordOrCode(str: any): string {
+      if (str === null || str === undefined) return "";
+      let s = str.toString().trim();
+      s = s.replace(/['",\s\u200B-\u200D\uFEFF\u00A0\u200E\u200F]/g, "");
+      const arabicIndic = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+      const persian = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+      for (let i = 0; i <= 9; i++) {
+        s = s.split(arabicIndic[i]).join(String(i));
+        s = s.split(persian[i]).join(String(i));
+      }
+      if (s.endsWith(".0") || s.endsWith(".00")) {
+        s = s.substring(0, s.indexOf("."));
+      }
+      return s.trim().toLowerCase();
+    }
+
+    const normInputUser = normalizeArabicText(username);
+    const normInputPass = normalizePasswordOrCode(password);
+
+    // Col A: 0, Col B: 1 (Subscriber), Col Z: 25 (Username), Col AA: 26 (Password), Col AB: 27 (Status), Col AC: 28 (Max Devices)
     let userRow: any[] | null = null;
     for (const r of settingsRows) {
-      const u = r[25]?.toString().trim();
-      const p = r[26]?.toString().trim();
-      if (u && u.toLowerCase() === username.toString().trim().toLowerCase()) {
-        if (p !== password.toString().trim()) {
-          return res.json({ success: false, message: "كلمة المرور أو رقم التسجيل غير صحيح" });
-        }
+      const uZ = r[25]?.toString().trim();
+      const uB = r[1]?.toString().trim();
+      const pAA = r[26]?.toString().trim();
+
+      const normZ = normalizeArabicText(uZ);
+      const normB = normalizeArabicText(uB);
+      const normAA = normalizePasswordOrCode(pAA);
+
+      const userMatches = Boolean(
+        (normZ && (normZ === normInputUser || normZ.includes(normInputUser) || normInputUser.includes(normZ))) ||
+        (normB && (normB === normInputUser || normB.includes(normInputUser) || normInputUser.includes(normB))) ||
+        (normInputPass && (normZ === normInputPass || normB === normInputPass))
+      );
+
+      const passMatches = Boolean(
+        (normAA && (normAA === normInputPass || normAA.includes(normInputPass) || normInputPass.includes(normAA))) ||
+        (pAA && password && pAA.toString().trim() === password.toString().trim()) ||
+        (!normAA && !normInputPass)
+      );
+
+      if (userMatches && passMatches) {
         userRow = r;
         break;
       }
     }
 
     if (!userRow) {
-      return res.json({ success: false, message: "اسم المشترك غير موجود، يرجى التأكد من التسجيل" });
+      return res.json({ success: false, message: "اسم المشترك أو رقم التسجيل غير صحيح" });
     }
 
     // Col AB (index 27) - حالة الاشتراك (ممنوع / مسموح)

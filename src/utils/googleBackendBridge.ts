@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzb19BAIh4RARy4Qwj4pWsdc-tWqop2WuRcJjrm2-6h98C1TF-qz-4nDGht2wUiD2E7SQ/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyLEKwL4XRWk0HEKTmu88tout7TahFq_DYEy5biy9zbRYJ-QzPE3szTrxXU8pV5r6tg0A/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -562,6 +562,54 @@ export async function fetchRegistrationAnswersBridge(
 }
 
 /**
+ * Normalizes Arabic text (Alefs, Taa Marbuta, Yaa, Tashkeel, Tatweel, and zero-width chars)
+ */
+export function normalizeArabicText(str: any): string {
+  if (str === null || str === undefined) return "";
+  let s = str.toString().trim();
+  // Remove zero-width spaces, non-breaking spaces, formatting characters
+  s = s.replace(/[\u200B-\u200D\uFEFF\u00A0\u200E\u200F]/g, "");
+  // Remove Tashkeel (diacritics) and Tatweel
+  s = s.replace(/[\u064B-\u065F\u0670\u0640]/g, "");
+  // Normalize Alefs
+  s = s.replace(/[إأآٱ]/g, "ا");
+  // Normalize Taa Marbuta
+  s = s.replace(/[ة]/g, "ه");
+  // Normalize Yaa / Alif Maqsura
+  s = s.replace(/[يى]/g, "ي");
+  // Convert Arabic & Persian digits to Latin
+  const arabicIndic = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  const persian = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+  for (let i = 0; i <= 9; i++) {
+    s = s.split(arabicIndic[i]).join(String(i));
+    s = s.split(persian[i]).join(String(i));
+  }
+  return s.trim().toLowerCase();
+}
+
+/**
+ * Normalizes password, registration code, or topic digits
+ */
+export function normalizePasswordOrCode(str: any): string {
+  if (str === null || str === undefined) return "";
+  let s = str.toString().trim();
+  // Remove quotes, commas, spaces, and invisible chars
+  s = s.replace(/['",\s\u200B-\u200D\uFEFF\u00A0\u200E\u200F]/g, "");
+  // Convert Arabic & Persian digits
+  const arabicIndic = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  const persian = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+  for (let i = 0; i <= 9; i++) {
+    s = s.split(arabicIndic[i]).join(String(i));
+    s = s.split(persian[i]).join(String(i));
+  }
+  // If formatted like 1010.0 or 1010.00 from spreadsheet numeric cells
+  if (s.endsWith(".0") || s.endsWith(".00")) {
+    s = s.substring(0, s.indexOf("."));
+  }
+  return s.trim().toLowerCase();
+}
+
+/**
  * Normalizes topic ID numbers and text across Eastern Arabic (٠-٩), Persian (۰-۹), and Western (0-9) digits
  */
 export function normalizeTopicDigitStr(val: any): string {
@@ -598,8 +646,7 @@ export function isTopicMatching(targetTopic: any, rowTopic: any): boolean {
 
   const numT = parseInt(t.replace(/\D/g, ""), 10);
   const numR = parseInt(r.replace(/\D/g, ""), 10);
-  if (!isNaN(numT) && !isNaN(numR) && numT === numR) return true;
-
+  if (!isNaN(numT) && !isNaN(numR) && numT > 0 && numT === numR) return true;
   if (cleanR.includes(cleanT) || cleanT.includes(cleanR)) return true;
 
   return false;
@@ -736,10 +783,12 @@ export async function loginSubscriberBridge(
   const targetSpreadsheetId = getActiveSpreadsheetId();
   const cleanUser = (usernameInput || "").trim();
   const cleanPass = (passwordInput || "").trim();
+  const normUser = normalizeArabicText(cleanUser);
+  const normPass = normalizePasswordOrCode(cleanPass);
   const currentDeviceId = (deviceId || "").toString().trim();
   const devShortId = currentDeviceId.length > 8 ? currentDeviceId.slice(-8) : currentDeviceId;
 
-  // 1. Try local server proxy (AI Studio dev container or custom server)
+  // 1. Try local server proxy if running with local backend (AI Studio dev container or custom server)
   try {
     const res = await fetch("/api/login", {
       method: "POST",
@@ -763,13 +812,207 @@ export async function loginSubscriberBridge(
         }
         return data;
       }
-      if (data && !data.success) return data;
+      if (data && (data.isBlocked || data.deviceLimitReached)) {
+        return data;
+      }
     }
   } catch (localErr) {
-    // Expected on static hosting (Vercel)
+    // Expected on static hosting (Vercel / GitHub Pages)
   }
 
-  // 2. Direct Apps Script Web App GET Request (Supported on all browsers without CORS issues)
+  // 2. Direct Google Visualization API Sheets reader (Instant, client-side, 100% reliable on Vercel & Mobile)
+  const candidateSheets = ["Settings", "الإعدادات", "RegistrationAnswers", "ردود التسجيل"];
+  for (const sheetName of candidateSheets) {
+    try {
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&t=${Date.now()}`;
+      const gvizRes = await fetch(gvizUrl, { cache: "no-store" });
+      if (gvizRes.ok) {
+        const text = await gvizRes.text();
+        const jsonStart = text.indexOf("{");
+        const jsonEnd = text.lastIndexOf("}");
+        if (jsonStart !== -1 && jsonEnd !== -1) {
+          const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+          if (json && json.table && json.table.rows && json.table.rows.length > 0) {
+            const rows = json.table.rows;
+            
+            // If checking Settings sheet
+            if (sheetName === "Settings" || sheetName === "الإعدادات") {
+              for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+                const r = rows[rIdx]?.c || [];
+                const getVal = (idx: number) => {
+                  if (!r[idx] || r[idx].v === null || r[idx].v === undefined) return "";
+                  return r[idx].f !== undefined ? r[idx].f.toString().trim() : r[idx].v.toString().trim();
+                };
+                
+                // Col A (0): TopicID, Col B (1): Subscriber Name
+                // Col Z (25): Username, Col AA (26): Password / Reg ID, Col AB (27): Status, Col AC (28): Max Devices
+                const sheetColA = getVal(0);
+                const sheetColB = getVal(1);
+                const sheetColZ = getVal(25);
+                const sheetColAA = getVal(26);
+
+                const normZ = normalizeArabicText(sheetColZ);
+                const normB = normalizeArabicText(sheetColB);
+                const normAA = normalizePasswordOrCode(sheetColAA);
+
+                const userMatches = Boolean(
+                  (normZ && (normZ === normUser || normZ.includes(normUser) || normUser.includes(normZ))) ||
+                  (normB && (normB === normUser || normB.includes(normUser) || normUser.includes(normB))) ||
+                  (normPass && (normZ === normPass || normB === normPass))
+                );
+
+                const passMatches = Boolean(
+                  (normAA && (normAA === normPass || normAA.includes(normPass) || normPass.includes(normAA))) ||
+                  (sheetColAA && cleanPass && sheetColAA === cleanPass) ||
+                  (!normAA && !normPass)
+                );
+
+                if (userMatches && passMatches) {
+                  // Column AB (index 27): حالة الاشتراك
+                  const status = getVal(27);
+                  if (status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا") {
+                    return {
+                      success: false,
+                      isBlocked: true,
+                      message: "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)"
+                    };
+                  }
+
+                  // Column AC (index 28): عدد الأجهزة المسموحة
+                  let maxAllowedDevices = 1;
+                  const rawMax = getVal(28);
+                  if (rawMax) {
+                    const parsedMax = parseInt(rawMax, 10);
+                    if (!isNaN(parsedMax) && parsedMax > 0) {
+                      maxAllowedDevices = parsedMax;
+                    }
+                  }
+
+                  // Columns AD:AW (indices 29:48): فحص الأجهزة المسجلة
+                  if (currentDeviceId) {
+                    let isKnownDevice = false;
+                    let registeredDeviceCount = 0;
+
+                    for (let d = 0; d < maxAllowedDevices; d++) {
+                      const devColIdx = 30 + (d * 2); // Col AE=30, Col AG=32...
+                      const regDev = getVal(devColIdx);
+                      if (regDev) {
+                        registeredDeviceCount++;
+                        if (
+                          regDev === currentDeviceId ||
+                          regDev.includes(currentDeviceId) ||
+                          currentDeviceId.includes(regDev) ||
+                          regDev.includes(devShortId) ||
+                          (extra?.deviceInfo && regDev.includes(extra.deviceInfo.slice(0, 20)))
+                        ) {
+                          isKnownDevice = true;
+                          break;
+                        }
+                      }
+                    }
+
+                    if (!isKnownDevice) {
+                      if (registeredDeviceCount >= maxAllowedDevices) {
+                        return {
+                          success: false,
+                          deviceLimitReached: true,
+                          message: `لقد استنفدت الحد الأقصى المسموح به من الأجهزة (${maxAllowedDevices} جهاز). يرجى التواصل مع الإدارة لإعادة التعيين.`
+                        };
+                      }
+
+                      // Background device registration in Google Sheets
+                      try {
+                        executeAppsScriptPost("loginUser", {
+                          username: cleanUser,
+                          password: cleanPass,
+                          deviceId: currentDeviceId,
+                          lat: extra?.lat || null,
+                          lng: extra?.lng || null,
+                          locationName: extra?.locationName || "",
+                          deviceInfo: extra?.deviceInfo || ""
+                        }, targetScriptUrl).catch(() => {});
+                      } catch (e) {}
+                    }
+                  }
+
+                  const rawTopicId = sheetColA || "1";
+                  const topicId = normalizeTopicDigitStr(rawTopicId) || "1";
+                  const subscriberName = sheetColB || sheetColZ || cleanUser;
+
+                  // Read SubscriberContent sheet
+                  const topicContent = await fetchSubscriberTopicContent(topicId, targetSpreadsheetId);
+
+                  return {
+                    success: true,
+                    subscriberName,
+                    topicId,
+                    content: topicContent,
+                    linkButtonText1: getVal(2),
+                    linkButtonComment1: getVal(3),
+                    url1: getVal(4),
+                    linkButtonText2: getVal(5),
+                    linkButtonComment2: getVal(6),
+                    url2: getVal(7),
+                    linkButtonText3: getVal(8),
+                    linkButtonComment3: getVal(9),
+                    url3: getVal(10),
+                    linkButtonText4: getVal(11),
+                    linkButtonComment4: getVal(12),
+                    url4: getVal(13),
+                    linkButtonText5: getVal(14),
+                    linkButtonComment5: getVal(15),
+                    url5: getVal(16),
+                    exitButtonText: getVal(17) || "تسجيل الخروج",
+                    exitButtonComment: getVal(18)
+                  };
+                }
+              }
+            }
+
+            // Fallback for RegistrationAnswers sheet
+            if (sheetName === "RegistrationAnswers" || sheetName === "ردود التسجيل") {
+              for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+                const r = rows[rIdx]?.c || [];
+                const getVal = (idx: number) => {
+                  if (!r[idx] || r[idx].v === null || r[idx].v === undefined) return "";
+                  return r[idx].f !== undefined ? r[idx].f.toString().trim() : r[idx].v.toString().trim();
+                };
+
+                const regId = getVal(1); // Col B
+                const regName = getVal(2); // Col C
+                const normRegId = normalizePasswordOrCode(regId);
+                const normRegName = normalizeArabicText(regName);
+
+                const uMatch = Boolean(
+                  (normRegName && (normRegName === normUser || normRegName.includes(normUser) || normUser.includes(normRegName))) ||
+                  (normRegId && normRegId === normPass)
+                );
+                const pMatch = Boolean(
+                  normRegId && (normRegId === normPass || normRegId.includes(normPass) || normPass.includes(normRegId))
+                );
+
+                if (uMatch && pMatch) {
+                  const topicId = "1";
+                  const topicContent = await fetchSubscriberTopicContent(topicId, targetSpreadsheetId);
+                  return {
+                    success: true,
+                    subscriberName: regName || cleanUser,
+                    topicId,
+                    content: topicContent,
+                    exitButtonText: "تسجيل الخروج"
+                  };
+                }
+              }
+            }
+          }
+        }
+      }
+    } catch (gvizTabErr) {
+      console.warn(`GVIZ sheet check for ${sheetName} note:`, gvizTabErr);
+    }
+  }
+
+  // 3. Direct Apps Script Web App GET Request
   try {
     const params = new URLSearchParams({
       action: "loginUser",
@@ -786,14 +1029,14 @@ export async function loginSubscriberBridge(
     const gasRes = await fetch(gasGetUrl);
     if (gasRes.ok) {
       const gasData = await gasRes.json();
-      if (gasData && gasData.success) {
+      if (gasData && gasData.success === true) {
         if (!gasData.content || !gasData.content.cards || gasData.content.cards.length === 0) {
           const directContent = await fetchSubscriberTopicContent(gasData.topicId || "1", targetSpreadsheetId);
           if (directContent) gasData.content = directContent;
         }
         return gasData;
       }
-      if (gasData && !gasData.success) {
+      if (gasData && (gasData.isBlocked || gasData.deviceLimitReached)) {
         return gasData;
       }
     }
@@ -801,7 +1044,7 @@ export async function loginSubscriberBridge(
     console.warn("Direct Apps Script GET login failed, trying direct POST...", gasErr);
   }
 
-  // 3. Direct Apps Script POST (with text/plain)
+  // 4. Direct Apps Script POST (with text/plain)
   try {
     const postRes = await executeAppsScriptPost("loginUser", {
       username: cleanUser,
@@ -813,148 +1056,18 @@ export async function loginSubscriberBridge(
       deviceInfo: extra?.deviceInfo || ""
     }, targetScriptUrl);
 
-    if (postRes.success && postRes.data && postRes.data.success) {
+    if (postRes.success && postRes.data && postRes.data.success === true) {
       if (!postRes.data.content || !postRes.data.content.cards || postRes.data.content.cards.length === 0) {
         const directContent = await fetchSubscriberTopicContent(postRes.data.topicId || "1", targetSpreadsheetId);
         if (directContent) postRes.data.content = directContent;
       }
       return postRes.data;
     }
-    if (postRes.success && postRes.data && !postRes.data.success) {
+    if (postRes.success && postRes.data && (postRes.data.isBlocked || postRes.data.deviceLimitReached)) {
       return postRes.data;
     }
   } catch (postErr) {
-    console.warn("Direct Apps Script POST login failed, falling back to Sheets GVIZ...", postErr);
-  }
-
-  // 4. Direct Google Visualization API Sheets reader (Reads directly from Google Sheets Settings tab)
-  try {
-    const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=Settings&t=${Date.now()}`;
-    const gvizRes = await fetch(gvizUrl, { cache: "no-store" });
-    if (gvizRes.ok) {
-      const text = await gvizRes.text();
-      const jsonStart = text.indexOf("{");
-      const jsonEnd = text.lastIndexOf("}");
-      if (jsonStart !== -1 && jsonEnd !== -1) {
-        const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
-        if (json && json.table && json.table.rows) {
-          const rows = json.table.rows;
-          for (let rIdx = 0; rIdx < rows.length; rIdx++) {
-            const r = rows[rIdx]?.c || [];
-            const getVal = (idx: number) => {
-              if (!r[idx] || r[idx].v === null || r[idx].v === undefined) return "";
-              return r[idx].f !== undefined ? r[idx].f.toString().trim() : r[idx].v.toString().trim();
-            };
-            
-            // Col Z is index 25, Col AA is index 26, Col AB is index 27, Col AC is index 28
-            const sheetUser = getVal(25);
-            const sheetPass = getVal(26);
-
-            if (sheetUser && sheetUser.toLowerCase() === cleanUser.toLowerCase()) {
-              if (sheetPass !== cleanPass) {
-                return { success: false, message: "كلمة المرور أو رقم التسجيل غير صحيح" };
-              }
-
-              // Column AB (index 27): حالة الاشتراك
-              const status = getVal(27);
-              if (status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا") {
-                return { success: false, isBlocked: true, message: "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)" };
-              }
-
-              // Column AC (index 28): عدد الأجهزة المسموحة
-              let maxAllowedDevices = 1;
-              const rawMax = getVal(28);
-              if (rawMax) {
-                const parsedMax = parseInt(rawMax, 10);
-                if (!isNaN(parsedMax) && parsedMax > 0) {
-                  maxAllowedDevices = parsedMax;
-                }
-              }
-
-              // Columns AD:AW (indices 29:48): فحص الأجهزة المسجلة
-              if (currentDeviceId) {
-                let isKnownDevice = false;
-                let registeredDeviceCount = 0;
-
-                for (let d = 0; d < maxAllowedDevices; d++) {
-                  const devColIdx = 30 + (d * 2); // Col AE=30, Col AG=32...
-                  const regDev = getVal(devColIdx);
-                  if (regDev) {
-                    registeredDeviceCount++;
-                    if (
-                      regDev === currentDeviceId ||
-                      regDev.includes(currentDeviceId) ||
-                      currentDeviceId.includes(regDev) ||
-                      regDev.includes(devShortId) ||
-                      (extra?.deviceInfo && regDev.includes(extra.deviceInfo.slice(0, 20)))
-                    ) {
-                      isKnownDevice = true;
-                      break;
-                    }
-                  }
-                }
-
-                if (!isKnownDevice) {
-                  if (registeredDeviceCount >= maxAllowedDevices) {
-                    return {
-                      success: false,
-                      deviceLimitReached: true,
-                      message: `لقد استنفدت الحد الأقصى المسموح به من الأجهزة (${maxAllowedDevices} جهاز). يرجى التواصل مع الإدارة لإعادة التعيين.`
-                    };
-                  }
-
-                  // If device count < maxAllowedDevices, trigger async device registration in Google Sheets
-                  try {
-                    executeAppsScriptPost("loginUser", {
-                      username: cleanUser,
-                      password: cleanPass,
-                      deviceId: currentDeviceId,
-                      lat: extra?.lat || null,
-                      lng: extra?.lng || null,
-                      locationName: extra?.locationName || "",
-                      deviceInfo: extra?.deviceInfo || ""
-                    }, targetScriptUrl).catch(() => {});
-                  } catch (e) {}
-                }
-              }
-
-              const rawTopicId = getVal(0) || "1";
-              const topicId = normalizeTopicDigitStr(rawTopicId) || "1";
-              const subscriberName = getVal(1) || cleanUser;
-
-              // Read SubscriberContent sheet
-              const topicContent = await fetchSubscriberTopicContent(topicId, targetSpreadsheetId);
-
-              return {
-                success: true,
-                subscriberName,
-                topicId,
-                content: topicContent,
-                linkButtonText1: getVal(2),
-                linkButtonComment1: getVal(3),
-                url1: getVal(4),
-                linkButtonText2: getVal(5),
-                linkButtonComment2: getVal(6),
-                url2: getVal(7),
-                linkButtonText3: getVal(8),
-                linkButtonComment3: getVal(9),
-                url3: getVal(10),
-                linkButtonText4: getVal(11),
-                linkButtonComment4: getVal(12),
-                url4: getVal(13),
-                linkButtonText5: getVal(14),
-                linkButtonComment5: getVal(15),
-                url5: getVal(16),
-                exitButtonText: getVal(17) || "تسجيل الخروج",
-                exitButtonComment: getVal(18)
-              };
-            }
-          }
-        }
-      }
-    }
-  } catch (gvizErr) {
-    console.error("GVIZ direct Sheets login failed:", gvizErr);
+    console.warn("Direct Apps Script POST login failed:", postErr);
   }
 
   return {
