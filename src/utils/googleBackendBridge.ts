@@ -13,7 +13,7 @@
 
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig } from "../types";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4_dX4U5sYJlFJj9DdZig4KOGMccPkWE-JawAaWfcTa8wK2UhzULQQiwZk2crT0aAGNg/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycby3-4QPCsuiCd44n-aldu1KGfaNfRxInZwIU0fkLKaP2ZjEdRcQTsB77mrsMcz_fQDu8Q/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -690,15 +690,46 @@ export async function loginSubscriberBridge(
                     if (cJson && cJson.table && cJson.table.rows) {
                       for (const cRowItem of cJson.table.rows) {
                         const cr = cRowItem?.c || [];
-                        const cTopic = (cr[0] && cr[0].v !== null) ? cr[0].v.toString().trim() : "";
+                        const getCVal = (idx: number) => (cr[idx] && cr[idx].v !== null && cr[idx].v !== undefined) ? cr[idx].v.toString().trim() : "";
+                        const cTopic = getCVal(0);
                         if (cTopic === topicId) {
+                          const title = getCVal(1) || "المحتوى المخصص للمشترك";
+                          const description = getCVal(2);
+                          const rawCover = getCVal(3);
+                          const badge = getCVal(4);
+                          const coverImage = (rawCover && rawCover !== "-") ? rawCover : undefined;
+
+                          const cards: any[] = [];
+                          for (let c = 0; c < 10; c++) {
+                            const baseIdx = 5 + (c * 4);
+                            const cardTitle = getCVal(baseIdx);
+                            const cardDesc = getCVal(baseIdx + 1);
+                            const cardMediaRaw = getCVal(baseIdx + 2);
+                            const cardLinkUrl = getCVal(baseIdx + 3);
+
+                            if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
+                              const mediaItems = cardMediaRaw ? cardMediaRaw.split(/[\n,\|]+/).map((s: string) => s.trim()).filter(Boolean).map((rawUrl: string) => ({
+                                url: rawUrl,
+                                type: rawUrl.match(/\.(mp4|webm|ogg|mov)$/i) || rawUrl.includes("youtube.com") || rawUrl.includes("youtu.be") ? "video" : "image"
+                              })) : [];
+
+                              cards.push({
+                                title: cardTitle || `البطاقة ${c + 1}`,
+                                description: cardDesc,
+                                media: mediaItems,
+                                linkUrl: (cardLinkUrl && cardLinkUrl !== "-") ? cardLinkUrl : undefined,
+                                buttonText: (cardLinkUrl && cardLinkUrl !== "-") ? "فتح الرابط المرفق" : undefined
+                              });
+                            }
+                          }
+
                           topicContent = {
                             topicId: cTopic,
-                            title: (cr[1] && cr[1].v) ? cr[1].v.toString() : "",
-                            description: (cr[2] && cr[2].v) ? cr[2].v.toString() : "",
-                            coverImage: (cr[3] && cr[3].v) ? cr[3].v.toString() : "",
-                            badge: (cr[4] && cr[4].v) ? cr[4].v.toString() : undefined,
-                            cards: []
+                            title,
+                            description,
+                            coverImage,
+                            badge: (badge && badge !== "-") ? badge : undefined,
+                            cards
                           };
                           break;
                         }
@@ -706,7 +737,9 @@ export async function loginSubscriberBridge(
                     }
                   }
                 }
-              } catch (cErr) {}
+              } catch (cErr) {
+                console.warn("Could not load SubscriberContent fallback:", cErr);
+              }
 
               return {
                 success: true,

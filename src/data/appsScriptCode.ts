@@ -1664,7 +1664,8 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
     if (currentDeviceId) {
       var isKnownDevice = false;
       var registeredDeviceCount = 0;
-      var firstEmptyDeviceSlotIndex = -1; // 1-based device slot (1, 2, 3...)
+      var firstEmptyDeviceSlotIndex = -1; // 0-based device slot (0, 1, 2...)
+      var cleanCurDevId = currentDeviceId.toString().trim();
 
       for (var d = 0; d < maxAllowedDevices; d++) {
         var locColIdx = 29 + (d * 2); // 29 -> AD (Col 30), 31 -> AF (Col 32)...
@@ -1675,9 +1676,18 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
 
         if (regDev) {
           registeredDeviceCount++;
-          if (regDev.indexOf(currentDeviceId) !== -1 || currentDeviceId.indexOf(regDev) !== -1) {
+          // فحص هل هذا الجهاز مطابق لأي من الخانات المسجلة مسبقاً
+          // الفحص يشمل البصمة الكاملة، أو آخر 8 محارف، أو تطابق تام
+          var devShortId = cleanCurDevId.length > 8 ? cleanCurDevId.slice(-8) : cleanCurDevId;
+          if (
+            regDev === cleanCurDevId ||
+            regDev.indexOf(cleanCurDevId) !== -1 ||
+            cleanCurDevId.indexOf(regDev) !== -1 ||
+            regDev.indexOf(devShortId) !== -1 ||
+            (deviceInfo && regDev.indexOf(deviceInfo.slice(0, 20)) !== -1)
+          ) {
             isKnownDevice = true;
-            // تحديث وقت آخر ظهور وموقع الجهاز المعروف
+            // تحديث وقت آخر دخول وموقع الجهاز المعروف في خانته
             try {
               settingsSheet.getRange(userRow, locColIdx + 1).setValue(currentLocText + " (" + Utilities.formatDate(new Date(), "GMT+3", "dd/MM HH:mm") + ")");
             } catch(e) {}
@@ -1690,7 +1700,7 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
         }
       }
 
-      // إذا كان جهازاً جديداً
+      // إذا كان جهازاً جديداً وغير معروف
       if (!isKnownDevice) {
         if (registeredDeviceCount >= maxAllowedDevices) {
           return {
@@ -1707,7 +1717,8 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
 
           try {
             settingsSheet.getRange(userRow, targetLocCol).setValue(currentLocText);
-            settingsSheet.getRange(userRow, targetDevCol).setValue(currentDevText + " [" + currentDeviceId.slice(-8) + "]");
+            // نسجل المعرف الكامل مع وصف الجهاز لسهولة المطابقة الموثوقة 100% في المرات القادمة
+            settingsSheet.getRange(userRow, targetDevCol).setValue(currentDevText + " [ID:" + cleanCurDevId + "]");
             SpreadsheetApp.flush();
           } catch(devWriteErr) {
             Logger.log("Device log error: " + devWriteErr.message);
