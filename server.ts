@@ -1309,7 +1309,7 @@ app.post("/api/register", async (req, res) => {
 
 // LOGIN AUTHENTICATION ENDPOINT
 app.post("/api/login", async (req, res) => {
-  const { username, password, deviceId, lat, lng } = req.body;
+  const { username, password, deviceId, lat, lng, locationName, deviceInfo } = req.body;
 
   if (!username || !password) {
     return res.status(400).json({ success: false, message: "الرجاء إدخال اسم المستخدم وكلمة المرور" });
@@ -1329,7 +1329,9 @@ app.post("/api/login", async (req, res) => {
           password,
           deviceId,
           lat,
-          lng
+          lng,
+          locationName,
+          deviceInfo
         })
       });
       
@@ -1361,14 +1363,14 @@ app.post("/api/login", async (req, res) => {
       return res.status(500).json({ success: false, message: "فشل التحقق من قاعدة البيانات" });
     }
 
-    // Col Z is index 25, Col AA is 26, Col AB is 27
+    // Col Z is index 25, Col AA is 26, Col AB is 27 (حالة الاشتراك), Col AC is 28 (عدد الأجهزة)
     let userRow: any[] | null = null;
     for (const r of settingsRows) {
       const u = r[25]?.toString().trim();
       const p = r[26]?.toString().trim();
-      if (u === username) {
-        if (p !== password) {
-          return res.json({ success: false, message: "كلمة المرور غير صحيحة" });
+      if (u && u.toLowerCase() === username.toString().trim().toLowerCase()) {
+        if (p !== password.toString().trim()) {
+          return res.json({ success: false, message: "كلمة المرور أو رقم التسجيل غير صحيح" });
         }
         userRow = r;
         break;
@@ -1376,16 +1378,17 @@ app.post("/api/login", async (req, res) => {
     }
 
     if (!userRow) {
-      return res.json({ success: false, message: "مستخدم غير موجود" });
+      return res.json({ success: false, message: "اسم المشترك غير موجود، يرجى التأكد من التسجيل" });
     }
 
+    // Col AB (index 27) - حالة الاشتراك (ممنوع / مسموح)
     const status = userRow[27]?.toString().trim();
-    if (status === "لا") {
-      return res.json({ success: false, message: "تم منع الدخول لهذا المستخدم" });
+    if (status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا") {
+      return res.json({ success: false, isBlocked: true, message: "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)" });
     }
 
     const topicId = userRow[0]?.toString().trim() || "1";
-    const subscriberName = userRow[1] || "مشترك";
+    const subscriberName = userRow[1] || username;
 
     // Read matching topic from SubscriberContent sheet
     let topicContent: any = null;

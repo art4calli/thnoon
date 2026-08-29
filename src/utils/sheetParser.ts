@@ -902,18 +902,18 @@ export async function loginSubscriberDirect(usernameInput: string, passwordInput
       const sheetUsername = row[25] ? row[25].toString().trim() : "";
       const sheetPassword = row[26] ? row[26].toString().trim() : "";
       
-      if (sheetUsername === usernameInput) {
+      if (sheetUsername.toLowerCase() === usernameInput.toLowerCase()) {
         if (sheetPassword !== passwordInput) {
-          return { success: false, message: "كلمة المرور غير صحيحة" };
+          return { success: false, message: "كلمة المرور أو رقم التسجيل غير صحيح" };
         }
 
         const status = row[27] ? row[27].toString().trim() : "";
-        if (status === "لا") {
-          return { success: false, message: "تم منع الدخول لهذا المستخدم" };
+        if (status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا") {
+          return { success: false, isBlocked: true, message: "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)" };
         }
 
         const topicId = row[0] ? row[0].toString().trim() : "1";
-        const subscriberName = row[1] || "مشترك";
+        const subscriberName = row[1] || usernameInput;
 
         // Try to fetch matching topic content from SubscriberContent sheet
         let topicContent: SubscriberTopicContent | undefined = undefined;

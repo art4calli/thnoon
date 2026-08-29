@@ -88,7 +88,9 @@ function doPost(e) {
         postData.password,
         postData.deviceId || "",
         postData.lat || "",
-        postData.lng || ""
+        postData.lng || "",
+        postData.locationName || postData.location || "",
+        postData.deviceInfo || postData.userAgent || ""
       );
       return ContentService.createTextOutput(JSON.stringify(loginResult))
         .setMimeType(ContentService.MimeType.JSON);
@@ -726,6 +728,64 @@ function submitRegistration(data) {
       Logger.log("Header setup note: " + headErr.message);
     }
 
+    // 10. المزامنة التلقائية لبيانات المشترك في ورقة Settings (B + Z:AA)
+    try {
+      var settingsSheet = ss.getSheetByName("Settings");
+      if (settingsSheet) {
+        var sLastRow = settingsSheet.getLastRow();
+        var targetSettingsRow = -1;
+        
+        // البحث عن صف المشترك إذا كان مسجلاً مسبقاً في Z أو AA
+        if (sLastRow >= 2) {
+          var zColData = settingsSheet.getRange(2, 26, sLastRow - 1, 2).getValues(); // Z:AA
+          for (var sIdx = 0; sIdx < zColData.length; sIdx++) {
+            var zVal = (zColData[sIdx][0] || "").toString().trim();
+            var aaVal = (zColData[sIdx][1] || "").toString().trim();
+            if ((displayName && zVal === displayName) || (registrationId && aaVal === registrationId)) {
+              targetSettingsRow = sIdx + 2;
+              break;
+            }
+          }
+        }
+        
+        // إذا لم يكن موجوداً، ننشئ صفاً جديداً في ورقة Settings
+        if (targetSettingsRow === -1) {
+          targetSettingsRow = Math.max(sLastRow + 1, 2);
+          if (settingsSheet.getMaxRows() < targetSettingsRow) {
+            settingsSheet.insertRowAfter(settingsSheet.getMaxRows());
+          }
+        }
+
+        // التأكد من توفر الأعمدة الكافية حتى AW (49 عاموداً)
+        if (settingsSheet.getMaxColumns() < 49) {
+          settingsSheet.insertColumnsAfter(settingsSheet.getMaxColumns(), 49 - settingsSheet.getMaxColumns() + 2);
+        }
+
+        // تسجيل البيانات المطلوبة بدقة:
+        // 1. اسم المشترك في العامود B (العمود 2)
+        settingsSheet.getRange(targetSettingsRow, 2).setValue(displayName);
+        // 2. اسم المشترك في العامود Z (العمود 26)
+        settingsSheet.getRange(targetSettingsRow, 26).setValue(displayName);
+        // 3. رقم التسجيل في العامود AA (العمود 27)
+        settingsSheet.getRange(targetSettingsRow, 27).setValue(registrationId);
+
+        // إذا كان العمود AB (حالة الاشتراك) فارغاً، نتركه أو نضعه مسموح افتراضياً
+        var curStatus = settingsSheet.getRange(targetSettingsRow, 28).getValue();
+        if (!curStatus) {
+          settingsSheet.getRange(targetSettingsRow, 28).setValue("مسموح");
+        }
+        // إذا كان العمود AC (عدد الأجهزة) فارغاً، نضعه 1 افتراضياً
+        var curMaxDev = settingsSheet.getRange(targetSettingsRow, 29).getValue();
+        if (!curMaxDev) {
+          settingsSheet.getRange(targetSettingsRow, 29).setValue(1);
+        }
+
+        SpreadsheetApp.flush();
+      }
+    } catch (syncSettingsErr) {
+      Logger.log("Settings auto-sync note: " + syncSettingsErr.message);
+    }
+
     // إرسال البريد الإلكتروني للمشترك والمخصص بالكامل مع QR Code وجدول البيانات
     var emailResult = sendCustomSubscriberEmail(sheet, lastRow, data, rowValues, currentHeaders, data.emailConfig);
 
@@ -746,7 +806,7 @@ function submitRegistration(data) {
       emailRecipient: emailResult ? emailResult.recipient : "",
       emailError: emailResult && !emailResult.success ? emailResult.error : null,
       telegramSent: telegramResult && telegramResult.success,
-      message: "تم استلام وحفظ طلب التسجيل بنجاح في ورقة RegistrationAnswers"
+      message: "تم استلام وحفظ طلب التسجيل بنجاح في ورقة RegistrationAnswers وتحديث Settings"
     };
 
   } catch (err) {
@@ -1512,8 +1572,8 @@ function submitInquiry(data) {
   }
 }
 
-// 7. تسجيل الدخول الآمن للمشتركين
-function loginUser(username, password, deviceId, lat, lng) {
+// 7. تسجيل الدخول الآمن للمشتركين والتحقق من الأجهزة وحالة الاشتراك
+function loginUser(username, password, deviceId, lat, lng, locationName, deviceInfo) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
     var settingsSheet = ss.getSheetByName('Settings');
@@ -1525,26 +1585,124 @@ function loginUser(username, password, deviceId, lat, lng) {
     if (lastRow < 2) {
       return { success: false, message: "لا يوجد مستخدمين مسجلين" };
     }
+
+    // التأكد من توفر الأعمدة الكافية حتى AW
+    if (settingsSheet.getMaxColumns() < 49) {
+      settingsSheet.insertColumnsAfter(settingsSheet.getMaxColumns(), 49 - settingsSheet.getMaxColumns() + 2);
+    }
     
-    var usersRange = settingsSheet.getRange("A2:AX" + lastRow);
+    var usersRange = settingsSheet.getRange(2, 1, lastRow - 1, Math.max(49, settingsSheet.getMaxColumns()));
     var usersData = usersRange.getValues();
     var userRow = -1;
+    var userRowIdx = -1;
     
     for (var i = 0; i < usersData.length; i++) {
-      if (usersData[i][25].toString().trim() === username.toString().trim()) {
-        if (usersData[i][26].toString().trim() !== password.toString().trim()) {
-          return { success: false, message: 'كلمة المرور غير صحيحة' };
+      var sheetUser = (usersData[i][25] || "").toString().trim(); // Column Z (index 25)
+      var sheetPass = (usersData[i][26] || "").toString().trim(); // Column AA (index 26)
+      
+      if (sheetUser.toLowerCase() === username.toString().trim().toLowerCase()) {
+        if (sheetPass !== password.toString().trim()) {
+          return { success: false, message: 'كلمة المرور أو رقم التسجيل غير صحيح' };
         }
         userRow = i + 2;
+        userRowIdx = i;
         break;
       }
     }
     
     if (userRow === -1) {
-      return { success: false, message: 'مستخدم غير موجود' };
+      return { success: false, message: 'اسم المشترك غير موجود، يرجى التأكد من التسجيل' };
     }
     
-    var userData = usersData[userRow - 2];
+    var userData = usersData[userRowIdx];
+
+    // أ) فحص العامود AB (العمود 28 - الفهرس 27): حالة الاشتراك (ممنوع / مسموح)
+    var accountStatus = (userData[27] || "").toString().trim();
+    if (accountStatus === "ممنوع" || accountStatus === "معطل" || accountStatus === "محظور" || accountStatus === "لا") {
+      return { 
+        success: false, 
+        isBlocked: true,
+        message: 'تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)' 
+      };
+    }
+
+    // ب) فحص العامود AC (العمود 29 - الفهرس 28): عدد الأجهزة المسموحة
+    var maxAllowedDevices = 1;
+    var rawMaxDev = userData[28];
+    if (rawMaxDev !== undefined && rawMaxDev !== null && rawMaxDev !== "") {
+      var parsedMax = parseInt(rawMaxDev, 10);
+      if (!isNaN(parsedMax) && parsedMax > 0) {
+        maxAllowedDevices = parsedMax;
+      }
+    }
+
+    // ج) التحقق من الجهاز وتسجيل بصمة وموقع الجهاز في الأعمدة AD:AW
+    // AD=30(29), AE=31(30), AF=32(31), AG=33(32), AH=34(33), AI=35(34)...
+    var currentDeviceId = (deviceId || "").toString().trim();
+    var currentLocText = locationName || "";
+    if (!currentLocText && lat && lng) {
+      currentLocText = "إحداثيات: " + lat + ", " + lng;
+    }
+    if (!currentLocText) {
+      currentLocText = Utilities.formatDate(new Date(), "GMT+3", "yyyy/MM/dd HH:mm");
+    }
+    var currentDevText = deviceInfo || currentDeviceId || "متصفح الويب";
+
+    if (currentDeviceId) {
+      var isKnownDevice = false;
+      var registeredDeviceCount = 0;
+      var firstEmptyDeviceSlotIndex = -1; // 1-based device slot (1, 2, 3...)
+
+      for (var d = 0; d < maxAllowedDevices; d++) {
+        var locColIdx = 29 + (d * 2); // 29 -> AD (Col 30), 31 -> AF (Col 32)...
+        var devColIdx = 30 + (d * 2); // 30 -> AE (Col 31), 32 -> AG (Col 33)...
+        
+        var regLoc = (userData[locColIdx] || "").toString().trim();
+        var regDev = (userData[devColIdx] || "").toString().trim();
+
+        if (regDev) {
+          registeredDeviceCount++;
+          if (regDev.indexOf(currentDeviceId) !== -1 || currentDeviceId.indexOf(regDev) !== -1) {
+            isKnownDevice = true;
+            // تحديث وقت آخر ظهور وموقع الجهاز المعروف
+            try {
+              settingsSheet.getRange(userRow, locColIdx + 1).setValue(currentLocText + " (" + Utilities.formatDate(new Date(), "GMT+3", "dd/MM HH:mm") + ")");
+            } catch(e) {}
+            break;
+          }
+        } else {
+          if (firstEmptyDeviceSlotIndex === -1) {
+            firstEmptyDeviceSlotIndex = d;
+          }
+        }
+      }
+
+      // إذا كان جهازاً جديداً
+      if (!isKnownDevice) {
+        if (registeredDeviceCount >= maxAllowedDevices) {
+          return {
+            success: false,
+            deviceLimitReached: true,
+            message: 'لقد استنفدت الحد الأقصى المسموح به من الأجهزة (' + maxAllowedDevices + ' جهاز). يرجى التواصل مع الإدارة لإعادة التعيين.'
+          };
+        }
+
+        // تسجيل الجهاز الجديد في أول خانة فارغة
+        if (firstEmptyDeviceSlotIndex !== -1) {
+          var targetLocCol = 30 + (firstEmptyDeviceSlotIndex * 2); // 1-based sheet column (AD=30, AF=32)
+          var targetDevCol = 31 + (firstEmptyDeviceSlotIndex * 2); // 1-based sheet column (AE=31, AG=33)
+
+          try {
+            settingsSheet.getRange(userRow, targetLocCol).setValue(currentLocText);
+            settingsSheet.getRange(userRow, targetDevCol).setValue(currentDevText + " [" + currentDeviceId.slice(-8) + "]");
+            SpreadsheetApp.flush();
+          } catch(devWriteErr) {
+            Logger.log("Device log error: " + devWriteErr.message);
+          }
+        }
+      }
+    }
+
     var topicId = userData[0] ? userData[0].toString().trim() : '1';
     var topicContent = null;
     
@@ -1599,7 +1757,7 @@ function loginUser(username, password, deviceId, lat, lng) {
 
     return {
       success: true,
-      subscriberName: userData[1] || 'مشترك',
+      subscriberName: userData[1] || username,
       topicId: topicId,
       content: topicContent,
       linkButtonText1: userData[2] || '',
@@ -1621,7 +1779,7 @@ function loginUser(username, password, deviceId, lat, lng) {
       exitButtonComment: userData[18] || ''
     };
   } catch (e) {
-    return { success: false, message: 'خطأ في التحقق من الدخول' };
+    return { success: false, message: 'خطأ في التحقق من الدخول: ' + e.message };
   }
 }
 

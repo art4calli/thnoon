@@ -351,6 +351,13 @@ export default function App() {
         console.log("Geolocation omitted or rejected");
       }
 
+      // Device and browser identification
+      const userAgent = navigator.userAgent || "";
+      const isMobile = /iPhone|iPad|iPod|Android/i.test(userAgent);
+      const browserInfo = isMobile ? "هاتف محمول / جوال" : "كمبيوتر / متصفح مكتبي";
+      const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
+      const fullDeviceInfo = `${browserInfo} (${navigator.platform || "Platform"}) - ${timezone}`;
+
       let data: any;
 
       try {
@@ -364,6 +371,8 @@ export default function App() {
             deviceId: fingerprint,
             lat: coords?.latitude || null,
             lng: coords?.longitude || null,
+            locationName: timezone ? `منطقة: ${timezone}` : "",
+            deviceInfo: fullDeviceInfo
           }),
         });
 
