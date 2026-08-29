@@ -11,7 +11,20 @@ function doGet(e) {
   if (e && e.parameter && e.parameter.action) {
     var action = e.parameter.action;
     
-    // جلب أسئلة الفوورم الديناميكية
+    // تسجيل دخول المشترك عبر GET
+    if (action === "loginUser" || action === "login") {
+      var getLoginResult = loginUser(
+        e.parameter.username || "",
+        e.parameter.password || "",
+        e.parameter.deviceId || "",
+        e.parameter.lat || "",
+        e.parameter.lng || "",
+        e.parameter.locationName || e.parameter.location || "",
+        e.parameter.deviceInfo || e.parameter.userAgent || ""
+      );
+      return ContentService.createTextOutput(JSON.stringify(getLoginResult))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     if (action === "getFormQuestions") {
       var questions = getFormQuestions();
       return ContentService.createTextOutput(JSON.stringify({ success: true, questions: questions }))

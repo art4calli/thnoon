@@ -13,7 +13,7 @@
 
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig } from "../types";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwn5oeh4Lpp_NwbTmuji7GSbGor1KHZE59TBoUe2PSeNyzQqS976-X5RD0G_7SpSbyYYA/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbw4_dX4U5sYJlFJj9DdZig4KOGMccPkWE-JawAaWfcTa8wK2UhzULQQiwZk2crT0aAGNg/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -559,3 +559,190 @@ export async function fetchRegistrationAnswersBridge(
     message: "تعذر جلب سجلات المسجلين حالياً. يرجى التحقق من الرابط والصلاحيات."
   };
 }
+
+/**
+ * Universal Subscriber Login Bridge
+ * Works seamlessly on Vercel / GitHub Pages / AI Studio Dev Server
+ */
+export async function loginSubscriberBridge(
+  usernameInput: string,
+  passwordInput: string,
+  deviceId: string,
+  extra?: { lat?: number | null; lng?: number | null; locationName?: string; deviceInfo?: string },
+  explicitScriptUrl?: string
+): Promise<any> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+  const targetSpreadsheetId = getActiveSpreadsheetId();
+  const cleanUser = (usernameInput || "").trim();
+  const cleanPass = (passwordInput || "").trim();
+
+  // 1. Try local server proxy (AI Studio dev container or custom server)
+  try {
+    const res = await fetch("/api/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        username: cleanUser,
+        password: cleanPass,
+        deviceId: deviceId || "",
+        lat: extra?.lat || null,
+        lng: extra?.lng || null,
+        locationName: extra?.locationName || "",
+        deviceInfo: extra?.deviceInfo || ""
+      })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data) return data;
+    }
+  } catch (localErr) {
+    // Expected on static hosting (Vercel)
+  }
+
+  // 2. Direct Apps Script Web App GET Request (Supported on all browsers without CORS issues)
+  try {
+    const params = new URLSearchParams({
+      action: "loginUser",
+      username: cleanUser,
+      password: cleanPass,
+      deviceId: deviceId || "",
+      lat: extra?.lat ? String(extra.lat) : "",
+      lng: extra?.lng ? String(extra.lng) : "",
+      locationName: extra?.locationName || "",
+      deviceInfo: extra?.deviceInfo || ""
+    });
+
+    const gasGetUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}${params.toString()}`;
+    const gasRes = await fetch(gasGetUrl);
+    if (gasRes.ok) {
+      const gasData = await gasRes.json();
+      if (gasData && (gasData.success || gasData.message)) {
+        return gasData;
+      }
+    }
+  } catch (gasErr) {
+    console.warn("Direct Apps Script GET login failed, trying direct POST...", gasErr);
+  }
+
+  // 3. Direct Apps Script POST (with text/plain)
+  try {
+    const postRes = await executeAppsScriptPost("loginUser", {
+      username: cleanUser,
+      password: cleanPass,
+      deviceId: deviceId || "",
+      lat: extra?.lat || null,
+      lng: extra?.lng || null,
+      locationName: extra?.locationName || "",
+      deviceInfo: extra?.deviceInfo || ""
+    }, targetScriptUrl);
+
+    if (postRes.success && postRes.data && (postRes.data.success || postRes.data.message)) {
+      return postRes.data;
+    }
+  } catch (postErr) {
+    console.warn("Direct Apps Script POST login failed, falling back to Sheets GVIZ...", postErr);
+  }
+
+  // 4. Direct Google Visualization API Sheets reader (Reads directly from Google Sheets Settings tab)
+  try {
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=Settings`;
+    const gvizRes = await fetch(gvizUrl);
+    if (gvizRes.ok) {
+      const text = await gvizRes.text();
+      const jsonStart = text.indexOf("{");
+      const jsonEnd = text.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+        if (json && json.table && json.table.rows) {
+          const rows = json.table.rows;
+          for (let rIdx = 0; rIdx < rows.length; rIdx++) {
+            const r = rows[rIdx]?.c || [];
+            const getVal = (idx: number) => (r[idx] && r[idx].v !== null && r[idx].v !== undefined) ? r[idx].v.toString().trim() : "";
+            
+            // Col Z is index 25, Col AA is index 26, Col AB is index 27
+            const sheetUser = getVal(25);
+            const sheetPass = getVal(26);
+
+            if (sheetUser && sheetUser.toLowerCase() === cleanUser.toLowerCase()) {
+              if (sheetPass !== cleanPass) {
+                return { success: false, message: "كلمة المرور أو رقم التسجيل غير صحيح" };
+              }
+
+              const status = getVal(27);
+              if (status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا") {
+                return { success: false, isBlocked: true, message: "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)" };
+              }
+
+              const topicId = getVal(0) || "1";
+              const subscriberName = getVal(1) || cleanUser;
+
+              // Read SubscriberContent sheet if exists
+              let topicContent: any = null;
+              try {
+                const contentUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=SubscriberContent`;
+                const contentRes = await fetch(contentUrl);
+                if (contentRes.ok) {
+                  const cText = await contentRes.text();
+                  const cStart = cText.indexOf("{");
+                  const cEnd = cText.lastIndexOf("}");
+                  if (cStart !== -1 && cEnd !== -1) {
+                    const cJson = JSON.parse(cText.substring(cStart, cEnd + 1));
+                    if (cJson && cJson.table && cJson.table.rows) {
+                      for (const cRowItem of cJson.table.rows) {
+                        const cr = cRowItem?.c || [];
+                        const cTopic = (cr[0] && cr[0].v !== null) ? cr[0].v.toString().trim() : "";
+                        if (cTopic === topicId) {
+                          topicContent = {
+                            topicId: cTopic,
+                            title: (cr[1] && cr[1].v) ? cr[1].v.toString() : "",
+                            description: (cr[2] && cr[2].v) ? cr[2].v.toString() : "",
+                            coverImage: (cr[3] && cr[3].v) ? cr[3].v.toString() : "",
+                            badge: (cr[4] && cr[4].v) ? cr[4].v.toString() : undefined,
+                            cards: []
+                          };
+                          break;
+                        }
+                      }
+                    }
+                  }
+                }
+              } catch (cErr) {}
+
+              return {
+                success: true,
+                subscriberName,
+                topicId,
+                content: topicContent,
+                linkButtonText1: getVal(2),
+                linkButtonComment1: getVal(3),
+                url1: getVal(4),
+                linkButtonText2: getVal(5),
+                linkButtonComment2: getVal(6),
+                url2: getVal(7),
+                linkButtonText3: getVal(8),
+                linkButtonComment3: getVal(9),
+                url3: getVal(10),
+                linkButtonText4: getVal(11),
+                linkButtonComment4: getVal(12),
+                url4: getVal(13),
+                linkButtonText5: getVal(14),
+                linkButtonComment5: getVal(15),
+                url5: getVal(16),
+                exitButtonText: getVal(17) || "تسجيل الخروج",
+                exitButtonComment: getVal(18)
+              };
+            }
+          }
+        }
+      }
+    }
+  } catch (gvizErr) {
+    console.error("GVIZ direct Sheets login failed:", gvizErr);
+  }
+
+  return {
+    success: false,
+    message: "اسم المشترك أو رقم التسجيل غير موجود في السجلات. يرجى التأكد من التسجيل أولاً."
+  };
+}
+

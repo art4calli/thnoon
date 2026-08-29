@@ -14,7 +14,8 @@ import IntegrationSettingsModal from "./components/IntegrationSettingsModal";
 import RegistrationModal from "./components/RegistrationModal";
 import AdminLoginModal from "./components/AdminLoginModal";
 import { AppData, SubscriberState } from "./types";
-import { fetchAllAppDataDirect, loginSubscriberDirect } from "./utils/sheetParser";
+import { fetchAllAppDataDirect } from "./utils/sheetParser";
+import { loginSubscriberBridge } from "./utils/googleBackendBridge";
 
 function getFeatureIcon(iconName: string) {
   const name = (iconName || "").toLowerCase().trim();
@@ -358,34 +359,18 @@ export default function App() {
       const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone || "";
       const fullDeviceInfo = `${browserInfo} (${navigator.platform || "Platform"}) - ${timezone}`;
 
-      let data: any;
-
-      try {
-        // 1. Try server api login first
-        const response = await fetch("/api/login", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            username: usernameInput,
-            password: passwordInput,
-            deviceId: fingerprint,
-            lat: coords?.latitude || null,
-            lng: coords?.longitude || null,
-            locationName: timezone ? `منطقة: ${timezone}` : "",
-            deviceInfo: fullDeviceInfo
-          }),
-        });
-
-        if (response.ok) {
-          data = await response.json();
-        } else {
-          throw new Error("Express server login not available, switching to direct...");
+      // Universal login execution through GoogleBackendBridge (Works on AI Studio, Vercel, and GitHub Pages)
+      const data = await loginSubscriberBridge(
+        usernameInput,
+        passwordInput,
+        fingerprint,
+        {
+          lat: coords?.latitude || null,
+          lng: coords?.longitude || null,
+          locationName: timezone ? `منطقة: ${timezone}` : "",
+          deviceInfo: fullDeviceInfo
         }
-      } catch (apiErr) {
-        console.warn("Express server login offline. Executing direct sheet or Apps Script login...", apiErr);
-        // 2. Fallback to direct client-side sheet verification or Apps Script
-        data = await loginSubscriberDirect(usernameInput, passwordInput, fingerprint);
-      }
+      );
 
       if (data && data.success) {
         sessionStorage.setItem("subscriberLogin", JSON.stringify(data));
