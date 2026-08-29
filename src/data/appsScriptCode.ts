@@ -1727,39 +1727,67 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
 
         if (regDev) {
           registeredDeviceCount++;
-          // فحص أمني دقيق وموثوق 100% لبصمة الجهاز الفريدة (غير حساس لحالة الأحرف)
+          // فحص أمني شامل ودقيق 100% لبصمة الجهاز الفريدة (غير حساس لحالة الأحرف ويدعم [f658b6f9] و [ID:...])
           var normReg = regDev.toString().toLowerCase().trim();
           var normCur = cleanCurDevId.toLowerCase().trim();
-          var cleanWithoutDev = normCur.replace(/^dev-/, "");
+          var cleanWithoutDev = normCur.replace(/^(dev|id|device)[-:_]/i, "").trim();
 
-          var isMatch = (
-            normReg === normCur ||
-            normReg.indexOf(normCur) !== -1 ||
-            normCur.indexOf(normReg) !== -1 ||
-            normReg.indexOf("[id:" + normCur + "]") !== -1 ||
-            normReg.indexOf("[id: " + normCur + "]") !== -1 ||
-            (cleanWithoutDev.length >= 8 && (
-              normReg.indexOf("[id:" + cleanWithoutDev + "]") !== -1 ||
-              normReg.indexOf("[id: " + cleanWithoutDev + "]") !== -1 ||
-              normReg.indexOf(cleanWithoutDev) !== -1
-            ))
-          );
+          var isMatch = false;
 
+          // 1. مطابقة مباشرة وتضمينية
+          if (normReg === normCur || normReg === cleanWithoutDev || normReg.indexOf(normCur) !== -1 || normCur.indexOf(normReg) !== -1) {
+            isMatch = true;
+          } else if (cleanWithoutDev && (normReg.indexOf(cleanWithoutDev) !== -1 || cleanWithoutDev.indexOf(normReg) !== -1)) {
+            isMatch = true;
+          }
+
+          // 2. استخراج وفحص أي نص داخل الأقواس المربعة [...] مثل [f658b6f9] أو [ID:715350ca...]
           if (!isMatch) {
-            // استخراج المعرف بين القوسين [ID: ...] بطريقة آمنة ومتوافقة 100% بدون تعبيرات نمطية معقدة
-            var idIndex = normReg.indexOf("[id:");
-            if (idIndex === -1) idIndex = normReg.indexOf("[id: ");
-            if (idIndex !== -1) {
-              var closeBracket = normReg.indexOf("]", idIndex);
-              if (closeBracket !== -1) {
-                var bracketContent = normReg.substring(idIndex + 4, closeBracket).replace(/^:\s*/, "").trim();
-                var extClean = bracketContent.replace(/^dev-/, "");
-                if (bracketContent === normCur || extClean === cleanWithoutDev) {
+            var searchStart = 0;
+            while (searchStart < normReg.length) {
+              var openBracket = normReg.indexOf("[", searchStart);
+              if (openBracket === -1) break;
+              var closeBracket = normReg.indexOf("]", openBracket);
+              if (closeBracket === -1) break;
+
+              var rawInside = normReg.substring(openBracket + 1, closeBracket).trim();
+              var cleanInside = rawInside.replace(/^(id|dev|device)[:\s_-]*/i, "").trim();
+
+              if (cleanInside) {
+                if (cleanInside === normCur || cleanInside === cleanWithoutDev) {
                   isMatch = true;
-                } else if (cleanWithoutDev.length >= 8 && (extClean.indexOf(cleanWithoutDev) !== -1 || cleanWithoutDev.indexOf(extClean) !== -1)) {
+                  break;
+                }
+                if (normCur.indexOf(cleanInside) !== -1 || cleanWithoutDev.indexOf(cleanInside) !== -1) {
                   isMatch = true;
+                  break;
+                }
+                if (cleanInside.indexOf(normCur) !== -1 || cleanInside.indexOf(cleanWithoutDev) !== -1) {
+                  isMatch = true;
+                  break;
+                }
+                // فحص المقاطع السداسية أو المعرفات المختصرة (6 أحرف فأكثر)
+                if (cleanInside.length >= 6) {
+                  if (cleanWithoutDev.indexOf(cleanInside) === 0 || normCur.indexOf(cleanInside) === 0) {
+                    isMatch = true;
+                    break;
+                  }
+                  if (cleanWithoutDev.indexOf(cleanInside) !== -1) {
+                    isMatch = true;
+                    break;
+                  }
                 }
               }
+
+              searchStart = closeBracket + 1;
+            }
+          }
+
+          // 3. فحص البداية المختصرة للرمز (أول 8 أحرف)
+          if (!isMatch && cleanWithoutDev.length >= 6) {
+            var curShort = cleanWithoutDev.substring(0, 8);
+            if (normReg.indexOf(curShort) !== -1) {
+              isMatch = true;
             }
           }
 

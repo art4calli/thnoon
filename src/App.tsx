@@ -382,16 +382,26 @@ export default function App() {
 
   const handleLogin = async (usernameInput: string, passwordInput: string) => {
     try {
-      // Create a unique client fingerprint
+      // Create a unique, ultra-persistent client fingerprint (localStorage + Cookies)
       let fingerprint = localStorage.getItem("thnoon_secure_device_id") || localStorage.getItem("deviceId");
+      if (!fingerprint) {
+        try {
+          const match = document.cookie.match(/thnoon_device_id=([^;]+)/);
+          if (match && match[1]) fingerprint = decodeURIComponent(match[1]);
+        } catch (e) {}
+      }
       if (!fingerprint) {
         const randomPart = (typeof crypto !== "undefined" && crypto.randomUUID)
           ? crypto.randomUUID()
           : `id_${Math.random().toString(36).substring(2)}_${Date.now().toString(36)}`;
         fingerprint = `DEV-${randomPart}`;
+      }
+      // Guarantee persistence in both localStorage and long-lived cookie
+      try {
         localStorage.setItem("thnoon_secure_device_id", fingerprint);
         localStorage.setItem("deviceId", fingerprint);
-      }
+        document.cookie = `thnoon_device_id=${encodeURIComponent(fingerprint)}; path=/; max-age=315360000; SameSite=Lax`;
+      } catch (e) {}
 
       // Check geo permission (optional coordinates)
       let coords: { latitude: number; longitude: number } | null = null;

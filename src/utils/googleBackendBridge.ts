@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzL1tHuFeR5Ts0ldQwXHdrQ6OfaG6F5Jmnpv4udi4g1-rnWJf8TeWYZANT8cjwG-q2GJw/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyOsaOtfN1TOP-psYOKrneTtXSqn837lMTV3r-YVGf_d8wWDCavMqtQz9WkFpxOIXPTVw/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -769,31 +769,47 @@ export async function fetchSubscriberTopicContent(
 }
 
 /**
- * Robust device fingerprint matching function (case-insensitive, handles DEV- prefix, bracket tags, and UUID)
+ * Robust, universal device fingerprint matching function (case-insensitive, handles DEV- prefix, bracket tags [f658b6f9], [ID:...], UUIDs, and hashes)
  */
 export function isDeviceMatching(regDev: string, curDevId: string): boolean {
   if (!regDev || !curDevId) return false;
   const reg = regDev.toString().toLowerCase().trim();
   const cur = curDevId.toString().toLowerCase().trim();
-  const cleanCur = cur.replace(/^dev-/, "");
+  const cleanCur = cur.replace(/^(dev|id|device)[-:_]/i, "").trim();
+  const cleanReg = reg.replace(/^(dev|id|device)[-:_]/i, "").trim();
 
-  // 1. Direct match or substring match
-  if (reg === cur || reg.includes(cur) || cur.includes(reg)) return true;
+  // 1. Direct or bi-directional full substring match
+  if (reg === cur || reg === cleanCur || cleanReg === cur || cleanReg === cleanCur) return true;
+  if (reg.includes(cur) || cur.includes(reg)) return true;
+  if (cleanCur && (reg.includes(cleanCur) || cleanReg.includes(cleanCur))) return true;
 
-  // 2. Tagged match [ID:...]
-  if (reg.includes(`[id:${cur}]`) || reg.includes(`[id: ${cur}]`)) return true;
-  if (cleanCur.length >= 8) {
-    if (reg.includes(`[id:${cleanCur}]`) || reg.includes(`[id: ${cleanCur}]`)) return true;
-    if (reg.includes(cleanCur)) return true;
+  // 2. Extract ALL contents inside brackets [...]
+  // Handles [f658b6f9], [ID:f658b6f9], [ID: 715350ca-...], [DEV-f658b6f9], etc.
+  const bracketMatches = reg.match(/\[([^\]]+)\]/g) || [];
+  for (const bMatch of bracketMatches) {
+    const rawInside = bMatch.slice(1, -1).trim().toLowerCase();
+    const cleanInside = rawInside.replace(/^(id|dev|device)[:\s_-]*/i, "").trim();
+
+    if (cleanInside) {
+      if (cleanInside === cur || cleanInside === cleanCur) return true;
+      if (cur.includes(cleanInside) || cleanCur.includes(cleanInside)) return true;
+      if (cleanInside.includes(cur) || cleanInside.includes(cleanCur)) return true;
+
+      // If bracket has at least 6 characters (e.g. short hex hash like f658b6f9)
+      if (cleanInside.length >= 6) {
+        if (cleanCur.startsWith(cleanInside) || cleanCur.endsWith(cleanInside)) return true;
+        if (cur.startsWith(cleanInside) || cur.endsWith(cleanInside)) return true;
+      }
+    }
   }
 
-  // 3. Extract bracketed [ID: ...] if present
-  const idMatch = reg.match(/\[id:\s*([^\]]+)\]/i);
-  if (idMatch && idMatch[1]) {
-    const extracted = idMatch[1].toLowerCase().trim();
-    const extractedClean = extracted.replace(/^dev-/, "");
-    if (extracted === cur || extractedClean === cleanCur) return true;
-    if (cleanCur.length >= 8 && (extractedClean.includes(cleanCur) || cleanCur.includes(extractedClean))) return true;
+  // 3. Check for bracketless tokens or UUIDs/hashes
+  const curShort = cleanCur.length > 8 ? cleanCur.substring(0, 8) : cleanCur;
+  if (curShort.length >= 6 && reg.includes(curShort)) return true;
+
+  const hexTokens = reg.match(/[0-9a-f]{6,}/g) || [];
+  for (const token of hexTokens) {
+    if (cleanCur.includes(token) || token.includes(cleanCur)) return true;
   }
 
   return false;
