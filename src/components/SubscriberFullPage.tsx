@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LogOut,
@@ -15,10 +15,12 @@ import {
   Facebook,
   Instagram,
   Youtube,
-  Globe
+  Globe,
+  AlertTriangle
 } from "lucide-react";
 import { SubscriberState, SubscriberCard, SocialLinks } from "../types";
 import { formatImageUrl } from "../utils/imageUtils";
+import { checkSubscriberAccountStatus } from "../utils/googleBackendBridge";
 
 interface SubscriberFullPageProps {
   subscriber: SubscriberState;
@@ -178,6 +180,38 @@ export default function SubscriberFullPage({
   socialLinks,
 }: SubscriberFullPageProps) {
   const hasTopicContent = subscriber.content && subscriber.content.cards && subscriber.content.cards.length > 0;
+  const [blockedAlert, setBlockedAlert] = useState<string | null>(null);
+
+  // Live account status watcher (Columns AB status: if set to ممنوع, kick out immediately)
+  useEffect(() => {
+    const verifyStatus = async () => {
+      const username = subscriber.subscriberName;
+      if (!username) return;
+      try {
+        const res = await checkSubscriberAccountStatus(username);
+        if (res.isBlocked) {
+          setBlockedAlert("تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)");
+          setTimeout(() => {
+            onLogout();
+          }, 3000);
+        }
+      } catch (err) {
+        console.warn("Live status check error:", err);
+      }
+    };
+
+    // Run once immediately on load
+    verifyStatus();
+
+    // Re-verify on window focus or interval every 15 seconds
+    const interval = setInterval(verifyStatus, 15000);
+    window.addEventListener("focus", verifyStatus);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener("focus", verifyStatus);
+    };
+  }, [subscriber.subscriberName, onLogout]);
 
   const socialPlatforms = [
     { name: "Facebook", url: socialLinks?.facebook, icon: Facebook, color: "hover:text-blue-500 hover:border-blue-500/40" },
@@ -189,6 +223,30 @@ export default function SubscriberFullPage({
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950" dir="rtl">
       
+      {/* Blocked Account Notification Modal */}
+      <AnimatePresence>
+        {blockedAlert && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md">
+            <motion.div
+              initial={{ scale: 0.9, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              className="bg-slate-900 border-2 border-red-500/60 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-2xl space-y-4"
+            >
+              <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center justify-center mx-auto text-red-400">
+                <AlertTriangle className="w-8 h-8" />
+              </div>
+              <h3 className="font-serif font-bold text-xl text-red-400">تم تعليق الحساب</h3>
+              <p className="text-slate-300 font-sans text-sm leading-relaxed">
+                {blockedAlert}
+              </p>
+              <p className="text-slate-400 font-sans text-xs">
+                جاري تسجيل الخروج وإعادتك للصفحة الرئيسية...
+              </p>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
+
       {/* 1. TOP STICKY SUBSCRIBER BAR */}
       <header className="sticky top-0 z-40 bg-slate-900/95 backdrop-blur-md border-b border-amber-500/30 shadow-xl">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-4">

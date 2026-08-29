@@ -575,6 +575,8 @@ export async function loginSubscriberBridge(
   const targetSpreadsheetId = getActiveSpreadsheetId();
   const cleanUser = (usernameInput || "").trim();
   const cleanPass = (passwordInput || "").trim();
+  const currentDeviceId = (deviceId || "").toString().trim();
+  const devShortId = currentDeviceId.length > 8 ? currentDeviceId.slice(-8) : currentDeviceId;
 
   // 1. Try local server proxy (AI Studio dev container or custom server)
   try {
@@ -584,7 +586,7 @@ export async function loginSubscriberBridge(
       body: JSON.stringify({
         username: cleanUser,
         password: cleanPass,
-        deviceId: deviceId || "",
+        deviceId: currentDeviceId,
         lat: extra?.lat || null,
         lng: extra?.lng || null,
         locationName: extra?.locationName || "",
@@ -605,7 +607,7 @@ export async function loginSubscriberBridge(
       action: "loginUser",
       username: cleanUser,
       password: cleanPass,
-      deviceId: deviceId || "",
+      deviceId: currentDeviceId,
       lat: extra?.lat ? String(extra.lat) : "",
       lng: extra?.lng ? String(extra.lng) : "",
       locationName: extra?.locationName || "",
@@ -629,7 +631,7 @@ export async function loginSubscriberBridge(
     const postRes = await executeAppsScriptPost("loginUser", {
       username: cleanUser,
       password: cleanPass,
-      deviceId: deviceId || "",
+      deviceId: currentDeviceId,
       lat: extra?.lat || null,
       lng: extra?.lng || null,
       locationName: extra?.locationName || "",
@@ -659,7 +661,7 @@ export async function loginSubscriberBridge(
             const r = rows[rIdx]?.c || [];
             const getVal = (idx: number) => (r[idx] && r[idx].v !== null && r[idx].v !== undefined) ? r[idx].v.toString().trim() : "";
             
-            // Col Z is index 25, Col AA is index 26, Col AB is index 27
+            // Col Z is index 25, Col AA is index 26, Col AB is index 27, Col AC is index 28
             const sheetUser = getVal(25);
             const sheetPass = getVal(26);
 
@@ -668,9 +670,67 @@ export async function loginSubscriberBridge(
                 return { success: false, message: "كلمة المرور أو رقم التسجيل غير صحيح" };
               }
 
+              // Column AB (index 27): حالة الاشتراك
               const status = getVal(27);
               if (status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا") {
                 return { success: false, isBlocked: true, message: "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)" };
+              }
+
+              // Column AC (index 28): عدد الأجهزة المسموحة
+              let maxAllowedDevices = 1;
+              const rawMax = getVal(28);
+              if (rawMax) {
+                const parsedMax = parseInt(rawMax, 10);
+                if (!isNaN(parsedMax) && parsedMax > 0) {
+                  maxAllowedDevices = parsedMax;
+                }
+              }
+
+              // Columns AD:AW (indices 29:48): فحص الأجهزة المسجلة
+              if (currentDeviceId) {
+                let isKnownDevice = false;
+                let registeredDeviceCount = 0;
+
+                for (let d = 0; d < maxAllowedDevices; d++) {
+                  const devColIdx = 30 + (d * 2); // Col AE=30, Col AG=32...
+                  const regDev = getVal(devColIdx);
+                  if (regDev) {
+                    registeredDeviceCount++;
+                    if (
+                      regDev === currentDeviceId ||
+                      regDev.includes(currentDeviceId) ||
+                      currentDeviceId.includes(regDev) ||
+                      regDev.includes(devShortId) ||
+                      (extra?.deviceInfo && regDev.includes(extra.deviceInfo.slice(0, 20)))
+                    ) {
+                      isKnownDevice = true;
+                      break;
+                    }
+                  }
+                }
+
+                if (!isKnownDevice) {
+                  if (registeredDeviceCount >= maxAllowedDevices) {
+                    return {
+                      success: false,
+                      deviceLimitReached: true,
+                      message: `لقد استنفدت الحد الأقصى المسموح به من الأجهزة (${maxAllowedDevices} جهاز). يرجى التواصل مع الإدارة لإعادة التعيين.`
+                    };
+                  }
+
+                  // If device count < maxAllowedDevices, trigger async device registration in Google Sheets
+                  try {
+                    executeAppsScriptPost("loginUser", {
+                      username: cleanUser,
+                      password: cleanPass,
+                      deviceId: currentDeviceId,
+                      lat: extra?.lat || null,
+                      lng: extra?.lng || null,
+                      locationName: extra?.locationName || "",
+                      deviceInfo: extra?.deviceInfo || ""
+                    }, targetScriptUrl).catch(() => {});
+                  } catch (e) {}
+                }
               }
 
               const topicId = getVal(0) || "1";
@@ -777,5 +837,49 @@ export async function loginSubscriberBridge(
     success: false,
     message: "اسم المشترك أو رقم التسجيل غير موجود في السجلات. يرجى التأكد من التسجيل أولاً."
   };
+}
+
+/**
+ * Checks live subscriber account status in Google Sheets Settings (Column AB)
+ * If Column AB is set to 'ممنوع' or 'معطل' or 'محظور', returns isBlocked: true
+ */
+export async function checkSubscriberAccountStatus(
+  username: string,
+  spreadsheetId?: string
+): Promise<{ exists: boolean; isBlocked: boolean; statusText: string; maxDevices: number }> {
+  const targetSpreadsheetId = spreadsheetId || getActiveSpreadsheetId();
+  const cleanUser = (username || "").trim().toLowerCase();
+
+  if (!cleanUser) {
+    return { exists: false, isBlocked: false, statusText: "", maxDevices: 1 };
+  }
+
+  try {
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=Settings`;
+    const res = await fetch(gvizUrl);
+    if (res.ok) {
+      const text = await res.text();
+      const s = text.indexOf("{");
+      const e = text.lastIndexOf("}");
+      if (s !== -1 && e !== -1) {
+        const json = JSON.parse(text.substring(s, e + 1));
+        const rows = json?.table?.rows || [];
+        for (const row of rows) {
+          const r = row?.c || [];
+          const getVal = (idx: number) => (r[idx] && r[idx].v !== null && r[idx].v !== undefined) ? r[idx].v.toString().trim() : "";
+          const sheetUser = getVal(25).toLowerCase();
+          if (sheetUser === cleanUser) {
+            const status = getVal(27);
+            const isBlocked = status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا";
+            const maxDev = parseInt(getVal(28), 10) || 1;
+            return { exists: true, isBlocked, statusText: status, maxDevices: maxDev };
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Status check failed:", err);
+  }
+  return { exists: false, isBlocked: false, statusText: "", maxDevices: 1 };
 }
 

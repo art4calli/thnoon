@@ -15,7 +15,7 @@ import RegistrationModal from "./components/RegistrationModal";
 import AdminLoginModal from "./components/AdminLoginModal";
 import { AppData, SubscriberState } from "./types";
 import { fetchAllAppDataDirect } from "./utils/sheetParser";
-import { loginSubscriberBridge } from "./utils/googleBackendBridge";
+import { loginSubscriberBridge, checkSubscriberAccountStatus } from "./utils/googleBackendBridge";
 
 function getFeatureIcon(iconName: string) {
   const name = (iconName || "").toLowerCase().trim();
@@ -79,6 +79,7 @@ export default function App() {
     isLoggedIn: false,
     links: [],
   });
+  const [blockedNotice, setBlockedNotice] = useState<string | null>(null);
 
   // Admin authentication & settings state
   const [isAdminLoggedIn, setIsAdminLoggedIn] = useState(false);
@@ -126,6 +127,53 @@ export default function App() {
 
     if (savedAdminAuth) {
       setIsAdminLoggedIn(true);
+    }
+
+    // Check saved subscriber session and verify Column AB status in Google Sheets
+    const savedSubscriberRaw =
+      sessionStorage.getItem("subscriberLogin") ||
+      localStorage.getItem("thnoon_saved_subscriber");
+
+    if (savedSubscriberRaw) {
+      try {
+        const parsed = JSON.parse(savedSubscriberRaw);
+        const subData = parsed.data || parsed;
+        const checkUser = parsed.username || subData?.subscriberName || "";
+
+        if (checkUser) {
+          checkSubscriberAccountStatus(checkUser).then((statusRes) => {
+            if (statusRes.isBlocked) {
+              // Account is blocked/ممنوع in Column AB! Force kick out immediately
+              sessionStorage.removeItem("subscriberLogin");
+              localStorage.removeItem("thnoon_saved_subscriber");
+              setSubscriber({ isLoggedIn: false, links: [] });
+              setIsDashboardOpen(false);
+              setBlockedNotice("تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك في العمود AB: ممنوع)");
+            } else if (subData && subData.success) {
+              const links = [];
+              for (let i = 1; i <= 5; i++) {
+                const text = subData[`linkButtonText${i}`];
+                const comment = subData[`linkButtonComment${i}`];
+                const url = subData[`url${i}`];
+                if (text && url) {
+                  links.push({ text, comment, url });
+                }
+              }
+              setSubscriber({
+                isLoggedIn: true,
+                subscriberName: subData.subscriberName,
+                topicId: subData.topicId,
+                content: subData.content,
+                links,
+                exitButtonText: subData.exitButtonText,
+                exitButtonComment: subData.exitButtonComment,
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.warn("Error restoring subscriber session:", e);
+      }
     }
 
     // Background pre-fetch form questions so form is ultra fast
@@ -374,6 +422,7 @@ export default function App() {
 
       if (data && data.success) {
         sessionStorage.setItem("subscriberLogin", JSON.stringify(data));
+        localStorage.setItem("thnoon_saved_subscriber", JSON.stringify({ username: usernameInput, data }));
         const links = [];
         for (let i = 1; i <= 5; i++) {
           const text = data[`linkButtonText${i}`];
@@ -395,6 +444,11 @@ export default function App() {
         setIsDashboardOpen(true);
         return { success: true };
       } else {
+        if (data?.isBlocked) {
+          sessionStorage.removeItem("subscriberLogin");
+          localStorage.removeItem("thnoon_saved_subscriber");
+          setBlockedNotice(data.message || "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)");
+        }
         return { success: false, message: data?.message || "اسم المستخدم أو كلمة المرور غير صحيحة" };
       }
     } catch (err) {
@@ -405,6 +459,7 @@ export default function App() {
 
   const handleLogout = () => {
     sessionStorage.removeItem("subscriberLogin");
+    localStorage.removeItem("thnoon_saved_subscriber");
     setSubscriber({ isLoggedIn: false, links: [] });
     setIsDashboardOpen(false);
   };
@@ -746,7 +801,28 @@ export default function App() {
         driveFolderId={currentDriveFolderId}
       />
 
-      {/* 6. Back-to-Top circular button */}
+      {/* 7. Blocked / Suspended Account Notification Modal */}
+      {blockedNotice && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/90 backdrop-blur-md" dir="rtl">
+          <div className="bg-slate-900 border-2 border-red-500/60 rounded-3xl p-6 sm:p-8 max-w-md w-full text-center shadow-2xl space-y-4">
+            <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center justify-center mx-auto text-red-400">
+              <AlertCircle className="w-8 h-8" />
+            </div>
+            <h3 className="font-serif font-bold text-xl text-red-400">حساب موقوف</h3>
+            <p className="text-slate-300 font-sans text-sm leading-relaxed">
+              {blockedNotice}
+            </p>
+            <button
+              onClick={() => setBlockedNotice(null)}
+              className="w-full py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/40 text-red-300 font-sans font-bold text-sm rounded-xl transition-all"
+            >
+              إغلاق
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* 8. Back-to-Top circular button */}
       {showScrollTop && (
         <button
           onClick={scrollToTop}

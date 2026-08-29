@@ -1387,6 +1387,50 @@ app.post("/api/login", async (req, res) => {
       return res.json({ success: false, isBlocked: true, message: "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)" });
     }
 
+    // Col AC (index 28) - عدد الأجهزة المسموحة
+    let maxAllowedDevices = 1;
+    const rawMax = userRow[28]?.toString().trim();
+    if (rawMax) {
+      const parsedMax = parseInt(rawMax, 10);
+      if (!isNaN(parsedMax) && parsedMax > 0) {
+        maxAllowedDevices = parsedMax;
+      }
+    }
+
+    // Columns AD:AW - فحص الأجهزة المسجلة
+    const curDevId = (deviceId || "").toString().trim();
+    if (curDevId) {
+      let isKnownDevice = false;
+      let registeredDeviceCount = 0;
+      const devShortId = curDevId.length > 8 ? curDevId.slice(-8) : curDevId;
+
+      for (let d = 0; d < maxAllowedDevices; d++) {
+        const devColIdx = 30 + (d * 2);
+        const regDev = userRow[devColIdx]?.toString().trim() || "";
+        if (regDev) {
+          registeredDeviceCount++;
+          if (
+            regDev === curDevId ||
+            regDev.includes(curDevId) ||
+            curDevId.includes(regDev) ||
+            regDev.includes(devShortId) ||
+            (deviceInfo && regDev.includes(deviceInfo.slice(0, 20)))
+          ) {
+            isKnownDevice = true;
+            break;
+          }
+        }
+      }
+
+      if (!isKnownDevice && registeredDeviceCount >= maxAllowedDevices) {
+        return res.json({
+          success: false,
+          deviceLimitReached: true,
+          message: `لقد استنفدت الحد الأقصى المسموح به من الأجهزة (${maxAllowedDevices} جهاز). يرجى التواصل مع الإدارة لإعادة التعيين.`
+        });
+      }
+    }
+
     const topicId = userRow[0]?.toString().trim() || "1";
     const subscriberName = userRow[1] || username;
 
