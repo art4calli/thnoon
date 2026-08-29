@@ -6,7 +6,7 @@ import SubscriberEmailSettings from "./SubscriberEmailSettings";
 import TelegramAdminSettings from "./TelegramAdminSettings";
 import RegistrationAnswersViewer from "./RegistrationAnswersViewer";
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbwn5oeh4Lpp_NwbTmuji7GSbGor1KHZE59TBoUe2PSeNyzQqS976-X5RD0G_7SpSbyYYA/exec";
 
 interface IntegrationSettingsModalProps {
   isOpen: boolean;
