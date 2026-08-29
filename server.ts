@@ -1431,7 +1431,23 @@ app.post("/api/login", async (req, res) => {
       }
     }
 
-    const topicId = userRow[0]?.toString().trim() || "1";
+    function normalizeTopicDigit(val: any): string {
+      if (val === null || val === undefined) return "1";
+      let s = val.toString().trim().replace(/['"]/g, "");
+      if (!s) return "1";
+      const arabicIndic = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+      const persian = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+      for (let i = 0; i <= 9; i++) {
+        s = s.split(arabicIndic[i]).join(String(i));
+        s = s.split(persian[i]).join(String(i));
+      }
+      const num = parseFloat(s);
+      if (!isNaN(num) && Number.isInteger(num)) return String(num);
+      return s.trim();
+    }
+
+    const rawTopicId = userRow[0]?.toString().trim() || "1";
+    const topicId = normalizeTopicDigit(rawTopicId) || "1";
     const subscriberName = userRow[1] || username;
 
     // Read matching topic from SubscriberContent sheet
@@ -1439,50 +1455,61 @@ app.post("/api/login", async (req, res) => {
     try {
       const contentRows = await getSheetValues("SubscriberContent");
       if (contentRows && contentRows.length > 0) {
+        let matchedRow: any = null;
         for (const cRow of contentRows) {
-          const cTopicId = cRow[0]?.toString().trim() || "";
-          if (cTopicId === topicId) {
-            const title = cRow[1]?.toString().trim() || "المحتوى المخصص للمشترك";
-            const description = cRow[2]?.toString().trim() || "";
-            const rawCoverImage = cRow[3]?.toString().trim() || "";
-            const badge = cRow[4]?.toString().trim() || "";
-            const coverImage = (rawCoverImage && rawCoverImage !== "-") ? formatImageUrl(rawCoverImage) : undefined;
-
-            const cards: any[] = [];
-            for (let c = 0; c < 10; c++) {
-              const baseIdx = 5 + (c * 4);
-              const cardTitle = cRow[baseIdx]?.toString().trim() || "";
-              const cardDesc = cRow[baseIdx + 1]?.toString().trim() || "";
-              const cardMediaRaw = cRow[baseIdx + 2]?.toString().trim() || "";
-              const cardLinkUrl = cRow[baseIdx + 3]?.toString().trim() || "";
-
-              if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
-                const mediaItems = cardMediaRaw ? cardMediaRaw.split(/[\n,\|]+/).map((s: string) => s.trim()).filter(Boolean).map((rawUrl: string) => {
-                  const isVid = isVideoUrl(rawUrl);
-                  const formattedUrl = isVid ? rawUrl : formatImageUrl(rawUrl);
-                  return { url: formattedUrl, type: isVid ? "video" : "image" };
-                }) : [];
-
-                cards.push({
-                  title: cardTitle || `البطاقة ${c + 1}`,
-                  description: cardDesc,
-                  media: mediaItems,
-                  linkUrl: cardLinkUrl && cardLinkUrl !== "-" ? cardLinkUrl : undefined,
-                  buttonText: cardLinkUrl && cardLinkUrl !== "-" ? "فتح الرابط المرفق" : undefined
-                });
-              }
-            }
-
-            topicContent = {
-              topicId,
-              title,
-              description,
-              coverImage,
-              badge: badge && badge !== "-" ? badge : undefined,
-              cards
-            };
+          const cTopicId = normalizeTopicDigit(cRow[0]?.toString().trim() || "");
+          if (cTopicId === topicId || cRow[0]?.toString().trim() === rawTopicId || cRow[0]?.toString().trim() === topicId) {
+            matchedRow = cRow;
             break;
           }
+        }
+
+        // Fallback: If only 1 content row exists or topicId is 1, use first row
+        if (!matchedRow && (contentRows.length === 1 || topicId === "1")) {
+          matchedRow = contentRows[0];
+        }
+
+        if (matchedRow) {
+          const cRow = matchedRow;
+          const title = cRow[1]?.toString().trim() || "المحتوى المخصص للمشترك";
+          const description = cRow[2]?.toString().trim() || "";
+          const rawCoverImage = cRow[3]?.toString().trim() || "";
+          const badge = cRow[4]?.toString().trim() || "";
+          const coverImage = (rawCoverImage && rawCoverImage !== "-") ? formatImageUrl(rawCoverImage) : undefined;
+
+          const cards: any[] = [];
+          for (let c = 0; c < 10; c++) {
+            const baseIdx = 5 + (c * 4);
+            const cardTitle = cRow[baseIdx]?.toString().trim() || "";
+            const cardDesc = cRow[baseIdx + 1]?.toString().trim() || "";
+            const cardMediaRaw = cRow[baseIdx + 2]?.toString().trim() || "";
+            const cardLinkUrl = cRow[baseIdx + 3]?.toString().trim() || "";
+
+            if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
+              const mediaItems = cardMediaRaw ? cardMediaRaw.split(/[\n,\|]+/).map((s: string) => s.trim()).filter(Boolean).map((rawUrl: string) => {
+                const isVid = isVideoUrl(rawUrl);
+                const formattedUrl = isVid ? rawUrl : formatImageUrl(rawUrl);
+                return { url: formattedUrl, type: isVid ? "video" : "image" };
+              }) : [];
+
+              cards.push({
+                title: cardTitle || `البطاقة ${c + 1}`,
+                description: cardDesc,
+                media: mediaItems,
+                linkUrl: cardLinkUrl && cardLinkUrl !== "-" ? cardLinkUrl : undefined,
+                buttonText: cardLinkUrl && cardLinkUrl !== "-" ? "فتح الرابط المرفق" : undefined
+              });
+            }
+          }
+
+          topicContent = {
+            topicId,
+            title,
+            description,
+            coverImage,
+            badge: badge && badge !== "-" ? badge : undefined,
+            cards
+          };
         }
       }
     } catch (cErr) {

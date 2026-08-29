@@ -11,7 +11,8 @@
  * 2. Static hosting deployments (Vercel, GitHub Pages, Netlify, custom domains)
  */
 
-import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig } from "../types";
+import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
+import { formatImageUrl } from "./imageUtils";
 
 export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzb19BAIh4RARy4Qwj4pWsdc-tWqop2WuRcJjrm2-6h98C1TF-qz-4nDGht2wUiD2E7SQ/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
@@ -561,8 +562,168 @@ export async function fetchRegistrationAnswersBridge(
 }
 
 /**
+ * Normalizes topic ID numbers and text across Eastern Arabic (٠-٩), Persian (۰-۹), and Western (0-9) digits
+ */
+export function normalizeTopicDigitStr(val: any): string {
+  if (val === null || val === undefined) return "1";
+  let s = val.toString().trim().replace(/['"]/g, "");
+  if (!s) return "1";
+
+  const arabicIndic = ["٠", "١", "٢", "٣", "٤", "٥", "٦", "٧", "٨", "٩"];
+  const persian = ["۰", "۱", "۲", "۳", "۴", "۵", "۶", "۷", "۸", "۹"];
+  for (let i = 0; i <= 9; i++) {
+    s = s.split(arabicIndic[i]).join(String(i));
+    s = s.split(persian[i]).join(String(i));
+  }
+
+  const num = parseFloat(s);
+  if (!isNaN(num) && Number.isInteger(num)) {
+    return String(num);
+  }
+  return s.trim();
+}
+
+/**
+ * Checks if two topic identifiers match flexibly
+ */
+export function isTopicMatching(targetTopic: any, rowTopic: any): boolean {
+  const t = normalizeTopicDigitStr(targetTopic);
+  const r = normalizeTopicDigitStr(rowTopic);
+  if (!t && !r) return true;
+  if (t === r) return true;
+
+  const cleanT = t.toLowerCase().replace(/[\s_\-:]/g, "");
+  const cleanR = r.toLowerCase().replace(/[\s_\-:]/g, "");
+  if (cleanT === cleanR) return true;
+
+  const numT = parseInt(t.replace(/\D/g, ""), 10);
+  const numR = parseInt(r.replace(/\D/g, ""), 10);
+  if (!isNaN(numT) && !isNaN(numR) && numT === numR) return true;
+
+  if (cleanR.includes(cleanT) || cleanT.includes(cleanR)) return true;
+
+  return false;
+}
+
+/**
+ * Universal, high-resilience SubscriberContent reader.
+ * Reads cards, covers, videos, links, badges from Google Sheets SubscriberContent tab.
+ * Supports mobile browsers, tablets, desktop, Vercel static hosting and local container.
+ */
+export async function fetchSubscriberTopicContent(
+  topicId: string,
+  explicitSpreadsheetId?: string
+): Promise<SubscriberTopicContent | null> {
+  const targetSpreadsheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
+  const cleanTargetTopic = normalizeTopicDigitStr(topicId) || "1";
+
+  const sheetNames = ["SubscriberContent", "Subscriber Content", "subscribercontent", "محتوى المشتركين", "المحتوى", "محتوى المشترك"];
+
+  for (const sheetName of sheetNames) {
+    try {
+      const contentUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&t=${Date.now()}`;
+      const contentRes = await fetch(contentUrl, { cache: "no-store" });
+      if (contentRes.ok) {
+        const cText = await contentRes.text();
+        const cStart = cText.indexOf("{");
+        const cEnd = cText.lastIndexOf("}");
+        if (cStart !== -1 && cEnd !== -1) {
+          const cJson = JSON.parse(cText.substring(cStart, cEnd + 1));
+          if (cJson && cJson.table && cJson.table.rows && cJson.table.rows.length > 0) {
+            const rows = cJson.table.rows;
+            let matchedRow: any = null;
+
+            for (const cRowItem of rows) {
+              const cr = cRowItem?.c || [];
+              const getCVal = (idx: number) => {
+                if (!cr[idx] || cr[idx].v === null || cr[idx].v === undefined) return "";
+                return cr[idx].f !== undefined ? cr[idx].f.toString().trim() : cr[idx].v.toString().trim();
+              };
+              const rawRowTopic = getCVal(0);
+              if (isTopicMatching(cleanTargetTopic, rawRowTopic)) {
+                matchedRow = cr;
+                break;
+              }
+            }
+
+            // Fallback: If no strict match and only 1 content row exists or target is "1", use first row
+            if (!matchedRow && (rows.length === 1 || cleanTargetTopic === "1")) {
+              matchedRow = rows[0]?.c || [];
+            }
+
+            if (matchedRow) {
+              const getValFromMatched = (idx: number) => {
+                if (!matchedRow[idx] || matchedRow[idx].v === null || matchedRow[idx].v === undefined) return "";
+                return matchedRow[idx].f !== undefined ? matchedRow[idx].f.toString().trim() : matchedRow[idx].v.toString().trim();
+              };
+
+              const title = getValFromMatched(1) || "المحتوى المخصص للمشترك";
+              const description = getValFromMatched(2);
+              const rawCover = getValFromMatched(3);
+              const badge = getValFromMatched(4);
+              const coverImage = (rawCover && rawCover !== "-") ? formatImageUrl(rawCover) : undefined;
+
+              const cards: SubscriberCard[] = [];
+              for (let c = 0; c < 10; c++) {
+                const baseIdx = 5 + (c * 4);
+                const cardTitle = getValFromMatched(baseIdx);
+                const cardDesc = getValFromMatched(baseIdx + 1);
+                const cardMediaRaw = getValFromMatched(baseIdx + 2);
+                const cardLinkUrl = getValFromMatched(baseIdx + 3);
+
+                if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
+                  const mediaItems = cardMediaRaw
+                    ? cardMediaRaw
+                        .split(/[\n,\|]+/)
+                        .map((s: string) => s.trim())
+                        .filter(Boolean)
+                        .map((rawUrl: string) => {
+                          const formattedUrl = formatImageUrl(rawUrl);
+                          const isVid =
+                            formattedUrl.includes("youtube.com") ||
+                            formattedUrl.includes("youtu.be") ||
+                            formattedUrl.includes("vimeo.com") ||
+                            formattedUrl.match(/\.(mp4|webm|ogg|mov)$/i);
+                          return {
+                            url: formattedUrl,
+                            type: isVid ? ("video" as const) : ("image" as const)
+                          };
+                        })
+                    : [];
+
+                  cards.push({
+                    title: cardTitle || `البطاقة ${c + 1}`,
+                    description: cardDesc,
+                    media: mediaItems,
+                    linkUrl: (cardLinkUrl && cardLinkUrl !== "-") ? cardLinkUrl : undefined,
+                    buttonText: (cardLinkUrl && cardLinkUrl !== "-") ? "فتح الرابط المرفق" : undefined
+                  });
+                }
+              }
+
+              return {
+                topicId: cleanTargetTopic,
+                title,
+                description,
+                coverImage,
+                badge: (badge && badge !== "-") ? badge : undefined,
+                cards
+              };
+            }
+          }
+        }
+      }
+    } catch (sheetErr) {
+      console.warn(`Error reading sheet tab '${sheetName}':`, sheetErr);
+    }
+  }
+
+  return null;
+}
+
+/**
  * Universal Subscriber Login Bridge
- * Works seamlessly on Vercel / GitHub Pages / AI Studio Dev Server
+ * Works seamlessly on Vercel / GitHub Pages / AI Studio Dev Server / Mobile / Tablet
  */
 export async function loginSubscriberBridge(
   usernameInput: string,
@@ -595,7 +756,14 @@ export async function loginSubscriberBridge(
     });
     if (res.ok) {
       const data = await res.json();
-      if (data) return data;
+      if (data && data.success) {
+        if (!data.content || !data.content.cards || data.content.cards.length === 0) {
+          const directContent = await fetchSubscriberTopicContent(data.topicId || "1", targetSpreadsheetId);
+          if (directContent) data.content = directContent;
+        }
+        return data;
+      }
+      if (data && !data.success) return data;
     }
   } catch (localErr) {
     // Expected on static hosting (Vercel)
@@ -618,7 +786,14 @@ export async function loginSubscriberBridge(
     const gasRes = await fetch(gasGetUrl);
     if (gasRes.ok) {
       const gasData = await gasRes.json();
-      if (gasData && (gasData.success || gasData.message)) {
+      if (gasData && gasData.success) {
+        if (!gasData.content || !gasData.content.cards || gasData.content.cards.length === 0) {
+          const directContent = await fetchSubscriberTopicContent(gasData.topicId || "1", targetSpreadsheetId);
+          if (directContent) gasData.content = directContent;
+        }
+        return gasData;
+      }
+      if (gasData && !gasData.success) {
         return gasData;
       }
     }
@@ -638,7 +813,14 @@ export async function loginSubscriberBridge(
       deviceInfo: extra?.deviceInfo || ""
     }, targetScriptUrl);
 
-    if (postRes.success && postRes.data && (postRes.data.success || postRes.data.message)) {
+    if (postRes.success && postRes.data && postRes.data.success) {
+      if (!postRes.data.content || !postRes.data.content.cards || postRes.data.content.cards.length === 0) {
+        const directContent = await fetchSubscriberTopicContent(postRes.data.topicId || "1", targetSpreadsheetId);
+        if (directContent) postRes.data.content = directContent;
+      }
+      return postRes.data;
+    }
+    if (postRes.success && postRes.data && !postRes.data.success) {
       return postRes.data;
     }
   } catch (postErr) {
@@ -647,8 +829,8 @@ export async function loginSubscriberBridge(
 
   // 4. Direct Google Visualization API Sheets reader (Reads directly from Google Sheets Settings tab)
   try {
-    const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=Settings`;
-    const gvizRes = await fetch(gvizUrl);
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=Settings&t=${Date.now()}`;
+    const gvizRes = await fetch(gvizUrl, { cache: "no-store" });
     if (gvizRes.ok) {
       const text = await gvizRes.text();
       const jsonStart = text.indexOf("{");
@@ -659,7 +841,10 @@ export async function loginSubscriberBridge(
           const rows = json.table.rows;
           for (let rIdx = 0; rIdx < rows.length; rIdx++) {
             const r = rows[rIdx]?.c || [];
-            const getVal = (idx: number) => (r[idx] && r[idx].v !== null && r[idx].v !== undefined) ? r[idx].v.toString().trim() : "";
+            const getVal = (idx: number) => {
+              if (!r[idx] || r[idx].v === null || r[idx].v === undefined) return "";
+              return r[idx].f !== undefined ? r[idx].f.toString().trim() : r[idx].v.toString().trim();
+            };
             
             // Col Z is index 25, Col AA is index 26, Col AB is index 27, Col AC is index 28
             const sheetUser = getVal(25);
@@ -734,82 +919,11 @@ export async function loginSubscriberBridge(
               }
 
               const rawTopicId = getVal(0) || "1";
-              // Normalize topicId (trim, strip quotes, format numbers like 1.0 to 1)
-              const cleanTopicId = (rawTopicId: string) => {
-                const s = (rawTopicId || "").toString().trim().replace(/['"]/g, "");
-                const num = parseFloat(s);
-                return (!isNaN(num) && Number.isInteger(num)) ? String(num) : s;
-              };
-              const topicId = cleanTopicId(rawTopicId) || "1";
+              const topicId = normalizeTopicDigitStr(rawTopicId) || "1";
               const subscriberName = getVal(1) || cleanUser;
 
-              // Read SubscriberContent sheet if exists
-              let topicContent: any = null;
-              try {
-                const contentUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=SubscriberContent&t=${Date.now()}`;
-                const contentRes = await fetch(contentUrl, { cache: "no-store" });
-                if (contentRes.ok) {
-                  const cText = await contentRes.text();
-                  const cStart = cText.indexOf("{");
-                  const cEnd = cText.lastIndexOf("}");
-                  if (cStart !== -1 && cEnd !== -1) {
-                    const cJson = JSON.parse(cText.substring(cStart, cEnd + 1));
-                    if (cJson && cJson.table && cJson.table.rows) {
-                      for (const cRowItem of cJson.table.rows) {
-                        const cr = cRowItem?.c || [];
-                        const getCVal = (idx: number) => {
-                          if (!cr[idx] || cr[idx].v === null || cr[idx].v === undefined) return "";
-                          return cr[idx].f !== undefined ? cr[idx].f.toString().trim() : cr[idx].v.toString().trim();
-                        };
-                        const cTopic = cleanTopicId(getCVal(0));
-                        if (cTopic === topicId || getCVal(0) === rawTopicId || getCVal(0) === topicId) {
-                          const title = getCVal(1) || "المحتوى المخصص للمشترك";
-                          const description = getCVal(2);
-                          const rawCover = getCVal(3);
-                          const badge = getCVal(4);
-                          const coverImage = (rawCover && rawCover !== "-") ? rawCover : undefined;
-
-                          const cards: any[] = [];
-                          for (let c = 0; c < 10; c++) {
-                            const baseIdx = 5 + (c * 4);
-                            const cardTitle = getCVal(baseIdx);
-                            const cardDesc = getCVal(baseIdx + 1);
-                            const cardMediaRaw = getCVal(baseIdx + 2);
-                            const cardLinkUrl = getCVal(baseIdx + 3);
-
-                            if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
-                              const mediaItems = cardMediaRaw ? cardMediaRaw.split(/[\n,\|]+/).map((s: string) => s.trim()).filter(Boolean).map((rawUrl: string) => ({
-                                url: rawUrl,
-                                type: rawUrl.match(/\.(mp4|webm|ogg|mov)$/i) || rawUrl.includes("youtube.com") || rawUrl.includes("youtu.be") ? "video" : "image"
-                              })) : [];
-
-                              cards.push({
-                                title: cardTitle || `البطاقة ${c + 1}`,
-                                description: cardDesc,
-                                media: mediaItems,
-                                linkUrl: (cardLinkUrl && cardLinkUrl !== "-") ? cardLinkUrl : undefined,
-                                buttonText: (cardLinkUrl && cardLinkUrl !== "-") ? "فتح الرابط المرفق" : undefined
-                              });
-                            }
-                          }
-
-                          topicContent = {
-                            topicId: cTopic || topicId,
-                            title,
-                            description,
-                            coverImage,
-                            badge: (badge && badge !== "-") ? badge : undefined,
-                            cards
-                          };
-                          break;
-                        }
-                      }
-                    }
-                  }
-                }
-              } catch (cErr) {
-                console.warn("Could not load SubscriberContent fallback:", cErr);
-              }
+              // Read SubscriberContent sheet
+              const topicContent = await fetchSubscriberTopicContent(topicId, targetSpreadsheetId);
 
               return {
                 success: true,

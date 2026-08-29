@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LogOut,
@@ -16,11 +16,13 @@ import {
   Instagram,
   Youtube,
   Globe,
-  AlertTriangle
+  AlertTriangle,
+  RefreshCw,
+  Loader2
 } from "lucide-react";
-import { SubscriberState, SubscriberCard, SocialLinks } from "../types";
+import { SubscriberState, SubscriberCard, SubscriberTopicContent, SocialLinks } from "../types";
 import { formatImageUrl } from "../utils/imageUtils";
-import { checkSubscriberAccountStatus } from "../utils/googleBackendBridge";
+import { checkSubscriberAccountStatus, fetchSubscriberTopicContent } from "../utils/googleBackendBridge";
 
 interface SubscriberFullPageProps {
   subscriber: SubscriberState;
@@ -38,6 +40,7 @@ function CardMediaCarousel({ media }: { media: { url: string; type?: "image" | "
   if (!media || media.length === 0) return null;
 
   const currentItem = media[currentIndex] || media[0];
+  const formattedUrl = formatImageUrl(currentItem.url);
 
   const nextItem = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -80,7 +83,7 @@ function CardMediaCarousel({ media }: { media: { url: string; type?: "image" | "
             />
           ) : (
             <video
-              src={currentItem.url}
+              src={formattedUrl}
               controls
               className="w-full h-full object-contain"
             />
@@ -88,13 +91,14 @@ function CardMediaCarousel({ media }: { media: { url: string; type?: "image" | "
         ) : (
           <div
             className="relative w-full h-full flex items-center justify-center cursor-pointer overflow-hidden"
-            onClick={() => setLightboxUrl(currentItem.url)}
+            onClick={() => setLightboxUrl(formattedUrl)}
           >
             <img
-              src={currentItem.url}
+              src={formattedUrl}
               alt="Card Media"
               className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
               loading="lazy"
+              referrerPolicy="no-referrer"
               onError={(e) => {
                 (e.target as HTMLImageElement).src = "https://images.unsplash.com/photo-1579783900882-c0d3dad7b119?w=800&q=80";
               }}
@@ -111,14 +115,14 @@ function CardMediaCarousel({ media }: { media: { url: string; type?: "image" | "
         <>
           <button
             onClick={prevItem}
-            className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-slate-950/80 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-full transition-all shadow-lg z-10 border border-slate-700/60"
+            className="absolute right-3 top-1/2 -translate-y-1/2 p-2.5 bg-slate-950/80 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-full transition-all shadow-lg z-10 border border-slate-700/60 cursor-pointer"
             aria-label="Previous Media"
           >
             <ChevronRight className="w-4 h-4" />
           </button>
           <button
             onClick={nextItem}
-            className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 bg-slate-950/80 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-full transition-all shadow-lg z-10 border border-slate-700/60"
+            className="absolute left-3 top-1/2 -translate-y-1/2 p-2.5 bg-slate-950/80 hover:bg-amber-500 hover:text-slate-950 text-slate-200 rounded-full transition-all shadow-lg z-10 border border-slate-700/60 cursor-pointer"
             aria-label="Next Media"
           >
             <ChevronLeft className="w-4 h-4" />
@@ -133,37 +137,34 @@ function CardMediaCarousel({ media }: { media: { url: string; type?: "image" | "
                   e.stopPropagation();
                   setCurrentIndex(idx);
                 }}
-                className={`h-2 rounded-full transition-all ${
+                className={`h-2 rounded-full transition-all cursor-pointer ${
                   idx === currentIndex ? "w-6 bg-amber-400" : "w-2 bg-white/40 hover:bg-white"
                 }`}
               />
             ))}
           </div>
-
-          {/* Media Count Badge */}
-          <div className="absolute top-3 right-3 bg-slate-950/80 text-amber-300 font-sans text-xs px-2.5 py-1 rounded-lg border border-amber-500/30 font-bold backdrop-blur-sm">
-            {currentIndex + 1} / {media.length}
-          </div>
         </>
       )}
 
-      {/* Lightbox Fullscreen Popup */}
+      {/* Fullscreen Media Lightbox Modal */}
       <AnimatePresence>
         {lightboxUrl && (
           <div
-            className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/95 backdrop-blur-md"
+            className="fixed inset-0 z-50 flex items-center justify-center bg-black/95 backdrop-blur-md p-4"
             onClick={() => setLightboxUrl(null)}
           >
             <button
               onClick={() => setLightboxUrl(null)}
-              className="absolute top-6 left-6 p-3 bg-slate-800 text-white rounded-full hover:bg-red-500 transition-colors shadow-xl"
+              className="absolute top-6 left-6 p-3 bg-slate-900/80 hover:bg-red-500 text-white rounded-full transition-all cursor-pointer z-50 border border-slate-700"
             >
               <X className="w-6 h-6" />
             </button>
             <img
               src={lightboxUrl}
-              alt="Fullscreen view"
-              className="max-w-full max-h-[85vh] object-contain rounded-2xl shadow-2xl border-2 border-amber-500/40"
+              alt="Fullscreen Preview"
+              className="max-w-full max-h-[90vh] object-contain rounded-2xl shadow-2xl"
+              referrerPolicy="no-referrer"
+              onClick={(e) => e.stopPropagation()}
             />
           </div>
         )}
@@ -179,8 +180,40 @@ export default function SubscriberFullPage({
   institutionTitle,
   socialLinks,
 }: SubscriberFullPageProps) {
-  const hasTopicContent = subscriber.content && subscriber.content.cards && subscriber.content.cards.length > 0;
+  const [topicContent, setTopicContent] = useState<SubscriberTopicContent | null>(subscriber.content || null);
+  const [isLoadingContent, setIsLoadingContent] = useState<boolean>(
+    !subscriber.content || !subscriber.content.cards || subscriber.content.cards.length === 0
+  );
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [blockedAlert, setBlockedAlert] = useState<string | null>(null);
+
+  // Helper to load topic content directly from Google Sheets
+  const reloadContent = useCallback(async (manual = false) => {
+    if (manual) setIsRefreshing(true);
+    try {
+      const topicIdToFetch = subscriber.topicId || "1";
+      const fetched = await fetchSubscriberTopicContent(topicIdToFetch);
+      if (fetched && fetched.cards && fetched.cards.length > 0) {
+        setTopicContent(fetched);
+      }
+    } catch (err) {
+      console.warn("Could not reload topic content:", err);
+    } finally {
+      setIsLoadingContent(false);
+      if (manual) setIsRefreshing(false);
+    }
+  }, [subscriber.topicId]);
+
+  // Initial load & sync if content is missing on mobile / tablet
+  useEffect(() => {
+    if (subscriber.content && subscriber.content.cards && subscriber.content.cards.length > 0) {
+      setTopicContent(subscriber.content);
+      setIsLoadingContent(false);
+    } else {
+      setIsLoadingContent(true);
+      reloadContent(false);
+    }
+  }, [subscriber.content, subscriber.topicId, reloadContent]);
 
   // Live account status watcher (Columns AB status: if set to ممنوع, kick out immediately)
   useEffect(() => {
@@ -200,10 +233,7 @@ export default function SubscriberFullPage({
       }
     };
 
-    // Run once immediately on load
     verifyStatus();
-
-    // Re-verify on window focus or interval every 15 seconds
     const interval = setInterval(verifyStatus, 15000);
     window.addEventListener("focus", verifyStatus);
 
@@ -219,6 +249,9 @@ export default function SubscriberFullPage({
     { name: "YouTube", url: socialLinks?.youtube, icon: Youtube, color: "hover:text-red-500 hover:border-red-500/40" },
     { name: "Line", url: socialLinks?.line, icon: Globe, color: "hover:text-emerald-500 hover:border-emerald-500/40" },
   ].filter(p => !!p.url);
+
+  const activeContent = topicContent || subscriber.content;
+  const hasTopicCards = activeContent && activeContent.cards && activeContent.cards.length > 0;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950" dir="rtl">
@@ -272,17 +305,28 @@ export default function SubscriberFullPage({
             </div>
           </div>
 
-          {/* Subscriber Status & Exit Button */}
-          <div className="flex items-center gap-3">
+          {/* Subscriber Status, Refresh & Exit Button */}
+          <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden sm:flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-full px-4 py-1.5 text-xs">
               <CheckCircle className="w-4 h-4 text-emerald-400" />
               <span className="text-slate-200 font-bold">المشترك: {subscriber.subscriberName || "مشترك"}</span>
             </div>
 
+            {/* Quick Refresh Button */}
+            <button
+              onClick={() => reloadContent(true)}
+              disabled={isRefreshing || isLoadingContent}
+              title="تحديث بطاقات ومحتوى الموضوع"
+              className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
+              <span className="hidden sm:inline">تحديث البطاقات</span>
+            </button>
+
             {/* Prominent Exit Button */}
             <button
               onClick={onLogout}
-              className="inline-flex items-center gap-2 bg-gradient-to-r from-red-500/15 to-red-600/15 hover:from-red-500 hover:to-red-600 text-red-300 hover:text-white border border-red-500/30 rounded-xl px-4 py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer"
+              className="inline-flex items-center gap-2 bg-gradient-to-r from-red-500/15 to-red-600/15 hover:from-red-500 hover:to-red-600 text-red-300 hover:text-white border border-red-500/30 rounded-xl px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
               <span>{subscriber.exitButtonText || "تسجيل الخروج والعودة للموقع العام"}</span>
@@ -293,12 +337,12 @@ export default function SubscriberFullPage({
       </header>
 
       {/* 2. HERO COVER BANNER (Column D - Clear Cover Image with No Overlaid Text) */}
-      {subscriber.content?.coverImage && (
+      {activeContent?.coverImage && (
         <section className="relative w-full overflow-hidden bg-slate-900 border-b border-slate-800/80">
           <div className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-6">
             <div className="relative w-full h-52 sm:h-72 md:h-96 rounded-3xl overflow-hidden shadow-2xl border border-slate-800 bg-slate-950">
               <img
-                src={formatImageUrl(subscriber.content.coverImage)}
+                src={formatImageUrl(activeContent.coverImage)}
                 alt="Topic Cover"
                 className="w-full h-full object-cover object-center"
                 loading="eager"
@@ -311,30 +355,54 @@ export default function SubscriberFullPage({
 
       {/* 3. TOPIC HEADER & MAIN CARDS GRID (10 CARDS) */}
       <main className="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 py-8 sm:py-12">
-        {hasTopicContent ? (
+        {isLoadingContent ? (
+          /* Smooth Loading Skeleton for mobile / tablet */
+          <div className="space-y-8 animate-pulse">
+            <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 text-center space-y-4">
+              <div className="w-12 h-12 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
+              <h3 className="font-serif font-bold text-xl text-amber-400">جاري قراءة وتجهيز بطاقات المحتوى التعليمي...</h3>
+              <p className="text-slate-400 text-xs sm:text-sm font-sans max-w-md mx-auto">
+                يتم الآن جلب البطاقات والروابط المخصصة لموضوعك من جدول البيانات، يرجى الانتظار ثوانٍ معدودة.
+              </p>
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {[1, 2, 3, 4].map((i) => (
+                <div key={i} className="bg-slate-900/40 border border-slate-800/60 rounded-3xl p-6 h-64 flex flex-col justify-between">
+                  <div className="space-y-3">
+                    <div className="h-6 bg-slate-800 rounded-xl w-1/2"></div>
+                    <div className="h-4 bg-slate-800/60 rounded-lg w-5/6"></div>
+                    <div className="h-4 bg-slate-800/40 rounded-lg w-4/6"></div>
+                  </div>
+                  <div className="h-10 bg-slate-800 rounded-2xl w-full"></div>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : hasTopicCards ? (
           <div>
             {/* Topic Header: Columns B, C and Column E (Badge) */}
             <div className="flex flex-col md:flex-row md:items-start justify-between gap-4 mb-10 pb-6 border-b border-slate-800">
               <div className="space-y-3 max-w-4xl">
                 {/* Column B: Main Topic Title */}
                 <h2 className="font-serif font-black text-2xl sm:text-3xl md:text-4xl text-amber-400 leading-tight">
-                  {subscriber.content?.title || "المحتوى الخاص والدروس المخصصة"}
+                  {activeContent?.title || "المحتوى الخاص والدروس المخصصة"}
                 </h2>
 
                 {/* Column C: Topic Description & Header */}
-                {subscriber.content?.description && (
+                {activeContent?.description && (
                   <p className="text-slate-300 text-sm sm:text-base md:text-lg leading-relaxed whitespace-pre-line">
-                    {subscriber.content.description}
+                    {activeContent.description}
                   </p>
                 )}
               </div>
 
               {/* Column E: Topic Badge */}
-              {subscriber.content?.badge && (
+              {activeContent?.badge && (
                 <div className="shrink-0 pt-1">
                   <span className="inline-flex items-center gap-1.5 bg-amber-500/15 text-amber-300 text-xs sm:text-sm font-bold py-2 px-4 rounded-2xl border border-amber-500/30 shadow-md">
                     <Award className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>{subscriber.content.badge}</span>
+                    <span>{activeContent.badge}</span>
                   </span>
                 </div>
               )}
@@ -342,7 +410,7 @@ export default function SubscriberFullPage({
 
             {/* Responsive Grid for Cards (Without card number tags) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8">
-              {subscriber.content?.cards.map((card: SubscriberCard, idx: number) => (
+              {activeContent?.cards.map((card: SubscriberCard, idx: number) => (
                 <div
                   key={idx}
                   className="bg-slate-900/80 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/40 rounded-3xl p-6 transition-all shadow-xl flex flex-col justify-between"
@@ -426,11 +494,19 @@ export default function SubscriberFullPage({
                 ))}
               </div>
             ) : (
-              <div className="text-center py-16 bg-slate-900/40 rounded-3xl border border-slate-800">
-                <BookOpen className="w-12 h-12 text-slate-600 mx-auto mb-3" />
-                <p className="text-slate-400 text-sm font-sans">
-                  لا توجد بطاقات أو روابط مضافة لموضوعك حالياً. يمكنك مراسلة الإدارة لإضافة المحتوى المطلوب.
+              <div className="text-center py-16 bg-slate-900/40 rounded-3xl border border-slate-800 space-y-4">
+                <BookOpen className="w-12 h-12 text-slate-600 mx-auto" />
+                <p className="text-slate-300 text-sm font-sans max-w-md mx-auto">
+                  لا توجد بطاقات أو روابط مضافة لموضوعك حالياً. يمكنك النقر على زر التحديث أدناه أو مراسلة الإدارة.
                 </p>
+                <button
+                  onClick={() => reloadContent(true)}
+                  disabled={isRefreshing}
+                  className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-2.5 px-5 rounded-xl transition-all cursor-pointer shadow-md"
+                >
+                  <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
+                  <span>إعادة محاولة جلب البطاقات الآن</span>
+                </button>
               </div>
             )}
           </div>
@@ -454,8 +530,8 @@ export default function SubscriberFullPage({
                       href={plat.url}
                       target="_blank"
                       rel="noopener noreferrer"
-                      className={`w-9 h-9 rounded-xl bg-slate-950 border border-slate-800 text-slate-400 flex items-center justify-center transition-all ${plat.color}`}
-                      title={plat.name}
+                      className={`w-9 h-9 rounded-full bg-slate-950 border border-slate-800 flex items-center justify-center text-slate-400 ${plat.color} transition-all shadow-md`}
+                      aria-label={plat.name}
                     >
                       <Icon className="w-4 h-4" />
                     </a>
@@ -465,18 +541,12 @@ export default function SubscriberFullPage({
             )}
           </div>
 
-          {/* Exit Button */}
-          <button
-            onClick={onLogout}
-            className="inline-flex items-center gap-2 bg-slate-950 hover:bg-red-500/20 text-slate-300 hover:text-red-300 border border-slate-800 hover:border-red-500/30 rounded-xl px-5 py-2.5 text-xs font-bold transition-all cursor-pointer"
-          >
-            <LogOut className="w-4 h-4" />
-            <span>{subscriber.exitButtonText || "تسجيل الخروج والعودة للموقع العام"}</span>
-          </button>
-
+          {/* Copyright info */}
+          <p className="text-slate-500 text-xs font-sans">
+            جميع الحقوق محفوظة © {new Date().getFullYear()} {institutionTitle || "مؤسسة يوسف ذنون"}
+          </p>
         </div>
       </footer>
-
     </div>
   );
 }
