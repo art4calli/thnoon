@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
-import { X, Copy, Check, Link2, Database, Code2, Sparkles, AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Layers, Folder, Languages, Globe, Bot, Mail, Send, Users, Shield, KeyRound, LogOut, Lock } from "lucide-react";
+import { X, Copy, Check, Link2, Database, Code2, Sparkles, AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Layers, Folder, Languages, Globe, Bot, Mail, Send, Users, Shield, KeyRound, LogOut, Lock, UserCheck } from "lucide-react";
 import { GAS_BACKEND_CODE } from "../data/appsScriptCode";
 import { RegistrationQuestion, FormTranslationsMap, QuestionTranslation } from "../types";
 import SubscriberEmailSettings from "./SubscriberEmailSettings";
 import TelegramAdminSettings from "./TelegramAdminSettings";
 import RegistrationAnswersViewer from "./RegistrationAnswersViewer";
+import SettingsSubscribersViewer from "./SettingsSubscribersViewer";
+import SiteTextsManager from "./SiteTextsManager";
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
 
@@ -36,7 +38,7 @@ export default function IntegrationSettingsModal({
   const [isSaving, setIsSaving] = useState(false);
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
-  const [activeTab, setActiveTab] = useState<"settings" | "admin_auth" | "registrants" | "translations" | "subscriber_email" | "telegram_admin" | "code" | "instructions">("settings");
+  const [activeTab, setActiveTab] = useState<"settings" | "admin_auth" | "site_texts" | "settings_subscribers" | "registrants" | "translations" | "subscriber_email" | "telegram_admin" | "code" | "instructions">("settings");
   const [saveSuccess, setSaveSuccess] = useState(false);
 
   // Admin Credentials State
@@ -387,6 +389,30 @@ export default function IntegrationSettingsModal({
           </button>
 
           <button
+            onClick={() => setActiveTab("site_texts")}
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
+              activeTab === "site_texts"
+                ? "border-amber-500 text-amber-400 bg-amber-500/10 shadow-sm"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+            }`}
+          >
+            <Languages className="w-4 h-4 text-amber-400 shrink-0" />
+            <span>نصوص الصفحة والترجمات (3 لغات)</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab("settings_subscribers")}
+            className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
+              activeTab === "settings_subscribers"
+                ? "border-emerald-500 text-emerald-400 bg-emerald-500/10"
+                : "border-transparent text-slate-400 hover:text-slate-200 hover:bg-slate-900/60"
+            }`}
+          >
+            <UserCheck className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span>تسجيل المشتركين (Settings)</span>
+          </button>
+
+          <button
             onClick={() => setActiveTab("registrants")}
             className={`flex-shrink-0 flex items-center gap-2 py-2.5 px-3.5 rounded-lg font-sans text-xs font-semibold border-b-2 transition-all ${
               activeTab === "registrants"
@@ -395,7 +421,7 @@ export default function IntegrationSettingsModal({
             }`}
           >
             <Users className="w-4 h-4 shrink-0" />
-            <span>سجل المسجلين (RegistrationAnswers)</span>
+            <span>سجل المشتركين (RegistrationAnswers)</span>
           </button>
           
           <button
@@ -1217,6 +1243,19 @@ export default function IntegrationSettingsModal({
               )}
 
             </div>
+          )}
+
+          {/* TAB: SITE TEXTS & 3-LANGUAGE TRANSLATIONS */}
+          {activeTab === "site_texts" && (
+            <SiteTextsManager />
+          )}
+
+          {/* TAB: SUBSCRIBERS FROM SETTINGS SHEET */}
+          {activeTab === "settings_subscribers" && (
+            <SettingsSubscribersViewer
+              scriptUrl={scriptUrl}
+              spreadsheetId={spreadsheetId}
+            />
           )}
 
           {/* TAB: REGISTRANTS FROM REGISTRATION ANSWERS */}

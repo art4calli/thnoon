@@ -62,6 +62,42 @@ function doGet(e) {
       return ContentService.createTextOutput(JSON.stringify(deleteGetRes))
         .setMimeType(ContentService.MimeType.JSON);
     }
+
+    // جلب مشتركي ورقة Settings عبر GET
+    if (action === "getSettingsSubscribers" || action === "getSubscribers") {
+      var getSubsRes = getSettingsSubscribersData();
+      return ContentService.createTextOutput(JSON.stringify(getSubsRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // تعديل مشترك في ورقة Settings عبر GET
+    if (action === "updateSettingsSubscriber" || action === "updateSubscriber") {
+      var subUpdateData = {};
+      if (e.parameter.data) {
+        try { subUpdateData = JSON.parse(e.parameter.data); } catch(pE) {}
+      }
+      var updateSubGetRes = updateSettingsSubscriberInSheet({
+        rowIndex: e.parameter.rowIndex || "",
+        registrationId: e.parameter.registrationId || "",
+        name: e.parameter.name || subUpdateData.name || "",
+        topicId: e.parameter.topicId || subUpdateData.topicId || "1",
+        status: e.parameter.status || subUpdateData.status || "مسموح",
+        deviceCount: e.parameter.deviceCount || subUpdateData.deviceCount || "1",
+        updatedData: subUpdateData
+      });
+      return ContentService.createTextOutput(JSON.stringify(updateSubGetRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // حذف مشترك من ورقة Settings عبر GET
+    if (action === "deleteSettingsSubscriber" || action === "deleteSubscriber") {
+      var deleteSubGetRes = deleteSettingsSubscriberFromSheet({
+        rowIndex: e.parameter.rowIndex || "",
+        registrationId: e.parameter.registrationId || ""
+      });
+      return ContentService.createTextOutput(JSON.stringify(deleteSubGetRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     
     // حفظ استفسار عبر GET
     if (action === "submitInquiry") {
@@ -199,6 +235,34 @@ function doPost(e) {
     else if (action === "deleteRegistrationAnswer" || action === "deleteAnswer") {
       var deleteRes = deleteRegistrationAnswerFromSheet(postData);
       return ContentService.createTextOutput(JSON.stringify(deleteRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ل) جلب بيانات المشتركين من ورقة Settings
+    else if (action === "getSettingsSubscribers" || action === "getSubscribers") {
+      var settingsSubs = getSettingsSubscribersData();
+      return ContentService.createTextOutput(JSON.stringify(settingsSubs))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // م) تعديل بيانات المشترك في ورقة Settings
+    else if (action === "updateSettingsSubscriber" || action === "updateSubscriber") {
+      var updateSubRes = updateSettingsSubscriberInSheet(postData);
+      return ContentService.createTextOutput(JSON.stringify(updateSubRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ن) حذف صف مشترك كاملاً من ورقة Settings
+    else if (action === "deleteSettingsSubscriber" || action === "deleteSubscriber") {
+      var deleteSubRes = deleteSettingsSubscriberFromSheet(postData);
+      return ContentService.createTextOutput(JSON.stringify(deleteSubRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // س) إضافة مشترك جديد إلى ورقة Settings
+    else if (action === "addSettingsSubscriber" || action === "addSubscriber") {
+      var addSubRes = addSettingsSubscriberToSheet(postData);
+      return ContentService.createTextOutput(JSON.stringify(addSubRes))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -2636,4 +2700,233 @@ function deleteRegistrationAnswerFromSheet(postData) {
     return { success: false, error: err.message };
   }
 }
+
+// 14. دالة جلب المشتركين من ورقة Settings
+function getSettingsSubscribersData() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Settings') || ss.getSheetByName('الإعدادات') || ss.getSheetByName('اعدادات');
+    if (!sheet) {
+      return { success: false, message: "ورقة Settings غير موجودة", records: [], total: 0 };
+    }
+
+    var lastRow = sheet.getLastRow();
+    var lastCol = Math.max(sheet.getLastColumn(), 30);
+    if (lastRow < 2) {
+      return { success: true, records: [], total: 0, message: "لا يوجد مشتركون في ورقة Settings" };
+    }
+
+    var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var records = [];
+
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      // Check if row has any subscriber data
+      var topicId = (r[0] !== null && r[0] !== undefined) ? r[0].toString().trim() : "1"; // Col A
+      var nameB = (r[1] !== null && r[1] !== undefined) ? r[1].toString().trim() : "";    // Col B
+      var nameZ = (r[25] !== null && r[25] !== undefined) ? r[25].toString().trim() : "";  // Col Z
+      var regId = (r[26] !== null && r[26] !== undefined) ? r[26].toString().trim() : "";  // Col AA
+      var status = (r[27] !== null && r[27] !== undefined) ? r[27].toString().trim() : "مسموح"; // Col AB
+      var deviceCount = (r[28] !== null && r[28] !== undefined) ? r[28].toString().trim() : "1"; // Col AC
+
+      var finalName = nameZ || nameB;
+      if (!finalName && !regId && !topicId) continue;
+
+      var isAllowed = !(status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا");
+
+      records.push({
+        rowIndex: i + 2,
+        name: finalName,
+        registrationId: regId,
+        topicId: topicId || "1",
+        status: status || "مسموح",
+        isAllowed: isAllowed,
+        deviceCount: deviceCount || "1",
+        rawRow: r.map(function(c) { return c !== null && c !== undefined ? c.toString().trim() : ""; })
+      });
+    }
+
+    return {
+      success: true,
+      records: records,
+      total: records.length
+    };
+  } catch (err) {
+    Logger.log("getSettingsSubscribersData error: " + err.message);
+    return { success: false, error: err.message, records: [], total: 0 };
+  }
+}
+
+// 15. دالة تعديل بيانات المشترك في ورقة Settings
+function updateSettingsSubscriberInSheet(postData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Settings') || ss.getSheetByName('الإعدادات') || ss.getSheetByName('اعدادات');
+    if (!sheet) {
+      return { success: false, message: "ورقة Settings غير موجودة" };
+    }
+
+    var lastRow = sheet.getLastRow();
+    var lastCol = Math.max(sheet.getLastColumn(), 30);
+    var targetRowIndex = -1;
+    var reqRowIndex = postData.rowIndex ? Number(postData.rowIndex) : -1;
+    var reqRegId = postData.registrationId ? postData.registrationId.toString().trim() : "";
+
+    // البحث عن الصف المستهدف
+    if (reqRowIndex >= 2 && reqRowIndex <= lastRow) {
+      targetRowIndex = reqRowIndex;
+    } else if (reqRegId) {
+      var aaVals = sheet.getRange(2, 27, Math.max(lastRow - 1, 1), 1).getValues();
+      for (var a = 0; a < aaVals.length; a++) {
+        if (aaVals[a][0] && aaVals[a][0].toString().trim() === reqRegId) {
+          targetRowIndex = a + 2;
+          break;
+        }
+      }
+    }
+
+    if (targetRowIndex === -1) {
+      return { success: false, message: "لم يتم العثور على صف المشترك في ورقة Settings" };
+    }
+
+    var rowVals = sheet.getRange(targetRowIndex, 1, 1, lastCol).getValues()[0];
+    var updated = postData.updatedData || postData;
+
+    // 1. العامود A: رقم الصفحة الخاصة
+    if (updated.topicId !== undefined && updated.topicId !== null) {
+      var cleanTopic = updated.topicId.toString().trim() || "1";
+      rowVals[0] = cleanTopic;
+    }
+
+    // 2. العامود Z والعامود B: اسم المشترك
+    if (updated.name !== undefined && updated.name !== null) {
+      var cleanName = updated.name.toString().trim();
+      rowVals[25] = cleanName; // Col Z
+      if (cleanName) rowVals[1] = cleanName;  // Col B
+    }
+
+    // 3. العامود AA: رقم التسجيل
+    if (updated.registrationId !== undefined && updated.registrationId !== null) {
+      var cleanRegId = updated.registrationId.toString().trim();
+      rowVals[26] = cleanRegId; // Col AA
+    }
+
+    // 4. العامود AB: مسموح / ممنوع للدخول
+    if (updated.status !== undefined && updated.status !== null) {
+      var cleanStatus = updated.status.toString().trim() || "مسموح";
+      rowVals[27] = cleanStatus; // Col AB
+    }
+
+    // 5. العامود AC: عدد الأجهزة
+    if (updated.deviceCount !== undefined && updated.deviceCount !== null) {
+      var cleanDevCount = updated.deviceCount.toString().trim() || "1";
+      rowVals[28] = cleanDevCount; // Col AC
+    }
+
+    // إذا طلب إعادة ضبط الأجهزة المسجلة
+    if (updated.resetRegisteredDevices === true) {
+      if (lastCol >= 30) {
+        rowVals[29] = ""; // Col AD
+      }
+    }
+
+    sheet.getRange(targetRowIndex, 1, 1, lastCol).setValues([rowVals]);
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: "تم تحديث بيانات المشترك بنجاح في ورقة Settings",
+      rowIndex: targetRowIndex
+    };
+  } catch (err) {
+    Logger.log("updateSettingsSubscriberInSheet error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// 16. دالة حذف صف المشترك بالكامل من ورقة Settings
+function deleteSettingsSubscriberFromSheet(postData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Settings') || ss.getSheetByName('الإعدادات') || ss.getSheetByName('اعدادات');
+    if (!sheet) {
+      return { success: false, message: "ورقة Settings غير موجودة" };
+    }
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return { success: false, message: "لا توجد صفوف لحذفها في ورقة Settings" };
+    }
+
+    var targetRowIndex = -1;
+    var reqRowIndex = postData.rowIndex ? Number(postData.rowIndex) : -1;
+    var reqRegId = postData.registrationId ? postData.registrationId.toString().trim() : "";
+
+    if (reqRowIndex >= 2 && reqRowIndex <= lastRow) {
+      targetRowIndex = reqRowIndex;
+    } else if (reqRegId) {
+      var aaVals = sheet.getRange(2, 27, lastRow - 1, 1).getValues();
+      for (var a = 0; a < aaVals.length; a++) {
+        if (aaVals[a][0] && aaVals[a][0].toString().trim() === reqRegId) {
+          targetRowIndex = a + 2;
+          break;
+        }
+      }
+    }
+
+    if (targetRowIndex === -1) {
+      return { success: false, message: "لم يتم العثور على صف المشترك المطلوب حذفه" };
+    }
+
+    sheet.deleteRow(targetRowIndex);
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: "تم حذف صف المشترك بالكامل من ورقة Settings بنجاح",
+      deletedRowIndex: targetRowIndex
+    };
+  } catch (err) {
+    Logger.log("deleteSettingsSubscriberFromSheet error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// 17. دالة إضافة مشترك جديد إلى ورقة Settings
+function addSettingsSubscriberToSheet(postData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('Settings') || ss.getSheetByName('الإعدادات') || ss.getSheetByName('اعدادات');
+    if (!sheet) {
+      return { success: false, message: "ورقة Settings غير موجودة" };
+    }
+
+    var newTopicId = postData.topicId ? postData.topicId.toString().trim() : "1";
+    var newName = postData.name ? postData.name.toString().trim() : "";
+    var newRegId = postData.registrationId ? postData.registrationId.toString().trim() : "";
+    var newStatus = postData.status ? postData.status.toString().trim() : "مسموح";
+    var newDevCount = postData.deviceCount ? postData.deviceCount.toString().trim() : "1";
+
+    var newRow = new Array(30).fill("");
+    newRow[0] = newTopicId || "1";      // Col A
+    newRow[1] = newName;               // Col B
+    newRow[25] = newName;              // Col Z
+    newRow[26] = newRegId;             // Col AA
+    newRow[27] = newStatus || "مسموح"; // Col AB
+    newRow[28] = newDevCount || "1";   // Col AC
+
+    sheet.appendRow(newRow);
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: "تمت إضافة المشترك بنجاح إلى ورقة Settings",
+      rowIndex: sheet.getLastRow()
+    };
+  } catch (err) {
+    Logger.log("addSettingsSubscriberToSheet error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
 `;

@@ -16,6 +16,7 @@ import AdminLoginModal from "./components/AdminLoginModal";
 import { AppData, SubscriberState } from "./types";
 import { fetchAllAppDataDirect } from "./utils/sheetParser";
 import { loginSubscriberBridge, checkSubscriberAccountStatus } from "./utils/googleBackendBridge";
+import { useLanguage } from "./context/LanguageContext";
 
 function getFeatureIcon(iconName: string) {
   const name = (iconName || "").toLowerCase().trim();
@@ -69,10 +70,18 @@ function getFeatureIcon(iconName: string) {
 }
 
 export default function App() {
+  const { t, currentLang, dir, syncWithAppData } = useLanguage();
   const [activeSection, setActiveSection] = useState("home");
   const [appData, setAppData] = useState<AppData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // Synchronize site translations dynamically when AppData from Google Sheets is loaded
+  useEffect(() => {
+    if (appData) {
+      syncWithAppData(appData);
+    }
+  }, [appData, syncWithAppData]);
 
   // Subscriber session state
   const [subscriber, setSubscriber] = useState<SubscriberState>({
@@ -588,15 +597,15 @@ export default function App() {
           <div className="max-w-5xl mx-auto px-4 text-center space-y-6 relative z-10">
             <div className="inline-flex items-center gap-1.5 bg-amber-500/10 text-amber-500 text-xs font-sans font-bold py-1.5 px-3.5 rounded-full border border-amber-500/20">
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{appData?.customTexts?.heroSubtag || "بوابة الحرف العربي والآثار الإسلامية"}</span>
+              <span>{t("hero_badge", appData?.customTexts?.heroSubtag || "بوابة الحرف العربي والآثار الإسلامية")}</span>
             </div>
 
             <h1 className="font-serif font-black text-4xl sm:text-5xl md:text-6xl text-amber-400 leading-tight tracking-wide">
-              {profile.title}
+              {t("hero_title", profile.title)}
             </h1>
 
             <p className="max-w-2xl mx-auto text-slate-300 font-sans text-sm sm:text-base md:text-lg leading-relaxed">
-              {profile.description}
+              {t("hero_description", profile.description)}
             </p>
 
             <div className="flex flex-wrap justify-center gap-4 pt-4">
@@ -604,13 +613,13 @@ export default function App() {
                 onClick={() => handleNavigate("courses")}
                 className="bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3 px-6 rounded-xl shadow-lg shadow-amber-500/15 transition-all transform hover:scale-105 cursor-pointer"
               >
-                {appData?.customTexts?.heroPrimaryBtn || "استكشف البرامج التعليمية"}
+                {t("hero_primary_btn", appData?.customTexts?.heroPrimaryBtn || "استكشف البرامج التعليمية")}
               </button>
               <button
                 onClick={() => handleNavigate("artwork")}
                 className="bg-slate-900/60 hover:bg-slate-900 border border-slate-800 hover:border-amber-500/30 text-amber-400 text-sm font-sans font-bold py-3 px-6 rounded-xl transition-all"
               >
-                {appData?.customTexts?.heroSecondaryBtn || "عرض المعرض الفني"}
+                {t("hero_secondary_btn", appData?.customTexts?.heroSecondaryBtn || "عرض المعرض الفني")}
               </button>
             </div>
           </div>
@@ -633,7 +642,7 @@ export default function App() {
           <div id="home">
             <section className="py-16 px-4 max-w-7xl mx-auto">
               <h3 className="font-serif font-bold text-2xl text-amber-400 border-r-4 border-amber-500 pr-3 mb-10 text-right">
-                {appData?.customTexts?.homeSectionTitle || "الواجهة الترحيبية ومستجدات المؤسسة"}
+                {t("home_section_title", appData?.customTexts?.homeSectionTitle || "الواجهة الترحيبية ومستجدات المؤسسة")}
               </h3>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">

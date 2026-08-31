@@ -2,6 +2,7 @@ import { useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, X, Play, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SheetRow } from "../types";
+import { useLanguage } from "../context/LanguageContext";
 
 interface HomeCardProps {
   card: SheetRow;
@@ -9,6 +10,7 @@ interface HomeCardProps {
 }
 
 export default function HomeCard({ card, onNavigate }: HomeCardProps) {
+  const { t, dir } = useLanguage();
   const [activeIndex, setActiveIndex] = useState(0);
   const [isLightboxOpen, setIsLightboxOpen] = useState(false);
   const [touchStart, setTouchStart] = useState<number | null>(null);
@@ -89,14 +91,14 @@ export default function HomeCard({ card, onNavigate }: HomeCardProps) {
         {/* Title */}
         {card.title && (
           <h4 className="font-serif font-black text-2xl text-slate-100 tracking-wide leading-snug">
-            {card.title}
+            {t(card.title, card.title)}
           </h4>
         )}
 
         {/* Description */}
         {card.description && (
           <p className="text-slate-300 font-sans text-sm sm:text-base leading-relaxed whitespace-pre-line text-justify">
-            {card.description}
+            {t(card.description, card.description)}
           </p>
         )}
 
@@ -207,7 +209,7 @@ export default function HomeCard({ card, onNavigate }: HomeCardProps) {
           }}
           className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs sm:text-sm font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300 mt-6 cursor-pointer"
         >
-          <span>{card.buttonText || "التفاصيل والملف المرفق"}</span>
+          <span>{t(card.buttonText || "التفاصيل والملف المرفق", card.buttonText || "التفاصيل والملف المرفق")}</span>
           <ExternalLink className="w-3.5 h-3.5" />
         </button>
       )}

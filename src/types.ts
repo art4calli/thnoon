@@ -272,3 +272,14 @@ export interface RegistrationAnswerRecord {
   rawRow?: string[];           // القيم الخام للصف
 }
 
+export interface SettingsSubscriberRecord {
+  rowIndex: number;            // رقم الصف في ورقة Settings (2, 3...)
+  name: string;                // العامود Z: اسم المشترك
+  registrationId: string;      // العامود AA: رقم التسجيل
+  topicId: string;             // العامود A: رقم الصفحة الخاصة
+  status: string;              // العامود AB: مسموح / ممنوع للدخول
+  isAllowed: boolean;          // حالة السماح بالدخول
+  deviceCount: string;         // العامود AC: عدد الأجهزة
+  rawRow?: string[];           // القيم الخام للصف
+}
+

@@ -23,6 +23,7 @@ import {
 import { SubscriberState, SubscriberCard, SubscriberTopicContent, SocialLinks } from "../types";
 import { formatImageUrl } from "../utils/imageUtils";
 import { checkSubscriberAccountStatus, fetchSubscriberTopicContent } from "../utils/googleBackendBridge";
+import { useLanguage } from "../context/LanguageContext";
 
 interface SubscriberFullPageProps {
   subscriber: SubscriberState;
@@ -180,6 +181,7 @@ export default function SubscriberFullPage({
   institutionTitle,
   socialLinks,
 }: SubscriberFullPageProps) {
+  const { t, dir } = useLanguage();
   const [topicContent, setTopicContent] = useState<SubscriberTopicContent | null>(subscriber.content || null);
   const [isLoadingContent, setIsLoadingContent] = useState<boolean>(
     !subscriber.content || !subscriber.content.cards || subscriber.content.cards.length === 0
@@ -223,7 +225,7 @@ export default function SubscriberFullPage({
       try {
         const res = await checkSubscriberAccountStatus(username);
         if (res.isBlocked) {
-          setBlockedAlert("تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)");
+          setBlockedAlert(t("subscriber_blocked_alert_msg", "تم إيقاف أو تعليق هذا الحساب من قبل الإدارة (حالة الاشتراك: ممنوع)"));
           setTimeout(() => {
             onLogout();
           }, 3000);
@@ -241,7 +243,7 @@ export default function SubscriberFullPage({
       clearInterval(interval);
       window.removeEventListener("focus", verifyStatus);
     };
-  }, [subscriber.subscriberName, onLogout]);
+  }, [subscriber.subscriberName, onLogout, t]);
 
   const socialPlatforms = [
     { name: "Facebook", url: socialLinks?.facebook, icon: Facebook, color: "hover:text-blue-500 hover:border-blue-500/40" },
@@ -254,7 +256,7 @@ export default function SubscriberFullPage({
   const hasTopicCards = activeContent && activeContent.cards && activeContent.cards.length > 0;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950" dir="rtl">
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950" dir={dir}>
       
       {/* Blocked Account Notification Modal */}
       <AnimatePresence>
@@ -268,12 +270,14 @@ export default function SubscriberFullPage({
               <div className="w-16 h-16 bg-red-500/10 border border-red-500/30 rounded-2xl flex items-center justify-center mx-auto text-red-400">
                 <AlertTriangle className="w-8 h-8" />
               </div>
-              <h3 className="font-serif font-bold text-xl text-red-400">تم تعليق الحساب</h3>
+              <h3 className="font-serif font-bold text-xl text-red-400">
+                {t("subscriber_blocked_title", "تم تعليق الحساب")}
+              </h3>
               <p className="text-slate-300 font-sans text-sm leading-relaxed">
                 {blockedAlert}
               </p>
               <p className="text-slate-400 font-sans text-xs">
-                جاري تسجيل الخروج وإعادتك للصفحة الرئيسية...
+                {t("subscriber_blocked_logging_out", "جاري تسجيل الخروج وإعادتك للصفحة الرئيسية...")}
               </p>
             </motion.div>
           </div>
@@ -296,11 +300,11 @@ export default function SubscriberFullPage({
             )}
             <div>
               <h1 className="font-serif font-bold text-base sm:text-lg text-amber-400 leading-tight">
-                {institutionTitle || "مؤسسة يوسف ذنون"}
+                {institutionTitle || t("header_title", "مؤسسة يوسف ذنون")}
               </h1>
               <div className="flex items-center gap-1.5 text-xs text-slate-400">
                 <Sparkles className="w-3 h-3 text-amber-500" />
-                <span>بوابة المشتركين</span>
+                <span>{t("subscriber_portal_badge", "بوابة المشتركين")}</span>
               </div>
             </div>
           </div>
@@ -309,18 +313,20 @@ export default function SubscriberFullPage({
           <div className="flex items-center gap-2 sm:gap-3">
             <div className="hidden sm:flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-full px-4 py-1.5 text-xs">
               <CheckCircle className="w-4 h-4 text-emerald-400" />
-              <span className="text-slate-200 font-bold">المشترك: {subscriber.subscriberName || "مشترك"}</span>
+              <span className="text-slate-200 font-bold">
+                {t("subscriber_welcome_greeting", "مرحباً بك مجدداً،")} {subscriber.subscriberName || t("subscriber_name_default", "مشترك")}
+              </span>
             </div>
 
             {/* Quick Refresh Button */}
             <button
               onClick={() => reloadContent(true)}
               disabled={isRefreshing || isLoadingContent}
-              title="تحديث بطاقات ومحتوى الموضوع"
+              title={t("subscriber_refresh_cards_tooltip", "تحديث بطاقات ومحتوى الموضوع")}
               className="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-amber-400 border border-slate-700 rounded-xl px-3 py-2 text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
-              <span className="hidden sm:inline">تحديث البطاقات</span>
+              <span className="hidden sm:inline">{t("subscriber_refresh_cards_btn", "تحديث البطاقات")}</span>
             </button>
 
             {/* Prominent Exit Button */}
@@ -329,7 +335,7 @@ export default function SubscriberFullPage({
               className="inline-flex items-center gap-2 bg-gradient-to-r from-red-500/15 to-red-600/15 hover:from-red-500 hover:to-red-600 text-red-300 hover:text-white border border-red-500/30 rounded-xl px-3.5 sm:px-4 py-2 text-xs sm:text-sm font-bold transition-all shadow-md cursor-pointer"
             >
               <LogOut className="w-4 h-4" />
-              <span>{subscriber.exitButtonText || "تسجيل الخروج والعودة للموقع العام"}</span>
+              <span>{subscriber.exitButtonText ? t(subscriber.exitButtonText, subscriber.exitButtonText) : t("subscriber_exit_portal_btn", "الخروج والعودة للرئيسية")}</span>
             </button>
           </div>
 
@@ -360,9 +366,11 @@ export default function SubscriberFullPage({
           <div className="space-y-8 animate-pulse">
             <div className="bg-slate-900/60 border border-slate-800 rounded-3xl p-8 text-center space-y-4">
               <div className="w-12 h-12 border-3 border-amber-500 border-t-transparent rounded-full animate-spin mx-auto"></div>
-              <h3 className="font-serif font-bold text-xl text-amber-400">جاري قراءة وتجهيز بطاقات المحتوى التعليمي...</h3>
+              <h3 className="font-serif font-bold text-xl text-amber-400">
+                {t("subscriber_loading_topic_title", "جاري قراءة وتجهيز بطاقات المحتوى التعليمي...")}
+              </h3>
               <p className="text-slate-400 text-xs sm:text-sm font-sans max-w-md mx-auto">
-                يتم الآن جلب البطاقات والروابط المخصصة لموضوعك من جدول البيانات، يرجى الانتظار ثوانٍ معدودة.
+                {t("subscriber_loading_topic_desc", "يتم الآن جلب البطاقات والروابط المخصصة لموضوعك من جدول البيانات، يرجى الانتظار ثوانٍ معدودة.")}
               </p>
             </div>
 
@@ -386,13 +394,13 @@ export default function SubscriberFullPage({
               <div className="space-y-3 max-w-4xl">
                 {/* Column B: Main Topic Title */}
                 <h2 className="font-serif font-black text-2xl sm:text-3xl md:text-4xl text-amber-400 leading-tight">
-                  {activeContent?.title || "المحتوى الخاص والدروس المخصصة"}
+                  {activeContent?.title ? t(activeContent.title, activeContent.title) : t("subscriber_custom_content_title", "المحتوى الخاص والدروس المخصصة")}
                 </h2>
 
                 {/* Column C: Topic Description & Header */}
                 {activeContent?.description && (
                   <p className="text-slate-300 text-sm sm:text-base md:text-lg leading-relaxed whitespace-pre-line">
-                    {activeContent.description}
+                    {t(activeContent.description, activeContent.description)}
                   </p>
                 )}
               </div>
@@ -402,7 +410,7 @@ export default function SubscriberFullPage({
                 <div className="shrink-0 pt-1">
                   <span className="inline-flex items-center gap-1.5 bg-amber-500/15 text-amber-300 text-xs sm:text-sm font-bold py-2 px-4 rounded-2xl border border-amber-500/30 shadow-md">
                     <Award className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>{activeContent.badge}</span>
+                    <span>{t(activeContent.badge, activeContent.badge)}</span>
                   </span>
                 </div>
               )}
@@ -419,14 +427,14 @@ export default function SubscriberFullPage({
                     {/* Card Title */}
                     <div className="mb-3">
                       <h4 className="font-serif font-bold text-amber-400 text-xl leading-snug">
-                        {card.title}
+                        {t(card.title, card.title)}
                       </h4>
                     </div>
 
                     {/* Description */}
                     {card.description && (
                       <p className="text-slate-300 text-sm leading-relaxed mb-4 whitespace-pre-line">
-                        {card.description}
+                        {t(card.description, card.description)}
                       </p>
                     )}
 
@@ -446,7 +454,7 @@ export default function SubscriberFullPage({
                         className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 text-sm font-bold py-3 px-5 rounded-2xl text-center shadow-lg shadow-amber-500/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
                       >
                         <ExternalLink className="w-4.5 h-4.5" />
-                        <span>{card.buttonText || "فتح الرابط / المورد المرفق"}</span>
+                        <span>{card.buttonText ? t(card.buttonText, card.buttonText) : t("subscriber_open_link_btn", "فتح الرابط / المورد المرفق")}</span>
                       </a>
                     </div>
                   )}
@@ -460,7 +468,7 @@ export default function SubscriberFullPage({
             <div className="flex items-center gap-3 mb-6 pb-3 border-b border-slate-800">
               <FileText className="w-6 h-6 text-amber-400" />
               <h3 className="font-serif font-bold text-2xl text-slate-100">
-                روابطك التعليمية المخصصة
+                {t("subscriber_custom_links_header", "روابطك التعليمية المخصصة")}
               </h3>
             </div>
 
@@ -473,11 +481,11 @@ export default function SubscriberFullPage({
                   >
                     <div className="space-y-2 mb-6">
                       <h4 className="font-serif font-bold text-amber-400 text-lg">
-                        {link.text}
+                        {t(link.text, link.text)}
                       </h4>
                       {link.comment && (
                         <p className="text-slate-300 text-xs leading-relaxed">
-                          {link.comment}
+                          {t(link.comment, link.comment)}
                         </p>
                       )}
                     </div>
@@ -488,7 +496,7 @@ export default function SubscriberFullPage({
                       className="bg-amber-500 hover:bg-amber-600 text-slate-950 text-xs font-bold py-3 px-4 rounded-xl text-center shadow-md transition-all flex items-center justify-center gap-2"
                     >
                       <ExternalLink className="w-4 h-4" />
-                      <span>زيارة وتصفح الرابط المرفق</span>
+                      <span>{t("subscriber_open_custom_link", "زيارة وتصفح الرابط المرفق")}</span>
                     </a>
                   </div>
                 ))}
@@ -497,7 +505,7 @@ export default function SubscriberFullPage({
               <div className="text-center py-16 bg-slate-900/40 rounded-3xl border border-slate-800 space-y-4">
                 <BookOpen className="w-12 h-12 text-slate-600 mx-auto" />
                 <p className="text-slate-300 text-sm font-sans max-w-md mx-auto">
-                  لا توجد بطاقات أو روابط مضافة لموضوعك حالياً. يمكنك النقر على زر التحديث أدناه أو مراسلة الإدارة.
+                  {t("subscriber_empty_cards_msg", "لا توجد بطاقات أو روابط مضافة لموضوعك حالياً. يمكنك النقر على زر التحديث أدناه أو مراسلة الإدارة.")}
                 </p>
                 <button
                   onClick={() => reloadContent(true)}
@@ -505,7 +513,7 @@ export default function SubscriberFullPage({
                   className="inline-flex items-center gap-2 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs py-2.5 px-5 rounded-xl transition-all cursor-pointer shadow-md"
                 >
                   <RefreshCw className={`w-4 h-4 ${isRefreshing ? "animate-spin" : ""}`} />
-                  <span>إعادة محاولة جلب البطاقات الآن</span>
+                  <span>{t("subscriber_retry_fetch_cards", "إعادة محاولة جلب البطاقات الآن")}</span>
                 </button>
               </div>
             )}
@@ -515,13 +523,17 @@ export default function SubscriberFullPage({
 
       {/* 4. DEDICATED SUBSCRIBER FOOTER (Social Links + Clean Logout Button) */}
       <footer className="bg-slate-900 border-t border-slate-800 py-6 px-4 sm:px-6 mt-auto">
-        <div className="max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-center sm:text-right">
+        <div className={`max-w-7xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-center ${
+          dir === "rtl" ? "sm:text-right" : "sm:text-left"
+        }`}>
           
           {/* Social Channels */}
           <div className="flex items-center gap-3">
             {socialPlatforms.length > 0 && (
               <div className="flex items-center gap-2.5">
-                <span className="text-xs text-slate-400 font-bold ml-1 hidden sm:inline">قنوات التواصل:</span>
+                <span className="text-xs text-slate-400 font-bold ml-1 hidden sm:inline">
+                  {t("subscriber_footer_social_label", "قنوات التواصل:")}
+                </span>
                 {socialPlatforms.map((plat, pIdx) => {
                   const Icon = plat.icon;
                   return (
@@ -543,7 +555,7 @@ export default function SubscriberFullPage({
 
           {/* Copyright info */}
           <p className="text-slate-500 text-xs font-sans">
-            جميع الحقوق محفوظة © {new Date().getFullYear()} {institutionTitle || "مؤسسة يوسف ذنون"}
+            {t("footer_rights", "جميع الحقوق محفوظة")} © {new Date().getFullYear()} {institutionTitle || t("header_title", "مؤسسة يوسف ذنون")}
           </p>
         </div>
       </footer>

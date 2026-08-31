@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { SheetRow, SocialLinks, ContactDetails, CustomTexts } from "../types";
 import { submitContactInquiryBridge } from "../utils/googleBackendBridge";
+import { useLanguage } from "../context/LanguageContext";
 
 interface ContactSectionProps {
   cards: SheetRow[];
@@ -73,6 +74,7 @@ function getContactIcon(iconName: string) {
 }
 
 export default function ContactSection({ cards, socialLinks, contactInfo, customTexts }: ContactSectionProps) {
+  const { t } = useLanguage();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [subject, setSubject] = useState("");
@@ -98,11 +100,11 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
         setMessage("");
         setTimeout(() => setSentSuccess(false), 7000);
       } else {
-        setErrorMessage(res.message || "فشل إرسال الاستفسار. الرجاء المحاولة مجدداً.");
+        setErrorMessage(res.message || t("contact_error_fail", "فشل إرسال الاستفسار. الرجاء المحاولة مجدداً."));
       }
     } catch (err: any) {
       console.warn("Contact form submission error:", err);
-      setErrorMessage(err?.message || "حدث خطأ في الاتصال بالخادم.");
+      setErrorMessage(err?.message || t("contact_error_conn", "حدث خطأ في الاتصال بالخادم."));
     } finally {
       setIsSending(false);
     }
@@ -120,13 +122,13 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
       {/* Section Header */}
       <div className="text-center max-w-3xl mx-auto mb-16">
         <span className="text-xs font-bold font-sans tracking-widest text-amber-500 bg-amber-500/10 px-3.5 py-1.5 rounded-full uppercase">
-          {contactInfo?.badge || "نسعد دائماً بخدمتكم وتواصلكم"}
+          {t("contact_badge", contactInfo?.badge || "نسعد دائماً بخدمتكم وتواصلكم")}
         </span>
         <h2 className="font-serif font-bold text-3xl sm:text-4xl text-amber-400 mt-4 leading-normal">
-          {contactInfo?.title || "تواصل معنا والتحق بنا"}
+          {t("contact_title", contactInfo?.title || "تواصل معنا والتحق بنا")}
         </h2>
         <p className="text-slate-400 font-sans mt-4 text-sm leading-relaxed">
-          {contactInfo?.description || "لديك استفسار حول الدورات أو ترغب بطلب لوحة خطية مخصصة؟ راسلنا أو تواصل معنا عبر قنواتنا الرسمية، أو تشرفنا بزيارتك لمقر المؤسسة."}
+          {t("contact_description", contactInfo?.description || "لديك استفسار حول الدورات أو ترغب بطلب لوحة خطية مخصصة؟ راسلنا أو تواصل معنا عبر قنواتنا الرسمية، أو تشرفنا بزيارتك لمقر المؤسسة.")}
         </p>
       </div>
 
@@ -136,10 +138,10 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
         <div className="lg:col-span-5 bg-slate-950/40 border border-slate-900 rounded-3xl p-6 sm:p-8 flex flex-col justify-between space-y-8">
           <div className="space-y-6 text-right">
             <h3 className="font-serif font-bold text-2xl text-amber-400">
-              {contactInfo?.panelTitle || "مقر المؤسسة وقنوات التواصل"}
+              {t("contact_info_panel_title", contactInfo?.panelTitle || "مقر المؤسسة وقنوات التواصل")}
             </h3>
             <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed">
-              {contactInfo?.panelDescription || "تستقبلكم المؤسسة يومياً لاستقبال الاستفسارات وتوفير أدوات الخط الفاخرة لطلاب الحرف الشريف."}
+              {t("contact_panel_desc", contactInfo?.panelDescription || "تستقبلكم المؤسسة يومياً لاستقبال الاستفسارات وتوفير أدوات الخط الفاخرة لطلاب الحرف الشريف.")}
             </p>
 
             <div className="space-y-4 pt-4">
@@ -150,9 +152,9 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
                       {getContactIcon(item.icon)}
                     </div>
                     <div>
-                      <h4 className="font-sans font-bold text-sm text-slate-100">{item.title}</h4>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">{t(item.title, item.title)}</h4>
                       <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
-                        {item.value}
+                        {t(item.value, item.value)}
                       </p>
                     </div>
                   </div>
@@ -165,9 +167,11 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
                       <MapPin className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-sans font-bold text-sm text-slate-100">العنوان والموقع</h4>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">
+                        {t("contact_card_address_title", "العنوان والموقع")}
+                      </h4>
                       <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
-                        العراق، الموصل، الجانب الأيمن، قرب جامع النوري الكبير
+                        {t("contact_card_address_val", "العراق، الموصل، الجانب الأيمن، قرب جامع النوري الكبير")}
                       </p>
                     </div>
                   </div>
@@ -178,7 +182,9 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
                       <Phone className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-sans font-bold text-sm text-slate-100">رقم الهاتف</h4>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">
+                        {t("contact_card_phone_title", "رقم الهاتف")}
+                      </h4>
                       <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed" dir="ltr">
                         +964 770 123 4567
                       </p>
@@ -191,7 +197,9 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
                       <Mail className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-sans font-bold text-sm text-slate-100">البريد الإلكتروني</h4>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">
+                        {t("contact_card_email_title", "البريد الإلكتروني")}
+                      </h4>
                       <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
                         info@yousifdhannoun.org
                       </p>
@@ -204,9 +212,11 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
                       <Clock className="w-5 h-5" />
                     </div>
                     <div>
-                      <h4 className="font-sans font-bold text-sm text-slate-100">أوقات العمل</h4>
+                      <h4 className="font-sans font-bold text-sm text-slate-100">
+                        {t("contact_card_hours_title", "أوقات العمل")}
+                      </h4>
                       <p className="text-slate-400 text-xs sm:text-sm font-sans mt-0.5 leading-relaxed">
-                        السبت - الخميس: من ٩:٠٠ صباحاً وحتى ٥:٠٠ مساءً
+                        {t("contact_card_hours_val", "السبت - الخميس: من ٩:٠٠ صباحاً وحتى ٥:٠٠ مساءً")}
                       </p>
                     </div>
                   </div>
@@ -218,7 +228,7 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
           {/* Social Icons Bar */}
           <div className="space-y-4 pt-6 border-t border-slate-900">
             <p className="text-slate-300 font-sans text-xs font-bold text-right">
-              {contactInfo?.contactSocialLabel || customTexts?.contactSocialLabel || "تابعونا على مواقع التواصل الاجتماعي:"}
+              {t("contact_social_label", contactInfo?.contactSocialLabel || customTexts?.contactSocialLabel || "تابعونا على مواقع التواصل الاجتماعي:")}
             </p>
             <div className="flex flex-wrap items-center gap-3">
               {socialPlatforms.map((plat, pIdx) => {
@@ -244,21 +254,21 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
         <div className="lg:col-span-7 bg-slate-950/40 border border-slate-900 rounded-3xl p-6 sm:p-8 flex flex-col justify-between">
           <form onSubmit={handleSubmit} className="space-y-6 text-right">
             <h3 className="font-serif font-bold text-2xl text-amber-400">
-              {contactInfo?.contactFormTitle || customTexts?.contactFormTitle || "إرسال استفسار مباشر"}
+              {t("contact_form_title", contactInfo?.contactFormTitle || customTexts?.contactFormTitle || "أرسل لنا رسالة مباشرة")}
             </h3>
             
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
               {/* Name */}
               <div className="space-y-1.5">
                 <label className="text-xs font-sans font-semibold text-slate-400">
-                  {contactInfo?.contactFormLabelName || customTexts?.contactFormLabelName || "الاسم الكريم *"}
+                  {t("contact_form_label_name", contactInfo?.contactFormLabelName || customTexts?.contactFormLabelName || "الاسم الكامل")} *
                 </label>
                 <input
                   type="text"
                   required
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder={contactInfo?.contactFormPlaceholderName || customTexts?.contactFormPlaceholderName || "أدخل اسمك الكامل"}
+                  placeholder={t("contact_form_label_name", contactInfo?.contactFormPlaceholderName || customTexts?.contactFormPlaceholderName || "الاسم الكامل")}
                   className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/55 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans"
                 />
               </div>
@@ -266,7 +276,7 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
               {/* Email */}
               <div className="space-y-1.5">
                 <label className="text-xs font-sans font-semibold text-slate-400">
-                  {contactInfo?.contactFormLabelEmail || customTexts?.contactFormLabelEmail || "البريد الإلكتروني"}
+                  {t("contact_form_label_email", contactInfo?.contactFormLabelEmail || customTexts?.contactFormLabelEmail || "البريد الإلكتروني")}
                 </label>
                 <input
                   type="email"
@@ -282,13 +292,13 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
             {/* Subject */}
             <div className="space-y-1.5">
               <label className="text-xs font-sans font-semibold text-slate-400">
-                {contactInfo?.contactFormLabelSubject || customTexts?.contactFormLabelSubject || "موضوع الرسالة"}
+                {t("contact_form_label_subject", contactInfo?.contactFormLabelSubject || customTexts?.contactFormLabelSubject || "موضوع الرسالة")}
               </label>
               <input
                 type="text"
                 value={subject}
                 onChange={(e) => setSubject(e.target.value)}
-                placeholder={contactInfo?.contactFormPlaceholderSubject || customTexts?.contactFormPlaceholderSubject || "مثال: استفسار عن خط النسخ، طلب أدوات خط"}
+                placeholder={t("contact_form_label_subject", contactInfo?.contactFormPlaceholderSubject || customTexts?.contactFormPlaceholderSubject || "موضوع الرسالة")}
                 className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/55 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans"
               />
             </div>
@@ -296,14 +306,14 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
             {/* Message Body */}
             <div className="space-y-1.5">
               <label className="text-xs font-sans font-semibold text-slate-400">
-                {contactInfo?.contactFormLabelMessage || customTexts?.contactFormLabelMessage || "مضمون الرسالة أو الطلب *"}
+                {t("contact_form_label_message", contactInfo?.contactFormLabelMessage || customTexts?.contactFormLabelMessage || "نص الرسالة أو الاستفسار")} *
               </label>
               <textarea
                 required
                 rows={5}
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={contactInfo?.contactFormPlaceholderMessage || customTexts?.contactFormPlaceholderMessage || "أكتب استفسارك أو تفاصيل طلبك هنا..."}
+                placeholder={t("contact_form_label_message", contactInfo?.contactFormPlaceholderMessage || customTexts?.contactFormPlaceholderMessage || "نص الرسالة أو الاستفسار")}
                 className="w-full bg-slate-900 border border-slate-800 focus:border-amber-500/55 rounded-xl px-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans resize-none"
               ></textarea>
             </div>
@@ -319,7 +329,7 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
                 >
                   <Check className="w-5 h-5 shrink-0 text-green-400" />
                   <span>
-                    {contactInfo?.contactFormSuccessMsg || customTexts?.contactFormSuccessMsg || "شكراً لك! تم إرسال رسالتك بنجاح وسيتواصل معك فريق المؤسسة في أقرب وقت."}
+                    {t("contact_form_success_msg", contactInfo?.contactFormSuccessMsg || customTexts?.contactFormSuccessMsg || "شكراً لتواصلك معنا! تم استلام رسالتك بنجاح وسنقوم بالرد عليك في أقرب وقت.")}
                   </span>
                 </motion.div>
               )}
@@ -345,8 +355,8 @@ export default function ContactSection({ cards, socialLinks, contactInfo, custom
               <Send className="w-4 h-4" />
               <span>
                 {isSending 
-                  ? (contactInfo?.contactFormSendingBtn || customTexts?.contactFormSendingBtn || "جاري الإرسال والمزامنة...") 
-                  : (contactInfo?.contactFormSubmitBtn || customTexts?.contactFormSubmitBtn || "إرسال الرسالة الإلكترونية")}
+                  ? t("contact_form_sending_btn", contactInfo?.contactFormSendingBtn || customTexts?.contactFormSendingBtn || "جاري إرسال رسالتك...") 
+                  : t("contact_form_submit_btn", contactInfo?.contactFormSubmitBtn || customTexts?.contactFormSubmitBtn || "إرسال الرسالة الآن")}
               </span>
             </button>
           </form>

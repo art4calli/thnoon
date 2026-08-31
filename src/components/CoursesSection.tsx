@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { BookOpen, GraduationCap, Clock, Award, CheckCircle2 } from "lucide-react";
 import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
+import { useLanguage } from "../context/LanguageContext";
 
 interface CoursesSectionProps {
   cards: SheetRow[];
@@ -9,34 +10,50 @@ interface CoursesSectionProps {
 }
 
 export default function CoursesSection({ cards, header }: CoursesSectionProps) {
+  const { t } = useLanguage();
   // If no custom cards are uploaded yet, display a premium educational roadmap structure
   const hasCustomCards = cards && cards.length > 0;
 
-  const sectionBadge = header?.badge || "البناء الأكاديمي للخطاطين";
-  const sectionTitle = header?.title || "البرامج والمناهج التعليمية";
-  const sectionDesc = header?.description || "نقدم لكم مناهج دراسية كلاسيكية معتمدة ومنظمة تتبع خطوات المدرسة الذنونية الرائدة، تبدأ من تأسيس المبتدئين وحتى تأهيل المحترفين للحصول على الإجازة الخطية المباركة.";
+  const sectionBadge = t("courses_badge", header?.badge || "البناء الأكاديمي للخطاطين");
+  const sectionTitle = t("courses_title", header?.title || "البرامج والمناهج التعليمية");
+  const sectionDesc = t("courses_desc", header?.description || "نقدم لكم مناهج دراسية كلاسيكية معتمدة ومنظمة تتبع خطوات المدرسة الذنونية الرائدة، تبدأ من تأسيس المبتدئين وحتى تأهيل المحترفين للحصول على الإجازة الخطية المباركة.");
 
   const preConfiguredRoadmaps = [
     {
-      title: "دورة خط النسخ للمبتدئين",
-      duration: "٣ أشهر",
-      level: "مبتدئ",
-      description: "دراسة شاملة لقواعد كتابة الحروف والاتصالات الأساسية لخط النسخ وفق مدرسة الأستاذ يوسف ذنون الكلاسيكية.",
-      features: ["تشريح الحروف بالنقاط", "دراسة اتصالات الحروف الثنائية", "كتابة سطر متزن", "محاكاة كراسة الأستاذ"],
+      title: t("course_1_title", "دورة خط النسخ للمبتدئين"),
+      duration: t("course_1_duration", "٣ أشهر"),
+      level: t("course_1_level", "مبتدئ"),
+      description: t("course_1_desc", "دراسة شاملة لقواعد كتابة الحروف والاتصالات الأساسية لخط النسخ وفق مدرسة الأستاذ يوسف ذنون الكلاسيكية."),
+      features: [
+        t("course_1_f1", "تشريح الحروف بالنقاط"),
+        t("course_1_f2", "دراسة اتصالات الحروف الثنائية"),
+        t("course_1_f3", "كتابة سطر متزن"),
+        t("course_1_f4", "محاكاة كراسة الأستاذ")
+      ],
     },
     {
-      title: "دورة ديوان الجلي والديواني",
-      duration: "٤ أشهر",
-      level: "متوسط",
-      description: "الغوص في تفاصيل وانحناءات الخط الديواني بنوعيه العادي والجلي، وأسرار التركيب والملء الإبداعي.",
-      features: ["جماليات الحركة والانحناء", "التركيب الهرمي والبيضاوي", "زخرفة الفراغات والحركات", "تصميم لوحة تخرج"],
+      title: t("course_2_title", "دورة ديوان الجلي والديواني"),
+      duration: t("course_2_duration", "٤ أشهر"),
+      level: t("course_2_level", "متوسط"),
+      description: t("course_2_desc", "الغوص في تفاصيل وانحناءات الخط الديواني بنوعيه العادي والجلي، وأسرار التركيب والملء الإبداعي."),
+      features: [
+        t("course_2_f1", "جماليات الحركة والانحناء"),
+        t("course_2_f2", "التركيب الهرمي والبيضاوي"),
+        t("course_2_f3", "زخرفة الفراغات والحركات"),
+        t("course_2_f4", "تصميم لوحة تخرج")
+      ],
     },
     {
-      title: "أكاديمية خط الثلث الرصين",
-      duration: "٦ أشهر",
-      level: "متقدم",
-      description: "برنامج مكثف للخطاطين المتقدمين لدراسة خط الثلث، ميزان الحروف، كتابة التراكيب الدائرية والمعقدة.",
-      features: ["أسرار زاوية القلم في الثلث", "موازين الحروف المركبة", "بناء التراكيب المتداخلة", "إعداد اللوحة النهائية للإجازة"],
+      title: t("course_3_title", "أكاديمية خط الثلث الرصين"),
+      duration: t("course_3_duration", "٦ أشهر"),
+      level: t("course_3_level", "متقدم"),
+      description: t("course_3_desc", "برنامج مكثف للخطاطين المتقدمين لدراسة خط الثلث، ميزان الحروف، كتابة التراكيب الدائرية والمعقدة."),
+      features: [
+        t("course_3_f1", "أسرار زاوية القلم في الثلث"),
+        t("course_3_f2", "موازين الحروف المركبة"),
+        t("course_3_f3", "بناء التراكيب المتداخلة"),
+        t("course_3_f4", "إعداد اللوحة النهائية للإجازة")
+      ],
     },
   ];
 
@@ -81,10 +98,10 @@ export default function CoursesSection({ cards, header }: CoursesSectionProps) {
                 {/* Course Info */}
                 <div className="p-6 text-right space-y-3">
                   <h3 className="font-serif font-bold text-xl text-slate-100 group-hover:text-amber-400 transition-colors">
-                    {course.title}
+                    {t(course.title, course.title)}
                   </h3>
                   <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed whitespace-pre-line line-clamp-4">
-                    {course.description}
+                    {t(course.description, course.description)}
                   </p>
                 </div>
               </div>
@@ -97,7 +114,7 @@ export default function CoursesSection({ cards, header }: CoursesSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 text-xs font-sans font-bold py-3.5 px-4 rounded-xl shadow-lg shadow-amber-500/10 transition-all duration-300"
                   >
-                    <span>{course.buttonText || header?.buttonText || "تسجيل أو تفاصيل البرنامج"}</span>
+                    <span>{t(course.buttonText || header?.buttonText || "تسجيل أو تفاصيل البرنامج", course.buttonText || header?.buttonText || "تسجيل أو تفاصيل البرنامج")}</span>
                   </a>
                 </div>
               )}

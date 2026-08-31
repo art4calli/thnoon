@@ -11,6 +11,7 @@ import {
   Sparkles
 } from "lucide-react";
 import { SubscriberState } from "../types";
+import { useLanguage } from "../context/LanguageContext";
 import QrCodeScannerModal, { QrScanResult } from "./QrCodeScannerModal";
 
 interface SubscriberPortalProps {
@@ -29,6 +30,7 @@ export default function SubscriberPortal({
   onLogin,
   onOpenRegistration
 }: SubscriberPortalProps) {
+  const { t, dir } = useLanguage();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -37,7 +39,7 @@ export default function SubscriberPortal({
 
   const performLogin = async (u: string, p: string) => {
     if (!u || !p) {
-      setError("الرجاء إدخال اسم المستخدم وكلمة المرور");
+      setError(t("subscriber_login_missing_fields", "الرجاء إدخال اسم المستخدم وكلمة المرور"));
       return;
     }
 
@@ -51,11 +53,11 @@ export default function SubscriberPortal({
         onClose();
       } else {
         setIsLoading(false);
-        setError(response.message || "اسم المستخدم أو كلمة المرور غير صحيحة");
+        setError(response.message || t("subscriber_login_error_credentials", "اسم المستخدم أو كلمة المرور غير صحيحة"));
       }
     } catch (err: any) {
       setIsLoading(false);
-      setError("حدث خطأ أثناء محاولة الدخول والتحقق");
+      setError(t("subscriber_login_error_general", "حدث خطأ أثناء محاولة الدخول والتحقق"));
     }
   };
 
@@ -79,7 +81,7 @@ export default function SubscriberPortal({
     <>
       <AnimatePresence>
         {isOpen && !subscriber.isLoggedIn && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4" dir={dir}>
             {/* Background Blur Overlay */}
             <motion.div
               initial={{ opacity: 0 }}
@@ -94,14 +96,16 @@ export default function SubscriberPortal({
               initial={{ scale: 0.95, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 20, opacity: 0 }}
-              className="relative w-full max-w-md bg-slate-900 border-2 border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 text-right overflow-hidden"
+              className={`relative w-full max-w-md bg-slate-900 border-2 border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 overflow-hidden ${
+                dir === "rtl" ? "text-right" : "text-left"
+              }`}
             >
               <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600"></div>
 
               {/* Close Button */}
               <button
                 onClick={onClose}
-                className="absolute top-4 left-4 p-1.5 bg-slate-800/50 hover:bg-red-500 hover:text-white text-slate-400 rounded-full transition-colors cursor-pointer"
+                className={`absolute top-4 ${dir === "rtl" ? "left-4" : "right-4"} p-1.5 bg-slate-800/50 hover:bg-red-500 hover:text-white text-slate-400 rounded-full transition-colors cursor-pointer`}
               >
                 <X className="w-5 h-5" />
               </button>
@@ -111,9 +115,11 @@ export default function SubscriberPortal({
                 <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
                   <User className="w-6 h-6" />
                 </div>
-                <h3 className="font-serif font-bold text-2xl text-amber-400">بوابة المشتركين والطلاب</h3>
+                <h3 className="font-serif font-bold text-2xl text-amber-400">
+                  {t("subscriber_login_title", "تسجيل دخول بوابة المشتركين")}
+                </h3>
                 <p className="text-slate-400 font-sans text-xs mt-1 leading-relaxed">
-                  الرجاء تسجيل الدخول للانتقال مباشرة إلى صفحتك وموضوعك المخصص.
+                  {t("subscriber_login_subtitle", "أدخل رقم التسجيل الخاص بك أو امسح رمز الاستجابة السريعة (QR Code) للوصول المباشر إلى موادك الخاصة")}
                 </p>
               </div>
 
@@ -124,18 +130,24 @@ export default function SubscriberPortal({
                   onClick={() => setIsQrScannerOpen(true)}
                   className="w-full py-3 px-4 bg-gradient-to-r from-amber-500/20 via-yellow-500/20 to-amber-600/20 hover:from-amber-500/30 hover:to-amber-600/30 border border-amber-500/40 hover:border-amber-400 rounded-2xl text-amber-300 font-sans font-bold text-xs flex items-center justify-center gap-2.5 transition-all shadow-md cursor-pointer group"
                 >
-                  <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-xl group-hover:scale-110 transition-transform">
+                  <div className="p-1.5 bg-amber-500/20 text-amber-400 rounded-xl group-hover:scale-110 transition-transform shrink-0">
                     <Camera className="w-4 h-4" />
                   </div>
-                  <div className="text-right">
-                    <span className="block text-amber-300 font-bold">مسح رمز (QR Code) بكاميرا الجهاز</span>
-                    <span className="block text-slate-400 text-[10px] font-normal">تسجيل دخول فوري وسريع عبر بطاقة المشترك أو الإيميل</span>
+                  <div className={dir === "rtl" ? "text-right" : "text-left"}>
+                    <span className="block text-amber-300 font-bold">
+                      {t("subscriber_scan_qr_btn", "مسح رمز QR بالكاميرا")}
+                    </span>
+                    <span className="block text-slate-400 text-[10px] font-normal">
+                      {t("subscriber_scan_qr_desc", "تسجيل دخول فوري وسريع عبر بطاقة المشترك أو الإيميل")}
+                    </span>
                   </div>
-                  <QrCode className="w-4.5 h-4.5 text-amber-400 mr-auto opacity-75" />
+                  <QrCode className={`w-4.5 h-4.5 text-amber-400 ${dir === "rtl" ? "mr-auto" : "ml-auto"} opacity-75 shrink-0`} />
                 </button>
                 <div className="relative flex py-3 items-center">
                   <div className="flex-grow border-t border-slate-800"></div>
-                  <span className="flex-shrink mx-3 text-slate-500 text-[11px] font-sans">أو الدخول اليدوي بالاسم وكلمة المرور</span>
+                  <span className="flex-shrink mx-3 text-slate-500 text-[11px] font-sans">
+                    {t("subscriber_or_manual_login", "أو الدخول اليدوي بالاسم وكلمة المرور")}
+                  </span>
                   <div className="flex-grow border-t border-slate-800"></div>
                 </div>
               </div>
@@ -143,31 +155,39 @@ export default function SubscriberPortal({
               {/* Form elements */}
               <form onSubmit={handleSubmit} className="space-y-4">
                 <div className="space-y-1.5">
-                  <label className="text-xs font-sans font-semibold text-slate-400">اسم المستخدم للخطاط / المشترك</label>
+                  <label className="text-xs font-sans font-semibold text-slate-400">
+                    {t("subscriber_username_label", "اسم المستخدم للخطاط / المشترك")}
+                  </label>
                   <div className="relative">
-                    <User className="absolute right-3.5 top-3.5 w-4.5 h-4.5 text-amber-500/80" />
+                    <User className={`absolute ${dir === "rtl" ? "right-3.5" : "left-3.5"} top-3.5 w-4.5 h-4.5 text-amber-500/80`} />
                     <input
                       type="text"
                       required
                       value={username}
                       onChange={(e) => setUsername(e.target.value)}
-                      placeholder="أدخل اسم المستخدم المعين لك أو رقم التسجيل"
-                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/55 rounded-xl pr-11 pl-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans text-right"
+                      placeholder={t("subscriber_id_placeholder", "أدخل رقم التسجيل (مثال: YD-10203)")}
+                      className={`w-full bg-slate-950 border border-slate-800 focus:border-amber-500/55 rounded-xl ${
+                        dir === "rtl" ? "pr-11 pl-4 text-right" : "pl-11 pr-4 text-left"
+                      } py-3 text-sm text-slate-100 outline-none transition-colors font-sans`}
                     />
                   </div>
                 </div>
 
                 <div className="space-y-1.5">
-                  <label className="text-xs font-sans font-semibold text-slate-400">كلمة المرور أو رقم التسجيل الخاص بك</label>
+                  <label className="text-xs font-sans font-semibold text-slate-400">
+                    {t("subscriber_password_label", "كلمة المرور أو رقم التسجيل الخاص بك")}
+                  </label>
                   <div className="relative">
-                    <Lock className="absolute right-3.5 top-3.5 w-4.5 h-4.5 text-amber-500/80" />
+                    <Lock className={`absolute ${dir === "rtl" ? "right-3.5" : "left-3.5"} top-3.5 w-4.5 h-4.5 text-amber-500/80`} />
                     <input
                       type="password"
                       required
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="أدخل كلمة السر الخاصة بك"
-                      className="w-full bg-slate-950 border border-slate-800 focus:border-amber-500/55 rounded-xl pr-11 pl-4 py-3 text-sm text-slate-100 outline-none transition-colors font-sans text-right"
+                      placeholder={t("subscriber_password_placeholder", "أدخل كلمة السر الخاصة بك")}
+                      className={`w-full bg-slate-950 border border-slate-800 focus:border-amber-500/55 rounded-xl ${
+                        dir === "rtl" ? "pr-11 pl-4 text-right" : "pl-11 pr-4 text-left"
+                      } py-3 text-sm text-slate-100 outline-none transition-colors font-sans`}
                     />
                   </div>
                 </div>
@@ -189,7 +209,11 @@ export default function SubscriberPortal({
                   ) : (
                     <LogIn className="w-4.5 h-4.5" />
                   )}
-                  <span>{isLoading ? "جاري التحقق وقراءة موضوع الطالب، يرجى الانتظار..." : "دخول وفتح صفحة المشترك"}</span>
+                  <span>
+                    {isLoading
+                      ? t("subscriber_login_verifying", "جاري التحقق وقراءة موضوع الطالب، يرجى الانتظار...")
+                      : t("subscriber_login_btn", "تسجيل الدخول الآن")}
+                  </span>
                 </button>
               </form>
 
@@ -197,14 +221,18 @@ export default function SubscriberPortal({
               {isLoading && (
                 <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-sm z-20 flex flex-col items-center justify-center p-6 text-center space-y-3">
                   <div className="w-12 h-12 border-3 border-amber-500 border-t-transparent rounded-full animate-spin"></div>
-                  <h4 className="font-serif font-bold text-amber-400 text-lg">جاري التحقق وقراءة بيانات الطالب...</h4>
-                  <p className="text-slate-300 text-xs font-sans max-w-xs">يرجى الانتظار لحظات ريثما يتم جلب موضوعك المخصص من جدول البيانات وتجهيز صفحتك.</p>
+                  <h4 className="font-serif font-bold text-amber-400 text-lg">
+                    {t("subscriber_loading_header", "جاري التحقق وقراءة بيانات الطالب...")}
+                  </h4>
+                  <p className="text-slate-300 text-xs font-sans max-w-xs">
+                    {t("subscriber_loading_desc", "يرجى الانتظار لحظات ريثما يتم جلب موضوعك المخصص من جدول البيانات وتجهيز صفحتك.")}
+                  </p>
                 </div>
               )}
 
               <div className="mt-6 pt-4 border-t border-slate-800 text-center">
                 <p className="text-slate-400 text-xs font-sans">
-                  هل أنت مشترك جديد وغير مسجل بعد؟
+                  {t("subscriber_new_user_prompt", "هل أنت مشترك جديد وغير مسجل بعد؟")}
                 </p>
                 <button
                   type="button"
@@ -218,7 +246,7 @@ export default function SubscriberPortal({
                     }
                   }}
                 >
-                  راسل الإدارة الآن للحصول على حسابك وتفعيل الإشتراك
+                  {t("subscriber_contact_for_reg", "راسل الإدارة الآن للحصول على حسابك وتفعيل الإشتراك")}
                 </button>
               </div>
             </motion.div>
@@ -231,8 +259,8 @@ export default function SubscriberPortal({
         isOpen={isQrScannerOpen}
         onClose={() => setIsQrScannerOpen(false)}
         onScanSuccess={handleQrScanSuccess}
-        title="مسح رمز المشترك (QR Code)"
-        subtitle="وجّه كاميرا الهاتف أو الكمبيوتر أو التابلت نحو بطاقتك أو الإيميل ليتم تسجيل دخولك فوراً"
+        title={t("subscriber_scan_qr_modal_title", "مسح رمز المشترك (QR Code)")}
+        subtitle={t("subscriber_scan_qr_modal_sub", "وجّه كاميرا الهاتف أو الكمبيوتر أو التابلت نحو بطاقتك أو الإيميل ليتم تسجيل دخولك فوراً")}
       />
     </>
   );

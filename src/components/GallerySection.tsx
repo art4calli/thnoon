@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { ZoomIn, X, Film, Info, SlidersHorizontal, ChevronLeft, ChevronRight, Image as ImageIcon } from "lucide-react";
 import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
+import { useLanguage } from "../context/LanguageContext";
 
 interface GallerySectionProps {
   cards: SheetRow[];
@@ -10,13 +11,14 @@ interface GallerySectionProps {
 }
 
 export default function GallerySection({ cards, header }: GallerySectionProps) {
+  const { t } = useLanguage();
   const [selectedImage, setSelectedImage] = useState<{ url: string; title: string; desc: string } | null>(null);
   const [selectedVideo, setSelectedVideo] = useState<string | null>(null);
   const [filterType, setFilterType] = useState<string>("all");
 
-  const sectionBadge = header?.badge || "مخطوطات ولوحات فنية";
-  const sectionTitle = header?.title || "معرض روائع الخط العربي";
-  const sectionDesc = header?.description || "مجموعة متميزة من اللوحات الفنية الإبداعية التي صاغها الأستاذ يوسف ذنون ومجموعة من تلامذته الأكاديميين بمختلف أنواع الخطوط التقليدية الرائعة.";
+  const sectionBadge = t("gallery_badge", header?.badge || "مخطوطات ولوحات فنية");
+  const sectionTitle = t("gallery_title", header?.title || "معرض روائع الخط العربي");
+  const sectionDesc = t("gallery_desc", header?.description || "مجموعة متميزة من اللوحات الفنية الإبداعية التي صاغها الأستاذ يوسف ذنون ومجموعة من تلامذته الأكاديميين بمختلف أنواع الخطوط التقليدية الرائعة.");
 
   // Extract all unique non-empty card.type values for dynamic categories
   const uniqueTypes = Array.from(new Set(cards.map(c => c.type).filter(Boolean)));
@@ -111,10 +113,10 @@ export default function GallerySection({ cards, header }: GallerySectionProps) {
               {/* Text Description */}
               <div className="p-6 text-right">
                 <h3 className="font-serif font-bold text-xl text-slate-100 group-hover:text-amber-400 transition-colors">
-                  {card.title}
+                  {t(card.title, card.title)}
                 </h3>
                 <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed mt-2 line-clamp-3 whitespace-pre-line">
-                  {card.description}
+                  {t(card.description, card.description)}
                 </p>
               </div>
             </div>
@@ -127,7 +129,7 @@ export default function GallerySection({ cards, header }: GallerySectionProps) {
                   rel="noopener noreferrer"
                   className="w-full inline-block text-center mt-4 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300"
                 >
-                  {card.buttonText || header?.buttonText || "تصفح التفاصيل الإضافية"}
+                  {t(card.buttonText || header?.buttonText || "تصفح التفاصيل الإضافية", card.buttonText || header?.buttonText || "تصفح التفاصيل الإضافية")}
                 </a>
               </div>
             )}

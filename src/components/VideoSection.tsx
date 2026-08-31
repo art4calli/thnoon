@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from "motion/react";
 import { Play, Film, X, Calendar, Share2, Eye } from "lucide-react";
 import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
+import { useLanguage } from "../context/LanguageContext";
 
 interface VideoSectionProps {
   cards: SheetRow[];
@@ -10,11 +11,12 @@ interface VideoSectionProps {
 }
 
 export default function VideoSection({ cards, header }: VideoSectionProps) {
+  const { t } = useLanguage();
   const [selectedVideoUrl, setSelectedVideoUrl] = useState<string | null>(null);
 
-  const sectionBadge = header?.badge || "البعد البصري والتعليمي";
-  const sectionTitle = header?.title || "المكتبة المرئية والمحاضرات";
-  const sectionDesc = header?.description || "وثائقيات نادرة، محاضرات علمية للأستاذ يوسف ذنون، ودروس تطبيقية مسجلة تبسط قواعد الحرف وأسرار التركيب لطلاب ومحبي الخط العربي.";
+  const sectionBadge = t("video_badge", header?.badge || "البعد البصري والتعليمي");
+  const sectionTitle = t("video_title", header?.title || "المكتبة المرئية والمحاضرات");
+  const sectionDesc = t("video_desc", header?.description || "وثائقيات نادرة، محاضرات علمية للأستاذ يوسف ذنون، ودروس تطبيقية مسجلة تبسط قواعد الحرف وأسرار التركيب لطلاب ومحبي الخط العربي.");
 
   const getYoutubeEmbedUrl = (url: string) => {
     let videoId = "";
@@ -98,10 +100,10 @@ export default function VideoSection({ cards, header }: VideoSectionProps) {
                 {/* Video Info Content */}
                 <div className="p-6 text-right space-y-3">
                   <h3 className="font-serif font-bold text-lg text-slate-100 group-hover:text-amber-400 transition-colors leading-relaxed">
-                    {video.title}
+                    {t(video.title, video.title)}
                   </h3>
                   <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed line-clamp-3 whitespace-pre-line">
-                    {video.description}
+                    {t(video.description, video.description)}
                   </p>
                 </div>
               </div>
@@ -114,7 +116,7 @@ export default function VideoSection({ cards, header }: VideoSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-bold py-3 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300"
                   >
-                    <span>{video.buttonText || header?.buttonText || "فتح رابط الدرس المرفق"}</span>
+                    <span>{t(video.buttonText || header?.buttonText || "فتح رابط الدرس المرفق", video.buttonText || header?.buttonText || "فتح رابط الدرس المرفق")}</span>
                   </a>
                 </div>
               )}

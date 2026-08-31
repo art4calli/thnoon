@@ -11,10 +11,10 @@
  * 2. Static hosting deployments (Vercel, GitHub Pages, Netlify, custom domains)
  */
 
-import { RegistrationQuestion, RegistrationAnswerRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
+import { RegistrationQuestion, RegistrationAnswerRecord, SettingsSubscriberRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxtZDNWfT7zD0yuDCJ2UUs9i3rAU_K1aixjI5RDtamgXSq46lZUhjBsYutLVqRQlm7row/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyzR6Ovw9IwcsayEt05LR-hjxP2xHCs7G4QCTYqVwIWQUhOsJavGxZDKujpTp1ffwmjOw/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -1177,4 +1177,242 @@ export async function checkSubscriberAccountStatus(
   }
   return { exists: false, isBlocked: false, statusText: "", maxDevices: 1 };
 }
+
+/**
+ * Universal Settings Subscribers Fetcher (For Settings Subscribers Management Tab)
+ */
+export async function fetchSettingsSubscribersBridge(
+  explicitScriptUrl?: string,
+  explicitSpreadsheetId?: string
+): Promise<{ success: boolean; records: SettingsSubscriberRecord[]; message?: string }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+  const targetSpreadsheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
+
+  // 1. Try local Express API
+  try {
+    const res = await fetch(`/api/settings-subscribers?scriptUrl=${encodeURIComponent(targetScriptUrl)}`);
+    if (res.ok) {
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (data && data.success && Array.isArray(data.records)) {
+          return data;
+        }
+      }
+    }
+  } catch (e) {}
+
+  // 2. Try Apps Script Web App GET
+  try {
+    const gasUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getSettingsSubscribers`;
+    const res = await fetch(gasUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && (data.success || Array.isArray(data.records))) {
+        return {
+          success: true,
+          records: data.records || []
+        };
+      }
+    }
+  } catch (e) {}
+
+  // 3. Try Google Visualization API Direct Sheets Reader
+  try {
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=Settings`;
+    const gvizRes = await fetch(gvizUrl);
+    if (gvizRes.ok) {
+      const text = await gvizRes.text();
+      const jsonStart = text.indexOf("{");
+      const jsonEnd = text.lastIndexOf("}");
+      if (jsonStart !== -1 && jsonEnd !== -1) {
+        const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+        if (json && json.table && json.table.rows) {
+          const records: SettingsSubscriberRecord[] = [];
+          const rows = json.table.rows;
+
+          rows.forEach((r: any, rIdx: number) => {
+            if (!r || !r.c) return;
+            const getVal = (idx: number) => {
+              const cell = r.c[idx];
+              if (!cell || cell.v === null || cell.v === undefined) return "";
+              return cell.f !== undefined ? cell.f.toString().trim() : cell.v.toString().trim();
+            };
+
+            const topicId = getVal(0) || "1"; // Col A
+            const nameB = getVal(1);           // Col B
+            const nameZ = getVal(25);          // Col Z
+            const regId = getVal(26);          // Col AA
+            const status = getVal(27) || "مسموح"; // Col AB
+            const devCount = getVal(28) || "1";   // Col AC
+
+            const finalName = nameZ || nameB;
+            if (!finalName && !regId && !topicId) return;
+
+            const isAllowed = !(status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا");
+
+            records.push({
+              rowIndex: rIdx + 2,
+              name: finalName,
+              registrationId: regId,
+              topicId: topicId || "1",
+              status: status || "مسموح",
+              isAllowed,
+              deviceCount: devCount || "1",
+              rawRow: r.c.map((cell: any) => {
+                if (!cell || cell.v === null || cell.v === undefined) return "";
+                return cell.f !== undefined ? cell.f.toString().trim() : cell.v.toString().trim();
+              })
+            });
+          });
+
+          return {
+            success: true,
+            records
+          };
+        }
+      }
+    }
+  } catch (e) {}
+
+  return {
+    success: false,
+    records: [],
+    message: "تعذر جلب سجلات المشتركين من ورقة Settings. يرجى التحقق من الاتصال."
+  };
+}
+
+/**
+ * Universal Settings Subscriber Updater Bridge
+ */
+export async function updateSettingsSubscriberBridge(
+  params: {
+    rowIndex: number;
+    registrationId: string;
+    name: string;
+    topicId: string;
+    status: string;
+    deviceCount: string;
+    resetRegisteredDevices?: boolean;
+  },
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; message?: string }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+
+  // 1. Try local Express API
+  try {
+    const res = await fetch("/api/settings-subscribers/update", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...params, scriptUrl: targetScriptUrl })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return data;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Direct Apps Script Post
+  const result = await executeAppsScriptPost("updateSettingsSubscriber", {
+    ...params,
+    updatedData: {
+      name: params.name,
+      registrationId: params.registrationId,
+      topicId: params.topicId,
+      status: params.status,
+      deviceCount: params.deviceCount,
+      resetRegisteredDevices: params.resetRegisteredDevices
+    }
+  }, targetScriptUrl);
+
+  if (result.success && result.data && result.data.success) {
+    return { success: true, message: result.data.message || "تم تحديث بيانات المشترك بنجاح في ورقة Settings" };
+  }
+
+  return {
+    success: false,
+    message: result.error || result.data?.message || "فشل تحديث بيانات المشترك في الشيت"
+  };
+}
+
+/**
+ * Universal Settings Subscriber Deletion Bridge
+ */
+export async function deleteSettingsSubscriberBridge(
+  params: { rowIndex: number; registrationId: string },
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; message?: string }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+
+  // 1. Try local Express API
+  try {
+    const res = await fetch("/api/settings-subscribers/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...params, scriptUrl: targetScriptUrl })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return data;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Direct Apps Script Post
+  const result = await executeAppsScriptPost("deleteSettingsSubscriber", params, targetScriptUrl);
+  if (result.success && result.data && result.data.success) {
+    return { success: true, message: result.data.message || "تم حذف صف المشترك كاملاً بنجاح من ورقة Settings" };
+  }
+
+  return {
+    success: false,
+    message: result.error || result.data?.message || "فشل حذف صف المشترك من الشيت"
+  };
+}
+
+/**
+ * Universal Settings Subscriber Addition Bridge
+ */
+export async function addSettingsSubscriberBridge(
+  params: {
+    name: string;
+    registrationId: string;
+    topicId: string;
+    status: string;
+    deviceCount: string;
+  },
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; message?: string }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+
+  // 1. Try local Express API
+  try {
+    const res = await fetch("/api/settings-subscribers/add", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...params, scriptUrl: targetScriptUrl })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return data;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Direct Apps Script Post
+  const result = await executeAppsScriptPost("addSettingsSubscriber", params, targetScriptUrl);
+  if (result.success && result.data && result.data.success) {
+    return { success: true, message: result.data.message || "تمت إضافة المشترك بنجاح إلى ورقة Settings" };
+  }
+
+  return {
+    success: false,
+    message: result.error || result.data?.message || "فشل إضافة المشترك إلى الشيت"
+  };
+}
+
 

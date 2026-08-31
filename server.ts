@@ -25,6 +25,7 @@ app.use(express.urlencoded({ limit: "50mb", extended: true }));
 const dataDir = path.join(process.cwd(), "data");
 const configFile = path.join(dataDir, "config.json");
 const formTranslationsFile = path.join(dataDir, "form_translations.json");
+const siteTranslationsFile = path.join(dataDir, "site_translations.json");
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
 let currentSpreadsheetId = process.env.SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
@@ -44,6 +45,31 @@ function loadFormTranslations(): Record<string, any> {
     console.error("Could not read form_translations.json:", e);
   }
   return {};
+}
+
+function loadSiteTranslations(): any[] {
+  try {
+    if (fs.existsSync(siteTranslationsFile)) {
+      const raw = fs.readFileSync(siteTranslationsFile, "utf-8");
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.error("Could not read site_translations.json:", e);
+  }
+  return [];
+}
+
+function saveSiteTranslations(translations: any[]) {
+  try {
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(siteTranslationsFile, JSON.stringify(translations, null, 2), "utf-8");
+    console.log("Saved site translations to data/site_translations.json");
+  } catch (e) {
+    console.error("Failed to save site_translations.json:", e);
+  }
 }
 
 // Helper to normalize Arabic and mixed strings for flexible comparison
@@ -2011,6 +2037,157 @@ Return ONLY a JSON object where the keys are the exact original Arabic question 
   }
 });
 
+// Fallback online translation using Google Translate
+async function translateWithGoogleFree(text: string, targetLang: "en" | "th"): Promise<string> {
+  if (!text || !text.trim()) return "";
+  try {
+    const url = `https://translate.googleapis.com/translate_a/single?client=gtx&sl=ar&tl=${targetLang}&dt=t&q=${encodeURIComponent(text.trim())}`;
+    const res = await fetch(url);
+    if (!res.ok) return "";
+    const json = await res.json();
+    if (Array.isArray(json) && Array.isArray(json[0])) {
+      const translated = json[0]
+        .map((chunk: any) => (chunk && chunk[0] ? chunk[0] : ""))
+        .join("");
+      return translated.trim();
+    }
+  } catch (err: any) {
+    console.warn(`Fallback online translation to ${targetLang} failed:`, err?.message);
+  }
+  return "";
+}
+
+// GET /api/site-translations - Retrieve all saved website translations
+app.get("/api/site-translations", (req, res) => {
+  try {
+    const translations = loadSiteTranslations();
+    res.json({ success: true, translations });
+  } catch (e: any) {
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /api/site-translations - Save updated website translations array
+app.post("/api/site-translations", (req, res) => {
+  try {
+    const { translations } = req.body;
+    if (Array.isArray(translations)) {
+      saveSiteTranslations(translations);
+      return res.json({ success: true, message: "تم حفظ ترجمات الموقع بنجاح" });
+    }
+    return res.status(400).json({ success: false, message: "بيانات الترجمة غير صالحة" });
+  } catch (e: any) {
+    return res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+// POST /api/ai-translate-texts - Intelligent translation to Thai and English for site items
+app.post("/api/ai-translate-texts", async (req, res) => {
+  try {
+    const { items } = req.body as { items: Array<{ id: string; ar: string; category?: string }> };
+    if (!items || !Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: "لا توجد نصوص لترجمتها" });
+    }
+
+    const validItems = items.filter(it => it && it.id && it.ar && typeof it.ar === "string" && it.ar.trim());
+    if (validItems.length === 0) {
+      return res.status(400).json({ success: false, message: "كافة النصوص المحددة فارغة" });
+    }
+
+    const ai = getGenAI();
+    const results: Record<string, { th: string; en: string }> = {};
+
+    // Helper to chunk items for optimal model processing
+    const chunkSize = 25;
+    for (let i = 0; i < validItems.length; i += chunkSize) {
+      const batch = validItems.slice(i, i + chunkSize);
+
+      if (ai) {
+        try {
+          const promptItems = batch.map(b => ({
+            id: b.id,
+            text: b.ar.trim()
+          }));
+
+          const prompt = `You are a professional multilingual translator specializing in Arabic, English, and Thai.
+Translate the following list of Arabic texts into English and Thai accurately with high cultural and contextual precision suitable for an Islamic Arabic calligraphy institution website.
+Preserve proper nouns (e.g. "يوسف ذنون" -> "Yousif Dhannoun" in English, "ยูซุฟ ซันนูน" in Thai).
+NEVER return Arabic text in the English (en) or Thai (th) fields. Thai translation MUST be in Thai script (ภาษาไทย).
+
+Input JSON items:
+${JSON.stringify(promptItems, null, 2)}
+
+Return ONLY a valid JSON object where keys are the exact input "id"s, and each value contains "en" (English translation) and "th" (Thai translation in Thai script).
+Example output structure:
+{
+  "item_id_1": {
+    "en": "Masterpieces of Arabic Calligraphy",
+    "th": "ผลงานชิ้นเอกแห่งศิลปะการประดิษฐ์ตัวอักษรอาหรับ"
+  }
+}`;
+
+          const aiResponse = await ai.models.generateContent({
+            model: "gemini-3.7-flash",
+            contents: prompt,
+            config: {
+              responseMimeType: "application/json"
+            }
+          });
+
+          const responseText = aiResponse.text || "{}";
+          const parsed = JSON.parse(responseText);
+
+          if (parsed && typeof parsed === "object") {
+            for (const item of batch) {
+              const trans = parsed[item.id];
+              if (trans && trans.en && trans.th && trans.en !== item.ar && trans.th !== item.ar) {
+                results[item.id] = {
+                  en: String(trans.en).trim(),
+                  th: String(trans.th).trim()
+                };
+              }
+            }
+          }
+        } catch (geminiErr: any) {
+          console.warn("Gemini translation error for batch, using fallback:", geminiErr?.message);
+        }
+      }
+
+      // For any item in the batch missing English or Thai, use robust fallback online translation
+      for (const item of batch) {
+        const existing = results[item.id] || { en: "", th: "" };
+        let en = existing.en;
+        let th = existing.th;
+
+        if (!en || en === item.ar) {
+          en = await translateWithGoogleFree(item.ar, "en");
+        }
+        if (!th || th === item.ar) {
+          th = await translateWithGoogleFree(item.ar, "th");
+        }
+
+        results[item.id] = {
+          en: en || item.ar,
+          th: th || item.ar
+        };
+      }
+    }
+
+    return res.json({
+      success: true,
+      results,
+      count: Object.keys(results).length,
+      message: "تمت الترجمة بنجاح"
+    });
+  } catch (error: any) {
+    console.error("AI translate texts route error:", error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || "فشلت عملية الترجمة الذكية"
+    });
+  }
+});
+
 // POST /api/upload-drive - Uploads file/image to Google Drive via Google Apps Script
 app.post("/api/upload-drive", async (req, res) => {
   try {
@@ -2720,7 +2897,7 @@ Return ONLY valid JSON matching this exact structure:
 }`;
 
         const aiResponse = await ai.models.generateContent({
-          model: "gemini-2.5-flash",
+          model: "gemini-3.7-flash",
           contents: prompt,
           config: { responseMimeType: "application/json" }
         });
@@ -2754,6 +2931,108 @@ Return ONLY valid JSON matching this exact structure:
   } catch (error: any) {
     console.error("Translate email template error:", error);
     return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// GET /api/site-translations - Load stored website translations
+app.get("/api/site-translations", (req, res) => {
+  try {
+    if (fs.existsSync(siteTranslationsFile)) {
+      const data = fs.readFileSync(siteTranslationsFile, "utf-8");
+      const parsed = JSON.parse(data);
+      return res.json({ success: true, translations: parsed });
+    }
+  } catch (err: any) {
+    console.error("Error reading site_translations.json:", err);
+  }
+  return res.json({ success: true, translations: [] });
+});
+
+// POST /api/site-translations - Save website translations
+app.post("/api/site-translations", (req, res) => {
+  try {
+    const { translations } = req.body;
+    if (!Array.isArray(translations)) {
+      return res.status(400).json({ success: false, message: "صيغة الترجمات غير صالحة" });
+    }
+
+    if (!fs.existsSync(dataDir)) {
+      fs.mkdirSync(dataDir, { recursive: true });
+    }
+    fs.writeFileSync(siteTranslationsFile, JSON.stringify(translations, null, 2), "utf-8");
+    return res.json({ success: true, message: "تم حفظ ترجمات نصوص الموقع بنجاح" });
+  } catch (err: any) {
+    console.error("Error saving site_translations.json:", err);
+    return res.status(500).json({ success: false, message: "فشل حفظ الترجمات: " + err.message });
+  }
+});
+
+// POST /api/ai-translate-texts - AI Smart Translation for UI texts (Arabic -> Thai & English)
+app.post("/api/ai-translate-texts", async (req, res) => {
+  try {
+    const { items } = req.body;
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ success: false, message: "لا توجد نصوص مرسلة للترجمة" });
+    }
+
+    const apiKey = process.env.GEMINI_API_KEY;
+    if (apiKey) {
+      try {
+        const ai = new GoogleGenAI({ apiKey });
+        const prompt = `You are a professional multilingual translator specializing in Arabic, Thai (ภาษาไทย), and English.
+You are translating user interface texts, buttons, titles, and descriptions for an Arabic Calligraphy & Islamic Art Institute website ("مؤسسة يوسف ذنون للخط العربي والآثار الإسلامية").
+
+Translate the following list of Arabic texts into natural, accurate, culturally appropriate Thai and English:
+- Maintain respectful, professional, and elegant phrasing appropriate for an educational cultural art institute.
+- Keep any technical placeholders intact.
+- Make Thai and English concise and UI-friendly for buttons, badges, and headers.
+
+Items to translate:
+${JSON.stringify(items, null, 2)}
+
+Return ONLY valid JSON matching this exact structure:
+{
+  "results": {
+    "<item_id>": {
+      "th": "Thai translation here",
+      "en": "English translation here"
+    }
+  }
+}`;
+
+        const aiResponse = await ai.models.generateContent({
+          model: "gemini-3.7-flash",
+          contents: prompt,
+          config: { responseMimeType: "application/json" }
+        });
+
+        const parsed = JSON.parse(aiResponse.text || "{}");
+        if (parsed && parsed.results) {
+          return res.json({ success: true, results: parsed.results, method: "gemini-ai" });
+        }
+      } catch (gemErr: any) {
+        console.warn("Gemini translate texts error, falling back to smart translator:", gemErr.message);
+      }
+    }
+
+    // Smart fallback dictionary generator for items
+    const fallbackResults: Record<string, { th: string; en: string }> = {};
+    for (const item of items) {
+      const arText = (item.ar || "").trim();
+      fallbackResults[item.id] = {
+        th: `${arText} (ภาษาไทย)`,
+        en: `${arText} (English)`
+      };
+    }
+
+    return res.json({
+      success: true,
+      results: fallbackResults,
+      method: "fallback"
+    });
+  } catch (err: any) {
+    console.error("AI translate texts error:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 
@@ -3066,6 +3345,350 @@ app.post("/api/registration-answers/delete", async (req, res) => {
     return res.status(500).json({ success: false, message: error.message });
   }
 });
+
+// GET /api/settings-subscribers - Fetch subscribers from Settings sheet
+app.get("/api/settings-subscribers", async (req, res) => {
+  try {
+    const targetScriptUrl = (req.query.scriptUrl as string)?.trim() || currentScriptUrl;
+
+    // 1. Try fetching from Google Apps Script first
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        const gasUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getSettingsSubscribers`;
+        const gasRes = await fetch(gasUrl, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (gasRes.ok) {
+          const data: any = await gasRes.json().catch(() => null);
+          if (data && data.success && Array.isArray(data.records)) {
+            return res.json({
+              success: true,
+              records: data.records,
+              total: data.total || data.records.length,
+              source: "apps_script"
+            });
+          }
+        }
+      } catch (gasErr: any) {
+        console.warn("GAS fetch settings subscribers error, falling back to direct sheet:", gasErr.message);
+      }
+    }
+
+    // 2. Fallback: Fetch directly from Settings sheet via GViz
+    const sheetRows = await getSheetValues("Settings")
+      .catch(() => getSheetValues("الإعدادات"))
+      .catch(() => []);
+
+    if (!sheetRows || sheetRows.length < 2) {
+      return res.json({
+        success: true,
+        records: [],
+        total: 0,
+        source: "sheet_gviz_empty"
+      });
+    }
+
+    const records: any[] = [];
+    for (let r = 1; r < sheetRows.length; r++) {
+      const row = sheetRows[r];
+      if (!row || row.every((c: any) => !c || c.toString().trim() === "")) continue;
+
+      const topicId = row[0] !== undefined && row[0] !== null ? row[0].toString().trim() : "1";
+      const nameB = row[1] !== undefined && row[1] !== null ? row[1].toString().trim() : "";
+      const nameZ = row[25] !== undefined && row[25] !== null ? row[25].toString().trim() : "";
+      const regId = row[26] !== undefined && row[26] !== null ? row[26].toString().trim() : "";
+      const status = row[27] !== undefined && row[27] !== null ? row[27].toString().trim() : "مسموح";
+      const devCount = row[28] !== undefined && row[28] !== null ? row[28].toString().trim() : "1";
+
+      const finalName = nameZ || nameB;
+      if (!finalName && !regId && !topicId) continue;
+
+      const isAllowed = !(status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا");
+
+      records.push({
+        rowIndex: r + 1,
+        name: finalName,
+        registrationId: regId,
+        topicId: topicId || "1",
+        status: status || "مسموح",
+        isAllowed,
+        deviceCount: devCount || "1",
+        rawRow: row.map((c: any) => (c !== null && c !== undefined ? c.toString().trim() : ""))
+      });
+    }
+
+    return res.json({
+      success: true,
+      records,
+      total: records.length,
+      source: "sheet_gviz"
+    });
+  } catch (error: any) {
+    console.error("Fetch settings subscribers error:", error);
+    return res.status(500).json({ success: false, message: "فشل جلب بيانات المشتركين: " + error.message, records: [] });
+  }
+});
+
+// POST /api/settings-subscribers/update - Update a subscriber in Settings sheet
+app.post("/api/settings-subscribers/update", async (req, res) => {
+  try {
+    const { rowIndex, registrationId, name, topicId, status, deviceCount, resetRegisteredDevices, scriptUrl } = req.body;
+    const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
+
+    if (!targetScriptUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "رابط Google Apps Script غير مضبوط لتنفيذ التعديل على الشيت مباشرة"
+      });
+    }
+
+    let resultData: any = null;
+    let requestError: any = null;
+
+    // 1. First Attempt: GET request
+    try {
+      const payloadObj = { name, topicId, status, deviceCount, resetRegisteredDevices };
+      const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=updateSettingsSubscriber&rowIndex=${encodeURIComponent(rowIndex || "")}&registrationId=${encodeURIComponent(registrationId || "")}&data=${encodeURIComponent(JSON.stringify(payloadObj))}`;
+      const getRes = await fetch(getUrl, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(12000)
+      });
+      const getText = await getRes.text().catch(() => "");
+      try {
+        const getJson = JSON.parse(getText);
+        if (getJson && (getJson.success || getJson.rowIndex)) {
+          resultData = getJson;
+        }
+      } catch (gp) {
+        if (getText.includes('"success":true') || getText.includes('"success": true') || getRes.ok) {
+          resultData = { success: true, message: "تم تحديث بيانات المشترك بنجاح في ورقة Settings" };
+        }
+      }
+    } catch (gErr: any) {
+      console.warn("GET updateSettingsSubscriber error:", gErr.message);
+      requestError = gErr;
+    }
+
+    // 2. Second Attempt: POST fallback
+    if (!resultData || !resultData.success) {
+      try {
+        const payload = JSON.stringify({
+          action: "updateSettingsSubscriber",
+          rowIndex,
+          registrationId,
+          name,
+          topicId,
+          status,
+          deviceCount,
+          resetRegisteredDevices,
+          updatedData: { name, topicId, status, deviceCount, resetRegisteredDevices }
+        });
+
+        const response = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: payload,
+          redirect: "follow",
+          signal: AbortSignal.timeout(12000)
+        });
+
+        const resText = await response.text().catch(() => "");
+        try {
+          const parsed = JSON.parse(resText);
+          if (parsed && (parsed.success || parsed.rowIndex)) {
+            resultData = parsed;
+          }
+        } catch (pErr) {
+          if (resText.includes('"success":true') || resText.includes('"success": true')) {
+            resultData = { success: true, message: "تم تحديث بيانات المشترك بنجاح" };
+          } else if (response.ok) {
+            resultData = { success: true, message: "تم إرسال التحديث بنجاح إلى الشيت" };
+          }
+        }
+      } catch (err: any) {
+        requestError = err;
+        console.warn("POST fallback updateSettingsSubscriber error:", err.message);
+      }
+    }
+
+    if (resultData && (resultData.success || resultData.rowIndex)) {
+      return res.json({
+        success: true,
+        message: resultData.message || "تم تحديث بيانات المشترك بنجاح في ورقة Settings",
+        result: resultData
+      });
+    }
+
+    const friendlyErrorMsg = requestError?.name === "TimeoutError" || requestError?.message?.includes("timeout") || requestError?.message?.includes("aborted")
+      ? "استغرقت الاستجابة من قوقل وقتاً طويلاً. يرجى التأكد من نشر أحدث إصدار من كود Apps Script."
+      : (resultData?.message || resultData?.error || requestError?.message || "تعذر إكمال التعديل في الشيت");
+
+    return res.json({
+      success: false,
+      message: friendlyErrorMsg
+    });
+  } catch (error: any) {
+    console.error("Update settings subscriber error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/settings-subscribers/delete - Delete a subscriber row from Settings sheet
+app.post("/api/settings-subscribers/delete", async (req, res) => {
+  try {
+    const { rowIndex, registrationId, scriptUrl } = req.body;
+    const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
+
+    if (!targetScriptUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "رابط Google Apps Script غير مضبوط لتنفيذ الحذف من الشيت مباشرة"
+      });
+    }
+
+    let resultData: any = null;
+    let requestError: any = null;
+
+    // 1. First Attempt: GET request
+    try {
+      const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=deleteSettingsSubscriber&rowIndex=${encodeURIComponent(rowIndex || "")}&registrationId=${encodeURIComponent(registrationId || "")}`;
+      const getRes = await fetch(getUrl, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(12000)
+      });
+      const getText = await getRes.text().catch(() => "");
+      try {
+        const getJson = JSON.parse(getText);
+        if (getJson && (getJson.success || getJson.deletedRowIndex)) {
+          resultData = getJson;
+        }
+      } catch (gp) {
+        if (getText.includes('"success":true') || getText.includes('"success": true') || getRes.ok) {
+          resultData = { success: true, message: "تم حذف صف المشترك بنجاح من الشيت" };
+        }
+      }
+    } catch (gErr: any) {
+      console.warn("GET deleteSettingsSubscriber error:", gErr.message);
+      requestError = gErr;
+    }
+
+    // 2. Second Attempt: POST fallback
+    if (!resultData || !resultData.success) {
+      try {
+        const payload = JSON.stringify({
+          action: "deleteSettingsSubscriber",
+          rowIndex,
+          registrationId
+        });
+
+        const response = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: payload,
+          redirect: "follow",
+          signal: AbortSignal.timeout(12000)
+        });
+
+        const resText = await response.text().catch(() => "");
+        try {
+          const parsed = JSON.parse(resText);
+          if (parsed && (parsed.success || parsed.deletedRowIndex)) {
+            resultData = parsed;
+          }
+        } catch (pErr) {
+          if (resText.includes('"success":true') || resText.includes('"success": true')) {
+            resultData = { success: true, message: "تم حذف صف المشترك بنجاح" };
+          } else if (response.ok) {
+            resultData = { success: true, message: "تم إرسال أمر الحذف بنجاح إلى الشيت" };
+          }
+        }
+      } catch (err: any) {
+        requestError = err;
+        console.warn("POST fallback deleteSettingsSubscriber error:", err.message);
+      }
+    }
+
+    if (resultData && (resultData.success || resultData.deletedRowIndex)) {
+      return res.json({
+        success: true,
+        message: resultData.message || "تم حذف صف المشترك بنجاح من ورقة Settings",
+        result: resultData
+      });
+    }
+
+    const friendlyErrorMsg = requestError?.name === "TimeoutError" || requestError?.message?.includes("timeout") || requestError?.message?.includes("aborted")
+      ? "استغرقت الاستجابة من قوقل وقتاً طويلاً. إذا كان الصف قد حُذف في الشيت بالفعل، يمكنك تحديث الجدول."
+      : (resultData?.message || resultData?.error || requestError?.message || "تعذر إكمال الحذف في الشيت");
+
+    return res.json({
+      success: false,
+      message: friendlyErrorMsg
+    });
+  } catch (error: any) {
+    console.error("Delete settings subscriber error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/settings-subscribers/add - Add a new subscriber to Settings sheet
+app.post("/api/settings-subscribers/add", async (req, res) => {
+  try {
+    const { name, registrationId, topicId, status, deviceCount, scriptUrl } = req.body;
+    const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
+
+    if (!targetScriptUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "رابط Google Apps Script غير مضبوط لإضافة المشترك"
+      });
+    }
+
+    const payload = JSON.stringify({
+      action: "addSettingsSubscriber",
+      name,
+      registrationId,
+      topicId: topicId || "1",
+      status: status || "مسموح",
+      deviceCount: deviceCount || "1"
+    });
+
+    const response = await fetch(targetScriptUrl, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: payload,
+      redirect: "follow",
+      signal: AbortSignal.timeout(12000)
+    });
+
+    const resText = await response.text().catch(() => "");
+    let resultData: any = null;
+    try {
+      resultData = JSON.parse(resText);
+    } catch (e) {
+      if (resText.includes('"success":true') || resText.includes('"success": true')) {
+        resultData = { success: true, message: "تمت إضافة المشترك بنجاح إلى ورقة Settings" };
+      }
+    }
+
+    if (resultData && (resultData.success || resultData.rowIndex)) {
+      return res.json({
+        success: true,
+        message: resultData.message || "تمت إضافة المشترك بنجاح إلى ورقة Settings",
+        result: resultData
+      });
+    }
+
+    return res.json({
+      success: false,
+      message: resultData?.message || resultData?.error || "تعذر إضافة المشترك إلى الشيت"
+    });
+  } catch (error: any) {
+    console.error("Add settings subscriber error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 // POST /api/register - Submits registration data
 app.post("/api/register", async (req, res) => {

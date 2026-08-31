@@ -2,6 +2,7 @@ import { motion } from "motion/react";
 import { ShoppingBag, Box, BadgeCheck, CheckCircle, ExternalLink } from "lucide-react";
 import { SheetRow, SectionHeaderData } from "../types";
 import CardMediaSlider from "./CardMediaSlider";
+import { useLanguage } from "../context/LanguageContext";
 
 interface ToolsSectionProps {
   cards: SheetRow[];
@@ -9,29 +10,30 @@ interface ToolsSectionProps {
 }
 
 export default function ToolsSection({ cards, header }: ToolsSectionProps) {
+  const { t } = useLanguage();
   const hasCustomCards = cards && cards.length > 0;
 
-  const sectionBadge = header?.badge || "مستلزمات الحرف العربي الفاخرة";
-  const sectionTitle = header?.title || "أدوات ومستلزمات الخط العربي";
-  const sectionDesc = header?.description || "توفر المؤسسة أجود وأندر أدوات الخط الكلاسيكية المعالجة يدوياً لضمان كتابة دقيقة وانسيابية مطلقة للحبر على الصفحات المقهرة.";
+  const sectionBadge = t("tools_badge", header?.badge || "مستلزمات الحرف العربي الفاخرة");
+  const sectionTitle = t("tools_title", header?.title || "أدوات ومستلزمات الخط العربي");
+  const sectionDesc = t("tools_desc", header?.description || "توفر المؤسسة أجود وأندر أدوات الخط الكلاسيكية المعالجة يدوياً لضمان كتابة دقيقة وانسيابية مطلقة للحبر على الصفحات المقهرة.");
 
   const standardTools = [
     {
-      title: "أقلام خط قصب اليد الطومار",
-      desc: "مجموعة أقلام خط قصب هندية ومصري معالجة ومقطوعة بحرفية عالية لتناسب خطوط الثلث والنسخ والجلي.",
-      price: "متوفر بالمؤسسة",
+      title: t("tool_1_title", "أقلام خط قصب اليد الطومار"),
+      desc: t("tool_1_desc", "مجموعة أقلام خط قصب هندية ومصري معالجة ومقطوعة بحرفية عالية لتناسب خطوط الثلث والنسخ والجلي."),
+      price: t("tool_price_available", "متوفر بالمؤسسة"),
       img: "https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&q=80&w=600"
     },
     {
-      title: "الورق المقهر الياباني الفاخر",
-      desc: "أوراق مقهرة ومصقولة بالبيض والنشا الطبيعي بشكل يدوي تماماً، معدة لاستقبال الحبر دون تشرب أو تمدد للحرف.",
-      price: "متوفر بالمؤسسة",
+      title: t("tool_2_title", "الورق المقهر الياباني الفاخر"),
+      desc: t("tool_2_desc", "أوراق مقهرة ومصقولة بالبيض والنشا الطبيعي بشكل يدوي تماماً، معدة لاستقبال الحبر دون تشرب أو تمدد للحرف."),
+      price: t("tool_price_available", "متوفر بالمؤسسة"),
       img: "https://images.unsplash.com/photo-1586075010923-2dd4570fb338?auto=format&fit=crop&q=80&w=600"
     },
     {
-      title: "محابر الحبر العربي والحرير الطبيعي",
-      desc: "محابر زجاجية فاخرة تحتوي على خيوط الحرير الطبيعي (الليقة) مشبعة بأحبار السخام الطبيعية السوداء والملونة.",
-      price: "متوفر بالمؤسسة",
+      title: t("tool_3_title", "محابر الحبر العربي والحرير الطبيعي"),
+      desc: t("tool_3_desc", "محابر زجاجية فاخرة تحتوي على خيوط الحرير الطبيعي (الليقة) مشبعة بأحبار السخام الطبيعية السوداء والملونة."),
+      price: t("tool_price_available", "متوفر بالمؤسسة"),
       img: "https://images.unsplash.com/photo-1513542789411-b6a5d4f31634?auto=format&fit=crop&q=80&w=600"
     }
   ];
@@ -77,10 +79,10 @@ export default function ToolsSection({ cards, header }: ToolsSectionProps) {
                 {/* Tool Info */}
                 <div className="p-6 text-right space-y-3">
                   <h3 className="font-serif font-bold text-lg text-slate-100 group-hover:text-amber-400 transition-colors">
-                    {tool.title}
+                    {t(tool.title, tool.title)}
                   </h3>
                   <p className="text-slate-400 font-sans text-xs sm:text-sm leading-relaxed whitespace-pre-line line-clamp-4">
-                    {tool.description}
+                    {t(tool.description, tool.description)}
                   </p>
                 </div>
               </div>
@@ -93,7 +95,7 @@ export default function ToolsSection({ cards, header }: ToolsSectionProps) {
                     rel="noopener noreferrer"
                     className="w-full inline-flex items-center justify-center gap-2 bg-slate-900 hover:bg-amber-500 hover:text-slate-950 text-amber-400 text-xs font-sans font-bold py-3.5 px-4 rounded-xl border border-amber-500/20 hover:border-transparent transition-all duration-300"
                   >
-                    <span>{tool.buttonText || header?.buttonText || "طلب الأداة / فتح الرابط"}</span>
+                    <span>{t(tool.buttonText || header?.buttonText || "طلب الأداة / فتح الرابط", tool.buttonText || header?.buttonText || "طلب الأداة / فتح الرابط")}</span>
                     <ExternalLink className="w-3.5 h-3.5" />
                   </a>
                 </div>
