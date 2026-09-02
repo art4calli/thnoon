@@ -142,6 +142,7 @@ export interface AppData {
   biography?: BiographyData;
   sectionHeaders?: Record<string, SectionHeaderData>;
   customTexts?: CustomTexts;
+  siteTranslations?: any[];
 }
 
 export interface SubscriberCard {

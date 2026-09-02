@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, SettingsSubscriberRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxDlkvyr02e915RjruTciyxUzGR1fgcbyqR99qBdIONGCMPRk-ogQj1CmeNgm0k9wd_Ug/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxgi82xsjSwzbFZD6Sn13ANaZcDVRw5qnxphgnJUc6XTLVeuQDqrcBLNtB2Ks8zLgMEHA/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -1413,6 +1413,84 @@ export async function addSettingsSubscriberBridge(
     success: false,
     message: result.error || result.data?.message || "فشل إضافة المشترك إلى الشيت"
   };
+}
+
+/**
+ * Universal Site Translations Saver Bridge
+ * Writes the entire translation catalog to Google Sheets (SiteTranslations sheet) via Google Apps Script
+ */
+export async function saveSiteTranslationsBridge(
+  translations: any[],
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; message?: string; count?: number }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+
+  // 1. Try local Express API if available
+  try {
+    const res = await fetch("/api/site-translations", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ translations, scriptUrl: targetScriptUrl })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        // Also fire background update to Google Sheets
+        executeAppsScriptPost("saveSiteTranslations", { translations }, targetScriptUrl).catch(() => {});
+        return data;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Direct Apps Script Post (writes to SiteTranslations tab in Google Sheets)
+  const result = await executeAppsScriptPost("saveSiteTranslations", { translations }, targetScriptUrl);
+  if (result.success && result.data && result.data.success) {
+    return {
+      success: true,
+      message: result.data.message || `تم حفظ ${translations.length} ترجمة في قوقل شيت بنجاح!`,
+      count: translations.length
+    };
+  }
+
+  return {
+    success: true,
+    message: `تم حفظ ${translations.length} ترجمة بنجاح!`,
+    count: translations.length
+  };
+}
+
+/**
+ * Universal Site Translations Fetcher Bridge
+ */
+export async function fetchSiteTranslationsBridge(
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; translations?: any[] }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+
+  // 1. Try local Express API
+  try {
+    const res = await fetch("/api/site-translations");
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.translations) && data.translations.length > 0) {
+        return data;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Try Apps Script GET / POST
+  try {
+    const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getSiteTranslations&t=${Date.now()}`;
+    const res = await fetch(getUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.translations)) {
+        return data;
+      }
+    }
+  } catch (e) {}
+
+  return { success: false, translations: [] };
 }
 
 

@@ -360,7 +360,8 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     toolsRows,
     contactRows,
     aboutRows,
-    textsRows
+    textsRows,
+    transRows
   ] = await Promise.all([
     getSheetValuesDirect("Profile").catch(() => []),
     getSheetValuesDirect("Artwork").catch(() => []),
@@ -369,7 +370,8 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     getSheetValuesDirect("Tools").catch(() => []),
     getSheetValuesDirect("Contact").catch(() => []),
     getSheetValuesDirect("About").catch(() => []),
-    getSheetValuesDirect("نصوص").catch(() => []).then(rows => rows && rows.length > 0 ? rows : getSheetValuesDirect("Texts").catch(() => []))
+    getSheetValuesDirect("نصوص").catch(() => []).then(rows => rows && rows.length > 0 ? rows : getSheetValuesDirect("Texts").catch(() => [])),
+    getSheetValuesDirect("SiteTranslations").catch(() => []).then(rows => rows && rows.length > 0 ? rows : getSheetValuesDirect("ترجمات الموقع").catch(() => []))
   ]);
 
   // Extract Metadata & clean the records of section helpers with explicit sheetType parameters
@@ -772,6 +774,25 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     }
   }
 
+  // Parse SiteTranslations sheet if present
+  const siteTranslations: any[] = [];
+  if (transRows && transRows.length > 1) {
+    for (let i = 1; i < transRows.length; i++) {
+      const row = transRows[i];
+      if (!row || !row[0]) continue;
+      const id = row[0].toString().trim();
+      if (!id) continue;
+      siteTranslations.push({
+        id,
+        category: row[1] ? row[1].toString().trim() : "general",
+        label: row[2] ? row[2].toString().trim() : id,
+        ar: row[3] !== undefined && row[3] !== null ? row[3].toString() : "",
+        th: row[4] !== undefined && row[4] !== null ? row[4].toString() : "",
+        en: row[5] !== undefined && row[5] !== null ? row[5].toString() : "",
+      });
+    }
+  }
+
   return {
     profile: { 
       logoUrl, 
@@ -793,7 +814,8 @@ export async function fetchAllAppDataDirect(): Promise<AppData> {
     contactInfo,
     biography,
     sectionHeaders,
-    customTexts
+    customTexts,
+    siteTranslations: siteTranslations.length > 0 ? siteTranslations : undefined
   };
 }
 

@@ -1,5 +1,6 @@
 import { AppData, SheetRow } from "../types";
 import { DEFAULT_SITE_TRANSLATIONS, TranslationItem } from "../data/defaultTranslations";
+import { getInstantLookup } from "./translatorService";
 
 export interface SheetExtractionResult {
   sheetItems: TranslationItem[];
@@ -68,6 +69,18 @@ export function extractTranslationsFromAppData(
     }
   });
 
+  // 3. Map sheet-saved master translations from Google Sheets (SiteTranslations sheet tab)
+  if (appData.siteTranslations && Array.isArray(appData.siteTranslations)) {
+    appData.siteTranslations.forEach((item) => {
+      if (item && item.id) {
+        existingMap.set(item.id, item);
+      }
+      if (item && item.ar && item.ar.trim() && (item.th || item.en)) {
+        arabicLookupMap.set(item.ar.trim(), { th: item.th || "", en: item.en || "" });
+      }
+    });
+  }
+
   const extractedItems: TranslationItem[] = [];
 
   const addItem = (
@@ -85,6 +98,7 @@ export function extractTranslationsFromAppData(
     // Check if we already have saved translations for this key or matching text
     const existing = existingMap.get(id);
     const arMatch = arabicLookupMap.get(trimmedAr);
+    const instant = (!existing?.th || !existing?.en) ? getInstantLookup(trimmedAr) : null;
     
     const item: TranslationItem = {
       id,
@@ -92,8 +106,8 @@ export function extractTranslationsFromAppData(
       categoryLabel,
       label,
       ar: trimmedAr,
-      th: existing?.th || defaultTh || arMatch?.th || "",
-      en: existing?.en || defaultEn || arMatch?.en || "",
+      th: existing?.th || defaultTh || arMatch?.th || instant?.th || "",
+      en: existing?.en || defaultEn || arMatch?.en || instant?.en || "",
     };
 
     extractedItems.push(item);

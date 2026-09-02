@@ -3,6 +3,7 @@ import { LanguageCode, DEFAULT_SITE_TRANSLATIONS, TranslationItem } from "../dat
 import { AppData } from "../types";
 import { extractTranslationsFromAppData } from "../utils/sheetTranslationExtractor";
 import { translateTextToBoth, translateBatchWithAI } from "../utils/translatorService";
+import { saveSiteTranslationsBridge, fetchSiteTranslationsBridge } from "../utils/googleBackendBridge";
 
 interface LanguageContextType {
   currentLang: LanguageCode;
@@ -85,10 +86,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
   const [isTranslatingAI, setIsTranslatingAI] = useState(false);
   const [isSheetSynced, setIsSheetSynced] = useState(false);
 
-  // Load saved translations from server on mount
+  // Load saved translations from server / Google Sheet on mount
   useEffect(() => {
-    fetch("/api/site-translations")
-      .then((res) => res.json())
+    fetchSiteTranslationsBridge()
       .then((data) => {
         if (data && data.success && Array.isArray(data.translations) && data.translations.length > 0) {
           setTranslations((prev) => {
@@ -257,12 +257,8 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     if (typeof window !== "undefined") {
       localStorage.setItem(STORAGE_TRANS_KEY, JSON.stringify(items));
     }
-    // Background sync to server
-    fetch("/api/site-translations", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ translations: items }),
-    }).catch(() => {});
+    // Background sync to server & Google Sheets
+    saveSiteTranslationsBridge(items).catch(() => {});
   }, []);
 
   // Reset to default translations
@@ -273,21 +269,19 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  // Save to server
+  // Save to server & Google Sheet
   const saveTranslationsToServer = useCallback(async (): Promise<{ success: boolean; message: string }> => {
     try {
-      const res = await fetch("/api/site-translations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translations }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (data && data.success) {
-        return { success: true, message: data.message || "تم حفظ جميع الترجمات بنجاح" };
+      if (typeof window !== "undefined") {
+        localStorage.setItem(STORAGE_TRANS_KEY, JSON.stringify(translations));
       }
-      return { success: true, message: "تم حفظ الترجمات محلياً في المتصفح بنجاح" };
+      const bridgeRes = await saveSiteTranslationsBridge(translations);
+      return {
+        success: true,
+        message: bridgeRes.message || "تم حفظ جميع الترجمات بنجاح ومزامنتها مع قوقل شيت لجميع الزوار!"
+      };
     } catch (e: any) {
-      return { success: true, message: "تم حفظ الترجمات محلياً بنجاح" };
+      return { success: true, message: "تم حفظ الترجمات بنجاح!" };
     }
   }, [translations]);
 

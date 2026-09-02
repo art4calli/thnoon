@@ -111,6 +111,13 @@ function doGet(e) {
       return ContentService.createTextOutput(JSON.stringify(result))
         .setMimeType(ContentService.MimeType.JSON);
     }
+
+    // جلب ترجمات الموقع المحفوظة عبر GET
+    if (action === "getSiteTranslations" || action === "getTranslations") {
+      var transData = getSiteTranslationsSheetData();
+      return ContentService.createTextOutput(JSON.stringify(transData))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
   }
 
   // الوضع الافتراضي: جلب البيانات الإجمالية للموقع
@@ -273,6 +280,20 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ف) حفظ وتحديث ترجمات الموقع في ورقة SiteTranslations
+    else if (action === "saveSiteTranslations" || action === "saveTranslations") {
+      var saveTransRes = saveSiteTranslationsToSheet(postData);
+      return ContentService.createTextOutput(JSON.stringify(saveTransRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ص) جلب ترجمات الموقع من ورقة SiteTranslations
+    else if (action === "getSiteTranslations" || action === "getTranslations") {
+      var getTransRes = getSiteTranslationsSheetData();
+      return ContentService.createTextOutput(JSON.stringify(getTransRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     return ContentService.createTextOutput(JSON.stringify({ success: false, message: "إجراء غير معروف" }))
       .setMimeType(ContentService.MimeType.JSON);
 
@@ -295,7 +316,18 @@ function getData() {
   var aboutSheet = ss.getSheetByName('About');
   var settingsSheet = ss.getSheetByName('Settings');
   var subscriberContentSheet = ss.getSheetByName('SubscriberContent') || ss.getSheetByName('محتوى المشتركين');
+  var siteTranslationsSheet = ss.getSheetByName('SiteTranslations') || ss.getSheetByName('ترجمات الموقع');
  
+  var siteTranslations = [];
+  if (siteTranslationsSheet) {
+    try {
+      var transRes = getSiteTranslationsSheetData();
+      if (transRes && transRes.translations) {
+        siteTranslations = transRes.translations;
+      }
+    } catch(tErr) {}
+  }
+
   return {
     profile: profileSheet ? profileSheet.getDataRange().getValues().slice(1) : [],
     artwork: artworkSheet ? artworkSheet.getDataRange().getValues().slice(1) : [],
@@ -305,7 +337,8 @@ function getData() {
     contact: contactSheet ? contactSheet.getDataRange().getValues().slice(1) : [],
     about: aboutSheet ? aboutSheet.getDataRange().getValues().slice(1) : [],
     settings: settingsSheet ? settingsSheet.getDataRange().getValues().slice(1) : [],
-    subscriberContent: subscriberContentSheet ? subscriberContentSheet.getDataRange().getValues().slice(1) : []
+    subscriberContent: subscriberContentSheet ? subscriberContentSheet.getDataRange().getValues().slice(1) : [],
+    siteTranslations: siteTranslations
   };
 }
 
@@ -2962,6 +2995,109 @@ function translateTextsWithLanguageApp(payload) {
     return { success: true, results: results };
   } catch (err) {
     Logger.log("translateTextsWithLanguageApp error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// -------------------------------------------------------------
+// 13. دالة جلب ترجمات الموقع من ورقة SiteTranslations
+// -------------------------------------------------------------
+function getSiteTranslationsSheetData() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheet = ss.getSheetByName('SiteTranslations') || ss.getSheetByName('ترجمات الموقع');
+    if (!sheet) {
+      return { success: true, translations: [] };
+    }
+
+    var values = sheet.getDataRange().getValues();
+    if (values.length <= 1) {
+      return { success: true, translations: [] };
+    }
+
+    var translations = [];
+    for (var i = 1; i < values.length; i++) {
+      var row = values[i];
+      var id = row[0] ? row[0].toString().trim() : "";
+      if (!id) continue;
+
+      var category = row[1] ? row[1].toString().trim() : "general";
+      var label = row[2] ? row[2].toString().trim() : "";
+      var ar = row[3] !== undefined && row[3] !== null ? row[3].toString() : "";
+      var th = row[4] !== undefined && row[4] !== null ? row[4].toString() : "";
+      var en = row[5] !== undefined && row[5] !== null ? row[5].toString() : "";
+
+      translations.push({
+        id: id,
+        category: category,
+        label: label || id,
+        ar: ar,
+        th: th,
+        en: en
+      });
+    }
+
+    return { success: true, translations: translations, count: translations.length };
+  } catch (err) {
+    Logger.log("getSiteTranslationsSheetData error: " + err.message);
+    return { success: false, error: err.message, translations: [] };
+  }
+}
+
+// -------------------------------------------------------------
+// 14. دالة حفظ وتحديث ترجمات الموقع في ورقة SiteTranslations
+// -------------------------------------------------------------
+function saveSiteTranslationsToSheet(payload) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetName = "SiteTranslations";
+    var sheet = ss.getSheetByName(sheetName) || ss.getSheetByName("ترجمات الموقع");
+
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+    }
+
+    var items = payload.translations || payload.items || [];
+    if (!Array.isArray(items)) {
+      items = [];
+    }
+
+    // إعداد ترويسة الجدول وتنسيقه
+    sheet.clearContents();
+    var headers = ["ID", "Category", "Label", "Arabic (العربية)", "Thai (ภาษาไทย)", "English (الإنجليزية)", "LastUpdated"];
+    
+    var rowsToInsert = [headers];
+    var nowStr = new Date().toISOString();
+
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      if (!item || !item.id) continue;
+      rowsToInsert.push([
+        item.id.toString(),
+        (item.category || "general").toString(),
+        (item.label || item.id).toString(),
+        (item.ar || "").toString(),
+        (item.th || "").toString(),
+        (item.en || "").toString(),
+        nowStr
+      ]);
+    }
+
+    if (rowsToInsert.length > 0) {
+      var range = sheet.getRange(1, 1, rowsToInsert.length, headers.length);
+      range.setValues(rowsToInsert);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight("bold").setBackground("#D9EAD3");
+      sheet.autoResizeColumns(1, headers.length);
+      SpreadsheetApp.flush();
+    }
+
+    return {
+      success: true,
+      message: "تم حفظ كافة الترجمات بنجاح في ورقة " + sheetName + " في قوقل شيت",
+      count: items.length
+    };
+  } catch (err) {
+    Logger.log("saveSiteTranslationsToSheet error: " + err.message);
     return { success: false, error: err.message };
   }
 }

@@ -65,8 +65,8 @@ export default function AboutSection({ cards, biography, header, customTexts }: 
             referrerPolicy="no-referrer"
           />
           <div className="absolute bottom-4 right-4 left-4 z-20 text-right">
-            <h4 className="font-serif font-bold text-lg text-amber-400">{biography?.bioName || "الأستاذ يوسف ذنون"}</h4>
-            <p className="text-xs text-slate-300 font-sans">{biography?.bioSubtitle || "عميد ومؤرخ الخط العربي والآثار الإسلامية (١٩٣٢ - ٢٠٢٠)"}</p>
+            <h4 className="font-serif font-bold text-lg text-amber-400">{t(biography?.bioName || "الأستاذ يوسف ذنون", biography?.bioName || "الأستاذ يوسف ذنون")}</h4>
+            <p className="text-xs text-slate-300 font-sans">{t(biography?.bioSubtitle || "عميد ومؤرخ الخط العربي والآثار الإسلامية (١٩٣٢ - ٢٠٢٠)", biography?.bioSubtitle || "عميد ومؤرخ الخط العربي والآثار الإسلامية (١٩٣٢ - ٢٠٢٠)")}</p>
           </div>
         </div>
 

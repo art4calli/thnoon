@@ -53,6 +53,18 @@ DEFAULT_SITE_TRANSLATIONS.forEach((item) => {
 });
 
 /**
+ * Instant offline dictionary lookup
+ */
+export function getInstantLookup(text: string): { en: string; th: string } | null {
+  if (!text) return null;
+  const cleaned = cleanText(text);
+  if (KNOWN_TERMS[cleaned]) {
+    return KNOWN_TERMS[cleaned];
+  }
+  return null;
+}
+
+/**
  * Clean text for translation
  */
 function cleanText(text: string): string {
