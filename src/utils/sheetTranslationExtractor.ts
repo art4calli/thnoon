@@ -83,6 +83,16 @@ export function extractTranslationsFromAppData(
   // -------------------------------------------------------------
   // 1. ورقة Profile (الصفحة الرئيسية والواجهة)
   // -------------------------------------------------------------
+  addItem(
+    "home_section_title",
+    "sheet_profile",
+    "ورقة Profile (الرئيسية والواجهة)",
+    "عنوان قسم الواجهة الترحيبية ومستجدات المؤسسة",
+    appData.customTexts?.homeSectionTitle || "الواجهة الترحيبية ومستجدات المؤسسة",
+    "หน้าต้อนรับและข่าวสารอัปเดตของสถาบัน",
+    "Welcome Interface & Institution Updates"
+  );
+
   if (appData.profile) {
     if (appData.profile.title) {
       addItem(
@@ -175,6 +185,16 @@ export function extractTranslationsFromAppData(
   // -------------------------------------------------------------
   // 2. ورقة About (عن المؤسسة والسيرة الذاتية)
   // -------------------------------------------------------------
+  addItem(
+    "about_extra_title",
+    "sheet_about",
+    "ورقة About (عن المؤسسة)",
+    "عنوان أقسام ومعلومات المؤسسة الإضافية",
+    appData.customTexts?.aboutExtraTitle || "أقسام ومعلومات المؤسسة الإضافية",
+    "หมวดหมู่และข้อมูลเพิ่มเติมของสถาบัน",
+    "Additional Sections & Information"
+  );
+
   if (appData.sectionHeaders?.about) {
     const h = appData.sectionHeaders.about;
     if (h.badge) {

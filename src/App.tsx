@@ -661,8 +661,12 @@ export default function App() {
                   {profile.features.map((feature, fIdx) => (
                     <div key={fIdx} className="text-center p-4">
                       {getFeatureIcon(feature.icon || "star")}
-                      <h4 className="font-serif font-bold text-lg text-slate-200">{feature.title}</h4>
-                      <p className="text-slate-400 font-sans text-xs mt-1 leading-relaxed">{feature.description}</p>
+                      <h4 className="font-serif font-bold text-lg text-slate-200">
+                        {t(feature.title, feature.title)}
+                      </h4>
+                      <p className="text-slate-400 font-sans text-xs mt-1 leading-relaxed">
+                        {t(feature.description, feature.description)}
+                      </p>
                     </div>
                   ))}
                 </div>
@@ -726,43 +730,43 @@ export default function App() {
           
           <div className="md:col-span-4 space-y-3">
             <h4 className="font-serif font-bold text-xl text-amber-400">
-              {appData?.customTexts?.footerTitle || "مؤسسة يوسف ذنون"}
+              {t("footer_title", appData?.customTexts?.footerTitle || "مؤسسة يوسف ذنون")}
             </h4>
             <p className="text-slate-400 font-sans text-xs leading-relaxed">
-              {appData?.customTexts?.footerDescription || "مؤسسة مرخصة تُعنى برعاية الخطاطين وحفظ الموروث الفني والإرث الآثاري للأستاذ عميد الخط العربي يوسف ذنون رحمه الله."}
+              {t("footer_description", appData?.customTexts?.footerDescription || "مؤسسة مرخصة تُعنى برعاية الخطاطين وحفظ الموروث الفني والإرث الآثاري للأستاذ عميد الخط العربي يوسف ذنون رحمه الله.")}
             </p>
           </div>
 
           <div className="md:col-span-4 flex flex-wrap justify-center gap-x-5 gap-y-2 text-xs font-sans text-slate-400">
             <button onClick={() => handleNavigate("home")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navHome || "الرئيسية"}
+              {t("nav_home", appData?.customTexts?.navHome || "الرئيسية")}
             </button>
             <button onClick={() => handleNavigate("about")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navAbout || "عن المؤسسة"}
+              {t("nav_about", appData?.customTexts?.navAbout || "عن المؤسسة")}
             </button>
             <button onClick={() => handleNavigate("artwork")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navArtwork || "معرض الصور"}
+              {t("nav_artwork", appData?.customTexts?.navArtwork || "معرض الصور")}
             </button>
             <button onClick={() => handleNavigate("video")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navVideo || "الفيديوهات"}
+              {t("nav_video", appData?.customTexts?.navVideo || "الفيديوهات")}
             </button>
             <button onClick={() => handleNavigate("courses")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navCourses || "البرامج التعليمية"}
+              {t("nav_courses", appData?.customTexts?.navCourses || "البرامج التعليمية")}
             </button>
             <button onClick={() => handleNavigate("tools")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navTools || "أدوات الخط"}
+              {t("nav_tools", appData?.customTexts?.navTools || "أدوات الخط")}
             </button>
             <button onClick={() => handleNavigate("contact")} className="hover:text-amber-400 transition-colors">
-              {appData?.customTexts?.navContact || "تواصل معنا"}
+              {t("nav_contact", appData?.customTexts?.navContact || "تواصل معنا")}
             </button>
           </div>
 
           <div className="md:col-span-4 text-center md:text-left space-y-1">
             <p className="text-slate-500 font-sans text-[11px] leading-normal">
-              {appData?.customTexts?.footerCopyright || "جميع الحقوق محفوظة ومسجلة"} © {new Date().getFullYear()}
+              {t("footer_copyright", appData?.customTexts?.footerCopyright || "جميع الحقوق محفوظة ومسجلة")} © {new Date().getFullYear()}
             </p>
             <p className="text-slate-600 font-sans text-[10px]">
-              {appData?.customTexts?.navbarTitle || "مؤسسة يوسف ذنون"} {appData?.customTexts?.navbarSubtitle || "للخط العربي والآثار الإسلامية"}
+              {t("navbar_brand_title", appData?.customTexts?.navbarTitle || "مؤسسة يوسف ذنون")} {t("navbar_brand_subtitle", appData?.customTexts?.navbarSubtitle || "للخط العربي والآثار الإسلامية")}
             </p>
             {/* Discrete Admin Link trigger */}
             <div className="pt-2 flex justify-center md:justify-start">
@@ -778,7 +782,7 @@ export default function App() {
                 title="بوابة إعدادات المشرف (خاص بالإدارة)"
               >
                 <Lock className="w-3 h-3 text-slate-600 hover:text-amber-500" />
-                <span>{isAdminLoggedIn ? "لوحة المشرف (متصل)" : "دخول المشرف"}</span>
+                <span>{isAdminLoggedIn ? t("admin_connected", "لوحة المشرف (متصل)") : t("admin_login_btn", "دخول المشرف")}</span>
               </button>
             </div>
           </div>

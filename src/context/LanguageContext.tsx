@@ -156,28 +156,59 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
     }
   }, []);
 
-  // Fast lookup map & reverse Arabic text map for dynamic sheet rows
+  // Fast lookup map & reverse Arabic text map for dynamic sheet rows and words
   const { translationMap, arabicTextMap } = React.useMemo(() => {
     const map = new Map<string, TranslationItem>();
     const arMap = new Map<string, TranslationItem>();
     translations.forEach((item) => {
-      map.set(item.id, item);
-      if (item.ar && item.ar.trim()) {
+      if (item && item.id) {
+        map.set(item.id.trim(), item);
+      }
+      if (item && item.ar && item.ar.trim()) {
         arMap.set(item.ar.trim(), item);
       }
     });
     return { translationMap: map, arabicTextMap: arMap };
   }, [translations]);
 
-  // t() translation lookup function with key match & Arabic text fallback
+  // t() translation lookup function with key match, Arabic text match, and normalized Arabic fallback
   const t = useCallback(
     (key: string, fallbackAr?: string): string => {
-      // 1. Direct ID lookup
-      let item = translationMap.get(key);
+      if (!key && !fallbackAr) return "";
 
-      // 2. If not found by ID, try reverse lookup by fallbackAr
-      if (!item && fallbackAr && fallbackAr.trim()) {
-        item = arabicTextMap.get(fallbackAr.trim());
+      const cleanKey = (key || "").trim();
+      const cleanFallback = (fallbackAr || "").trim();
+
+      // 1. Direct ID lookup
+      let item = translationMap.get(cleanKey);
+
+      // 2. Direct Arabic text match (try cleanKey first if it is Arabic, then cleanFallback)
+      if (!item) {
+        if (cleanKey && arabicTextMap.has(cleanKey)) {
+          item = arabicTextMap.get(cleanKey);
+        } else if (cleanFallback && arabicTextMap.has(cleanFallback)) {
+          item = arabicTextMap.get(cleanFallback);
+        }
+      }
+
+      // 3. Normalized Arabic match (ignores slight spaces, punctuation, or alif/ya variations)
+      if (!item && (cleanKey || cleanFallback)) {
+        const targetAr = cleanFallback || cleanKey;
+        const normTarget = targetAr
+          .replace(/[\s\-_]+/g, "")
+          .replace(/[أإآ]/g, "ا")
+          .replace(/ة/g, "ه")
+          .replace(/ى/g, "ي");
+
+        item = translations.find((it) => {
+          if (!it || !it.ar) return false;
+          const normIt = it.ar
+            .replace(/[\s\-_]+/g, "")
+            .replace(/[أإآ]/g, "ا")
+            .replace(/ة/g, "ه")
+            .replace(/ى/g, "ي");
+          return normIt === normTarget;
+        });
       }
 
       if (!item) {
@@ -192,7 +223,7 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
       }
       return item.ar?.trim() || fallbackAr || key;
     },
-    [translationMap, arabicTextMap, currentLang]
+    [translationMap, arabicTextMap, translations, currentLang]
   );
 
   // Update a single item

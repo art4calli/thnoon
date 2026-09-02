@@ -225,6 +225,114 @@ export const DEFAULT_SITE_TRANSLATIONS: TranslationItem[] = [
     th: "ข่าวสารและกิจกรรมล่าสุด",
     en: "Latest Updates & Events"
   },
+  {
+    id: "home_section_title",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "عنوان قسم الواجهة الترحيبية ومستجدات المؤسسة",
+    ar: "الواجهة الترحيبية ومستجدات المؤسسة",
+    th: "หน้าต้อนรับและข่าวสารอัปเดตของสถาบัน",
+    en: "Welcome Interface & Institution Updates"
+  },
+  {
+    id: "about_extra_title",
+    category: "about",
+    categoryLabel: "عن المؤسسة والسيرة",
+    label: "عنوان أقسام ومعلومات المؤسسة الإضافية",
+    ar: "أقسام ومعلومات المؤسسة الإضافية",
+    th: "หมวดหมู่และข้อมูลเพิ่มเติมของสถาบัน",
+    en: "Additional Sections & Information"
+  },
+  {
+    id: "feat_taalim",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "كلمة ميزة: تعليم",
+    ar: "تعليم",
+    th: "การศึกษา",
+    en: "Education"
+  },
+  {
+    id: "feat_qalam",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "كلمة ميزة: قلم",
+    ar: "قلم",
+    th: "ปากกาคัดลายมือ",
+    en: "Calligraphy Pen"
+  },
+  {
+    id: "feat_daman",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "كلمة ميزة: ضمان",
+    ar: "ضمان",
+    th: "การรับประกันคุณภาพ",
+    en: "Quality Guarantee"
+  },
+  {
+    id: "feat_shahada",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "كلمة ميزة: شهادة",
+    ar: "شهادة",
+    th: "ใบประกาศนียบัตร / إجازة",
+    en: "Certificate / License"
+  },
+  {
+    id: "feat_ijaza_title",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "عنوان ميزة: الترخيص الخطّي",
+    ar: "الترخيص الخطّي",
+    th: "การอนุญาตและใบประกาศนียบัตร",
+    en: "Calligraphic Licensing"
+  },
+  {
+    id: "feat_ijaza_desc",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "وصف ميزة: الترخيص الخطّي",
+    ar: "تمنح المؤسسة إجازات خطية معتمدة دولياً",
+    th: "สถาบันมอบใบอนุญาตการเขียนตัวอักษรที่ได้รับการรับรองระดับสากล",
+    en: "The institute grants internationally recognized calligraphic certifications"
+  },
+  {
+    id: "feat_nizami_title",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "عنوان ميزة: التعليم النظامي",
+    ar: "التعليم النظامي",
+    th: "การศึกษาตามหลักสูตร",
+    en: "Structured Learning"
+  },
+  {
+    id: "feat_nizami_desc",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "وصف ميزة: التعليم النظامي",
+    ar: "دورات حضورية وأخرى رقمية عن بُعد",
+    th: "คอร์สอบรมทั้งแบบพบตัวจริงและแบบออนไลน์",
+    en: "In-person workshops and remote digital courses"
+  },
+  {
+    id: "feat_maktaba_title",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "عنوان ميزة: مكتبة نادرة",
+    ar: "مكتبة نادرة",
+    th: "ห้องสมุดหายาก",
+    en: "Rare Library"
+  },
+  {
+    id: "feat_maktaba_desc",
+    category: "home_hero",
+    categoryLabel: "الرئيسية والواجهة",
+    label: "وصف ميزة: مكتبة نادرة",
+    ar: "مئات الكتب والمجلدات عن الحرف والآثار",
+    th: "หนังสือและเอกสารโบราณหลายร้อยเล่มเกี่ยวกับอักษรและโบราณคดี",
+    en: "Hundreds of rare books and volumes on scripts and archaeology"
+  },
 
   // -------------------------------------------------------------
   // 3. البرامج والدورات التعليمية (Courses Section)
@@ -865,19 +973,37 @@ export const DEFAULT_SITE_TRANSLATIONS: TranslationItem[] = [
   // 11. التذييل والأزرار العامة (Footer & Common)
   // -------------------------------------------------------------
   {
+    id: "footer_title",
+    category: "footer",
+    categoryLabel: "التذييل وحقوق النشر",
+    label: "عنوان المؤسسة في التذييل",
+    ar: "مؤسسة يوسف ذنون",
+    th: "สถาบัน ยูซุฟ ซันนูน",
+    en: "Yousuf Dhannoon Institute"
+  },
+  {
     id: "footer_about_title",
     category: "footer",
     categoryLabel: "التذييل وحقوق النشر",
-    label: "عنوان التذييل",
+    label: "عنوان التذييل الكامل",
     ar: "مؤسسة يوسف ذنون للخط العربي",
     th: "สถาบันศิลปะการเขียนตัวอักษรอาหรับ ยูซุฟ ซันนูน",
     en: "Yousuf Dhannoon Arabic Calligraphy Institute"
   },
   {
+    id: "footer_description",
+    category: "footer",
+    categoryLabel: "التذييل وحقوق النشر",
+    label: "وصف المؤسسة في التذييل",
+    ar: "مؤسسة مرخصة تُعنى برعاية الخطاطين وحفظ الموروث الفني والإرث الآثاري للأستاذ عميد الخط العربي يوسف ذنون رحمه الله.",
+    th: "สถาบันที่ได้รับอนุญาตอย่างเป็นทางการ มุ่งเน้นการดูแลนักเขียนอักษรวิจิตร และอนุรักษ์มรดกทางศิลปะและโบราณคดีของปรมาจารย์ ยูซุฟ ซันนูน ขอพระเจ้าทรงเมตตาท่าน",
+    en: "A licensed institution dedicated to nurturing calligraphers and preserving the artistic and archaeological legacy of the Dean of Arabic Calligraphy, Master Yousuf Dhannoon, may Allah have mercy on him."
+  },
+  {
     id: "footer_about_description",
     category: "footer",
     categoryLabel: "التذييل وحقوق النشر",
-    label: "نص التذييل",
+    label: "نص التذييل البديل",
     ar: "صرح ثقافي أكاديمي يسعى لترسيخ أصالة الخط العربي وتوثيق روائع الفنون الإسلامية والتعليم المستمر لطلاب العلم.",
     th: "สถาบันทางวิชาการและวัฒนธรรมที่มุ่งเน้นการส่งเสริมศิลปะอักษรอาหรับและเผยแพร่ความรู้แก่นักศึกษาทั่วโลก",
     en: "An academic and cultural institution dedicated to fostering Arabic calligraphy and sharing classical Islamic arts."
@@ -887,9 +1013,9 @@ export const DEFAULT_SITE_TRANSLATIONS: TranslationItem[] = [
     category: "footer",
     categoryLabel: "التذييل وحقوق النشر",
     label: "حقوق النشر والملكية",
-    ar: "جميع الحقوق محفوظة © مؤسسة يوسف ذنون للخط العربي",
-    th: "สงวนลิขสิทธิ์ทั้งหมด © สถาบัน ยูซุฟ ซันนูน ศิลปะอักษรอาหรับ",
-    en: "All rights reserved © Yousuf Dhannoon Calligraphy Institute"
+    ar: "جميع الحقوق محفوظة ومسجلة",
+    th: "สงวนลิขสิทธิ์และจดทะเบียนถูกต้อง",
+    en: "All rights reserved and registered"
   },
   {
     id: "common_loading",

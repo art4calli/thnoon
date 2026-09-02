@@ -429,10 +429,49 @@ async function getSheetValues(sheetName: string): Promise<any[][]> {
   }
 }
 
+function isActualMediaUrl(val: any): boolean {
+  if (!val || typeof val !== "string") return false;
+  const s = val.trim().replace(/^['"]|['"]$/g, "");
+  if (!s || s === "-" || s === "لا يوجد" || s === "null" || s === "undefined") return false;
+
+  // Single numbers or digits are IDs / values, not URLs
+  if (/^\d+$/.test(s)) return false;
+
+  // If contains Arabic letters, it's a text string or title, NOT a media URL
+  if (/[\u0600-\u06FF]/.test(s)) return false;
+
+  // If contains spaces without http/https protocol, it's human text (e.g. "text / more text")
+  if (s.includes(" ") && !s.startsWith("http://") && !s.startsWith("https://")) {
+    return false;
+  }
+
+  // Valid protocols
+  if (/^https?:\/\//i.test(s) || /^data:image\//i.test(s) || /^\/\w+/i.test(s)) {
+    return true;
+  }
+
+  // Google Drive or Dropbox file indicators
+  if (s.includes("drive.google.com") || s.includes("googleusercontent.com") || s.includes("dropbox.com")) {
+    return true;
+  }
+
+  // Direct media extensions
+  if (/\.(jpeg|jpg|png|gif|webp|svg|bmp|ico|mp4|webm|mov|ogg)(\?.*)?$/i.test(s)) {
+    return true;
+  }
+
+  return false;
+}
+
 function formatImageUrl(url?: string): string {
   if (!url || typeof url !== "string") return "";
   let clean = url.trim().replace(/^['"]|['"]$/g, "");
   if (!clean || clean === "-" || clean === "لا يوجد") return "";
+
+  // Validate that it is actually a URL
+  if (!isActualMediaUrl(clean)) {
+    return "";
+  }
 
   if (clean.includes("drive.google.com") || clean.includes("googleusercontent.com")) {
     const fileDMatch = clean.match(/\/file\/d\/([a-zA-Z0-9_-]+)/);
@@ -560,11 +599,9 @@ function extractBiographyFromRows(rows: any[][]): any {
 function mapContentRow(row: any[]): any {
   if (!row || row.length < 1) return null;
   
-  // Helper to check if a string is a URL
+  // Helper to check if a string is a genuine media URL
   const isUrl = (str: string): boolean => {
-    if (!str) return false;
-    const s = str.trim().toLowerCase();
-    return s.startsWith("http://") || s.startsWith("https://") || s.includes("drive.google.com") || s.includes("/");
+    return isActualMediaUrl(str);
   };
 
   let type = "";
@@ -575,7 +612,7 @@ function mapContentRow(row: any[]): any {
   let buttonText = "";
 
   // Check if Column A is missing/deleted (causing shift to the left)
-  // If row[2] is a URL, it means the media URLs started at index 2 instead of index 3,
+  // If row[2] is a genuine media URL, it means the media URLs started at index 2 instead of index 3,
   // which means Column A was completely deleted.
   const isShifted = row[2] && isUrl(row[2].toString());
 
@@ -586,9 +623,9 @@ function mapContentRow(row: any[]): any {
     
     // Media URLs are indices 2 to 11
     for (let j = 2; j <= 11; j++) {
-      const url = row[j] ? row[j].toString().trim() : "";
-      if (url && url !== "-" && url !== "") {
-        media.push({ url });
+      const rawUrl = row[j] ? row[j].toString().trim() : "";
+      if (rawUrl && rawUrl !== "-" && rawUrl !== "" && isActualMediaUrl(rawUrl)) {
+        media.push({ url: formatImageUrl(rawUrl) || rawUrl });
       }
     }
     linkUrl = row[12] ? row[12].toString().trim() : "";
@@ -604,9 +641,9 @@ function mapContentRow(row: any[]): any {
     
     // Media URLs are indices 3 to 12
     for (let j = 3; j <= 12; j++) {
-      const url = row[j] ? row[j].toString().trim() : "";
-      if (url && url !== "-" && url !== "") {
-        media.push({ url });
+      const rawUrl = row[j] ? row[j].toString().trim() : "";
+      if (rawUrl && rawUrl !== "-" && rawUrl !== "" && isActualMediaUrl(rawUrl)) {
+        media.push({ url: formatImageUrl(rawUrl) || rawUrl });
       }
     }
     linkUrl = row[13] ? row[13].toString().trim() : "";

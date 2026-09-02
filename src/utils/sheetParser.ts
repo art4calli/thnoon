@@ -4,7 +4,7 @@
  */
 
 import { AppData, SheetRow } from "../types";
-import { formatImageUrl, isVideoUrl } from "./imageUtils";
+import { formatImageUrl, isVideoUrl, isActualMediaUrl } from "./imageUtils";
 
 const SPREADSHEET_ID = import.meta.env.VITE_SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 
@@ -127,11 +127,9 @@ export async function getSheetValuesDirect(sheetName: string): Promise<any[][]> 
 function mapContentRow(row: any[]): SheetRow | null {
   if (!row || row.length < 1) return null;
   
-  // Helper to check if a string is a URL
+  // Helper to check if a string is a genuine media URL
   const isUrl = (str: string): boolean => {
-    if (!str) return false;
-    const s = str.trim().toLowerCase();
-    return s.startsWith("http://") || s.startsWith("https://") || s.includes("drive.google.com") || s.includes("/");
+    return isActualMediaUrl(str);
   };
 
   let type = "";
@@ -156,9 +154,9 @@ function mapContentRow(row: any[]): SheetRow | null {
     
     // Media URLs are indices 3 to 12
     for (let j = 3; j <= 12; j++) {
-      const url = row[j] ? row[j].toString().trim() : "";
-      if (url && url !== "-" && url !== "") {
-        media.push({ url });
+      const rawUrl = row[j] ? row[j].toString().trim() : "";
+      if (rawUrl && rawUrl !== "-" && rawUrl !== "" && isActualMediaUrl(rawUrl)) {
+        media.push({ url: formatImageUrl(rawUrl) || rawUrl });
       }
     }
     linkUrl = row[13] ? row[13].toString().trim() : "";
@@ -173,9 +171,9 @@ function mapContentRow(row: any[]): SheetRow | null {
       
       // Media URLs start at index 2 (Column C) to 11
       for (let j = 2; j <= 11; j++) {
-        const url = row[j] ? row[j].toString().trim() : "";
-        if (url && url !== "-" && url !== "") {
-          media.push({ url });
+        const rawUrl = row[j] ? row[j].toString().trim() : "";
+        if (rawUrl && rawUrl !== "-" && rawUrl !== "" && isActualMediaUrl(rawUrl)) {
+          media.push({ url: formatImageUrl(rawUrl) || rawUrl });
         }
       }
       linkUrl = row[12] ? row[12].toString().trim() : "";
@@ -188,9 +186,9 @@ function mapContentRow(row: any[]): SheetRow | null {
 
       // Media URLs start at index 3 (Column D) to 12
       for (let j = 3; j <= 12; j++) {
-        const url = row[j] ? row[j].toString().trim() : "";
-        if (url && url !== "-" && url !== "") {
-          media.push({ url });
+        const rawUrl = row[j] ? row[j].toString().trim() : "";
+        if (rawUrl && rawUrl !== "-" && rawUrl !== "" && isActualMediaUrl(rawUrl)) {
+          media.push({ url: formatImageUrl(rawUrl) || rawUrl });
         }
       }
       linkUrl = row[13] ? row[13].toString().trim() : "";

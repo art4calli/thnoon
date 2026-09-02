@@ -147,10 +147,10 @@ export default function AboutSection({ cards, biography, header, customTexts }: 
                     <Icon className="w-6 h-6" />
                   </div>
                   <h4 className="font-serif font-bold text-lg text-slate-100 mb-2 group-hover:text-amber-400 transition-colors">
-                    {feat.title}
+                    {t(feat.title, feat.title)}
                   </h4>
                   <p className="text-slate-400 text-xs sm:text-sm font-sans leading-relaxed">
-                    {feat.description}
+                    {t(feat.description, feat.description)}
                   </p>
                 </div>
               );
