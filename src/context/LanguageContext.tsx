@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { LanguageCode, DEFAULT_SITE_TRANSLATIONS, TranslationItem } from "../data/defaultTranslations";
 import { AppData } from "../types";
 import { extractTranslationsFromAppData } from "../utils/sheetTranslationExtractor";
+import { translateTextToBoth, translateBatchWithAI } from "../utils/translatorService";
 
 interface LanguageContextType {
   currentLang: LanguageCode;
@@ -299,23 +300,17 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
 
     try {
       setIsTranslatingAI(true);
-      const res = await fetch("/api/ai-translate-texts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          items: [{ id: item.id, ar: item.ar, category: item.category }],
-        }),
-      });
-
-      const data = await res.json().catch(() => null);
-      if (data && data.success && data.results && data.results[item.id]) {
-        const { th, en } = data.results[item.id];
-        updateTranslationItem(item.id, { th, en });
+      const res = await translateTextToBoth(item.ar);
+      if (res && (res.th || res.en)) {
+        updateTranslationItem(item.id, {
+          th: res.th || item.th,
+          en: res.en || item.en,
+        });
         return { success: true, message: "تمت الترجمة الذكية بنجاح!" };
       }
-      throw new Error(data?.message || "فشلت الترجمة الذكية");
+      throw new Error("تعذر جلب الترجمة من المحرك");
     } catch (err: any) {
-      return { success: false, message: "تعذر إكمال الترجمة الذكية: " + err.message };
+      return { success: false, message: "تعذر إكمال الترجمة الذكية: " + (err.message || "حدث خطأ غير متوقع") };
     } finally {
       setIsTranslatingAI(false);
     }
@@ -337,20 +332,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           category: item.category,
         }));
 
-        const res = await fetch("/api/ai-translate-texts", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ items: payload }),
-        });
-
-        const data = await res.json().catch(() => null);
-        if (data && data.success && data.results) {
+        const results = await translateBatchWithAI(payload);
+        if (results && Object.keys(results).length > 0) {
           const updated = translations.map((item) => {
-            if (data.results[item.id]) {
+            if (results[item.id]) {
               return {
                 ...item,
-                th: data.results[item.id].th || item.th,
-                en: data.results[item.id].en || item.en,
+                th: results[item.id].th || item.th,
+                en: results[item.id].en || item.en,
               };
             }
             return item;
@@ -363,9 +352,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
             count: itemsToTranslate.length,
           };
         }
-        throw new Error(data?.message || "فشلت الترجمة الجماعية");
+        throw new Error("فشلت الترجمة الجماعية للقسم");
       } catch (err: any) {
-        return { success: false, message: "تعذر إكمال الترجمة الجماعية: " + err.message };
+        return { success: false, message: "تعذر إكمال الترجمة الجماعية: " + (err.message || "حدث خطأ غير متوقع") };
       } finally {
         setIsTranslatingAI(false);
       }
@@ -388,20 +377,14 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
         category: item.category,
       }));
 
-      const res = await fetch("/api/ai-translate-texts", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ items: payload }),
-      });
-
-      const data = await res.json().catch(() => null);
-      if (data && data.success && data.results) {
+      const results = await translateBatchWithAI(payload);
+      if (results && Object.keys(results).length > 0) {
         const updated = translations.map((item) => {
-          if (data.results[item.id]) {
+          if (results[item.id]) {
             return {
               ...item,
-              th: data.results[item.id].th || item.th,
-              en: data.results[item.id].en || item.en,
+              th: results[item.id].th || item.th,
+              en: results[item.id].en || item.en,
             };
           }
           return item;
@@ -414,9 +397,9 @@ export const LanguageProvider: React.FC<{ children: React.ReactNode }> = ({ chil
           count: itemsToTranslate.length,
         };
       }
-      throw new Error(data?.message || "فشلت الترجمة الشاملة");
+      throw new Error("فشلت الترجمة الشاملة");
     } catch (err: any) {
-      return { success: false, message: "تعذر إكمال الترجمة الشاملة: " + err.message };
+      return { success: false, message: "تعذر إكمال الترجمة الشاملة: " + (err.message || "حدث خطأ غير متوقع") };
     } finally {
       setIsTranslatingAI(false);
     }

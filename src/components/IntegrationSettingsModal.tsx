@@ -7,6 +7,7 @@ import TelegramAdminSettings from "./TelegramAdminSettings";
 import RegistrationAnswersViewer from "./RegistrationAnswersViewer";
 import SettingsSubscribersViewer from "./SettingsSubscribersViewer";
 import SiteTextsManager from "./SiteTextsManager";
+import { translateBatchWithAI } from "../utils/translatorService";
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxs7_H152Ok8oknRYj5I_qWXcIxcjxNhbsx1HcE_RiueHoQmjm4AcAywVw69Mz7vOq1AQ/exec";
 
@@ -136,17 +137,70 @@ export default function IntegrationSettingsModal({
     setIsAutoTranslating(true);
     setTranslationSuccessMsg(null);
     try {
-      const res = await fetch("/api/auto-translate-questions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ questions })
-      });
-      const data = await res.json();
-      if (data.success && data.translations) {
-        setTranslations(data.translations);
-        setTranslationSuccessMsg(data.method === "gemini-ai" ? "تمت الترجمة الذكية بواسطة الذكاء الاصطناعي بنجاح!" : "تمت الترجمة بنجاح!");
-        setTimeout(() => setTranslationSuccessMsg(null), 4000);
+      // 1. Try Express API if server is running
+      try {
+        const res = await fetch("/api/auto-translate-questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questions })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.success && data.translations) {
+            setTranslations(data.translations);
+            setTranslationSuccessMsg(data.method === "gemini-ai" ? "تمت الترجمة الذكية بواسطة الذكاء الاصطناعي بنجاح!" : "تمت الترجمة بنجاح!");
+            setTimeout(() => setTranslationSuccessMsg(null), 4000);
+            return;
+          }
+        }
+      } catch (err) {
+        // Fallback to client-side translator
       }
+
+      // 2. Client-side fallback translator
+      const itemsToTranslate: Array<{ id: string; ar: string }> = [];
+      questions.forEach((q) => {
+        itemsToTranslate.push({ id: `${q.id}__question`, ar: q.question });
+        if (q.description) {
+          itemsToTranslate.push({ id: `${q.id}__desc`, ar: q.description });
+        }
+        if (q.options && q.options.length > 0) {
+          q.options.forEach((opt, optIdx) => {
+            itemsToTranslate.push({ id: `${q.id}__opt_${optIdx}`, ar: opt });
+          });
+        }
+      });
+
+      const batchResults = await translateBatchWithAI(itemsToTranslate);
+      const newTranslations: FormTranslationsMap = { ...translations };
+
+      questions.forEach((q) => {
+        const qRes = batchResults[`${q.id}__question`] || { th: q.question, en: q.question };
+        const descRes = q.description ? (batchResults[`${q.id}__desc`] || { th: q.description, en: q.description }) : undefined;
+
+        const optEn: string[] = [];
+        const optTh: string[] = [];
+        if (q.options && q.options.length > 0) {
+          q.options.forEach((opt, optIdx) => {
+            const optRes = batchResults[`${q.id}__opt_${optIdx}`] || { th: opt, en: opt };
+            optEn.push(optRes.en);
+            optTh.push(optRes.th);
+          });
+        }
+
+        newTranslations[q.id] = {
+          questionEn: qRes.en || q.question,
+          questionTh: qRes.th || q.question,
+          descriptionEn: descRes?.en,
+          descriptionTh: descRes?.th,
+          optionsEn: optEn.length > 0 ? optEn : undefined,
+          optionsTh: optTh.length > 0 ? optTh : undefined,
+        };
+      });
+
+      setTranslations(newTranslations);
+      setTranslationSuccessMsg("تمت الترجمة الذكية بنجاح!");
+      setTimeout(() => setTranslationSuccessMsg(null), 4000);
     } catch (e) {
       console.error("Auto translate failed:", e);
     } finally {

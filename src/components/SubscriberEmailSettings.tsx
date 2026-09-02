@@ -14,15 +14,16 @@ import {
   FileText, 
   Image as ImageIcon, 
   Link as LinkIcon, 
-  Eye,
-  RefreshCw,
-  Info,
-  Check,
-  Smartphone,
-  Send,
-  ExternalLink,
-  ShieldCheck
+  Eye, 
+  RefreshCw, 
+  Info, 
+  Check, 
+  Smartphone, 
+  Send, 
+  ExternalLink, 
+  ShieldCheck 
 } from "lucide-react";
+import { translateBatchWithAI } from "../utils/translatorService";
 import { SubscriberEmailConfig, EmailFieldMapping, EmailAttachmentLink } from "../types";
 import { executeAppsScriptPost, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID } from "../utils/googleBackendBridge";
 
@@ -284,52 +285,115 @@ export default function SubscriberEmailSettings({ currentDriveFolderId, currentS
     setErrorMessage(null);
     try {
       const arTemplate = config.messages.ar;
-      const res = await fetch("/api/auto-translate-email-template", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          arTemplate,
-          dataFields: config.dataFields,
-          attachments: config.attachments
-        })
-      });
-      const data = await res.json();
-      if (data && data.success && data.result) {
-        const { en, th, fieldsEn, fieldsTh, attachmentsEn, attachmentsTh } = data.result;
+      
+      // 1. Try Express API if server is running
+      try {
+        const res = await fetch("/api/auto-translate-email-template", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            arTemplate,
+            dataFields: config.dataFields,
+            attachments: config.attachments
+          })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data && data.success && data.result) {
+            const { en, th, fieldsEn, fieldsTh, attachmentsEn, attachmentsTh } = data.result;
 
-        // Update messages
-        const updatedMessages = {
-          ...config.messages,
-          en: en ? { ...config.messages.en, ...en } : config.messages.en,
-          th: th ? { ...config.messages.th, ...th } : config.messages.th
-        };
+            const updatedMessages = {
+              ...config.messages,
+              en: en ? { ...config.messages.en, ...en } : config.messages.en,
+              th: th ? { ...config.messages.th, ...th } : config.messages.th
+            };
 
-        // Update fields translations
-        const updatedFields = config.dataFields.map(f => ({
-          ...f,
-          labelEn: (fieldsEn && fieldsEn[f.id]) || f.labelEn || f.label,
-          labelTh: (fieldsTh && fieldsTh[f.id]) || f.labelTh || f.label
-        }));
+            const updatedFields = config.dataFields.map(f => ({
+              ...f,
+              labelEn: (fieldsEn && fieldsEn[f.id]) || f.labelEn || f.label,
+              labelTh: (fieldsTh && fieldsTh[f.id]) || f.labelTh || f.label
+            }));
 
-        // Update attachments translations
-        const updatedAttachments = (config.attachments || []).map(a => ({
-          ...a,
-          titleEn: (attachmentsEn && attachmentsEn[a.id]) || a.titleEn || a.title,
-          titleTh: (attachmentsTh && attachmentsTh[a.id]) || a.titleTh || a.title
-        }));
+            const updatedAttachments = (config.attachments || []).map(a => ({
+              ...a,
+              titleEn: (attachmentsEn && attachmentsEn[a.id]) || a.titleEn || a.title,
+              titleTh: (attachmentsTh && attachmentsTh[a.id]) || a.titleTh || a.title
+            }));
 
-        setConfig(prev => ({
-          ...prev,
-          messages: updatedMessages,
-          dataFields: updatedFields,
-          attachments: updatedAttachments
-        }));
+            setConfig(prev => ({
+              ...prev,
+              messages: updatedMessages,
+              dataFields: updatedFields,
+              attachments: updatedAttachments
+            }));
 
-        setSaveSuccess(true);
-        setTimeout(() => setSaveSuccess(false), 3000);
-      } else {
-        setErrorMessage("فشلت الترجمة بالذكاء الاصطناعي، يرجى المحاولة لاحقاً.");
+            setSaveSuccess(true);
+            setTimeout(() => setSaveSuccess(false), 3000);
+            return;
+          }
+        }
+      } catch (err) {
+        // Fallback to client-side translator
       }
+
+      // 2. Client-side fallback translator
+      const itemsToTranslate: Array<{ id: string; ar: string }> = [];
+      if (arTemplate.subject) itemsToTranslate.push({ id: "subj", ar: arTemplate.subject });
+      if (arTemplate.greeting) itemsToTranslate.push({ id: "greet", ar: arTemplate.greeting });
+      if (arTemplate.body) itemsToTranslate.push({ id: "body", ar: arTemplate.body });
+      if (arTemplate.footer) itemsToTranslate.push({ id: "footer", ar: arTemplate.footer });
+
+      config.dataFields.forEach((f) => {
+        itemsToTranslate.push({ id: `f_${f.id}`, ar: f.label });
+      });
+
+      (config.attachments || []).forEach((a) => {
+        itemsToTranslate.push({ id: `a_${a.id}`, ar: a.title });
+      });
+
+      const batchResults = await translateBatchWithAI(itemsToTranslate);
+
+      const enMsg = {
+        subject: batchResults["subj"]?.en || arTemplate.subject,
+        greeting: batchResults["greet"]?.en || arTemplate.greeting,
+        body: batchResults["body"]?.en || arTemplate.body,
+        footer: batchResults["footer"]?.en || arTemplate.footer,
+      };
+
+      const thMsg = {
+        subject: batchResults["subj"]?.th || arTemplate.subject,
+        greeting: batchResults["greet"]?.th || arTemplate.greeting,
+        body: batchResults["body"]?.th || arTemplate.body,
+        footer: batchResults["footer"]?.th || arTemplate.footer,
+      };
+
+      const updatedMessages = {
+        ...config.messages,
+        en: { ...config.messages.en, ...enMsg },
+        th: { ...config.messages.th, ...thMsg }
+      };
+
+      const updatedFields = config.dataFields.map(f => ({
+        ...f,
+        labelEn: batchResults[`f_${f.id}`]?.en || f.labelEn || f.label,
+        labelTh: batchResults[`f_${f.id}`]?.th || f.labelTh || f.label
+      }));
+
+      const updatedAttachments = (config.attachments || []).map(a => ({
+        ...a,
+        titleEn: batchResults[`a_${a.id}`]?.en || a.titleEn || a.title,
+        titleTh: batchResults[`a_${a.id}`]?.th || a.titleTh || a.title
+      }));
+
+      setConfig(prev => ({
+        ...prev,
+        messages: updatedMessages,
+        dataFields: updatedFields,
+        attachments: updatedAttachments
+      }));
+
+      setSaveSuccess(true);
+      setTimeout(() => setSaveSuccess(false), 3000);
     } catch (err: any) {
       setErrorMessage(err?.message || "خطأ أثناء الترجمة");
     } finally {

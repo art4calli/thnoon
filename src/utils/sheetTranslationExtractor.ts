@@ -1,5 +1,5 @@
 import { AppData, SheetRow } from "../types";
-import { TranslationItem } from "../data/defaultTranslations";
+import { DEFAULT_SITE_TRANSLATIONS, TranslationItem } from "../data/defaultTranslations";
 
 export interface SheetExtractionResult {
   sheetItems: TranslationItem[];
@@ -46,8 +46,26 @@ export function extractTranslationsFromAppData(
   }
 
   const existingMap = new Map<string, TranslationItem>();
+  const arabicLookupMap = new Map<string, { th: string; en: string }>();
+
+  // 1. Map defaults
+  DEFAULT_SITE_TRANSLATIONS.forEach((item) => {
+    if (item && item.ar && item.ar.trim()) {
+      const cleanAr = item.ar.trim();
+      if (!arabicLookupMap.has(cleanAr) && (item.th || item.en)) {
+        arabicLookupMap.set(cleanAr, { th: item.th || "", en: item.en || "" });
+      }
+    }
+  });
+
+  // 2. Map existing saved translations (takes precedence)
   existingTranslations.forEach((item) => {
-    existingMap.set(item.id, item);
+    if (item && item.id) {
+      existingMap.set(item.id, item);
+    }
+    if (item && item.ar && item.ar.trim() && (item.th || item.en)) {
+      arabicLookupMap.set(item.ar.trim(), { th: item.th || "", en: item.en || "" });
+    }
   });
 
   const extractedItems: TranslationItem[] = [];
@@ -64,8 +82,9 @@ export function extractTranslationsFromAppData(
     if (!arText || typeof arText !== "string" || !arText.trim()) return;
     const trimmedAr = arText.trim();
     
-    // Check if we already have saved translations for this key
+    // Check if we already have saved translations for this key or matching text
     const existing = existingMap.get(id);
+    const arMatch = arabicLookupMap.get(trimmedAr);
     
     const item: TranslationItem = {
       id,
@@ -73,8 +92,8 @@ export function extractTranslationsFromAppData(
       categoryLabel,
       label,
       ar: trimmedAr,
-      th: existing?.th || defaultTh,
-      en: existing?.en || defaultEn,
+      th: existing?.th || defaultTh || arMatch?.th || "",
+      en: existing?.en || defaultEn || arMatch?.en || "",
     };
 
     extractedItems.push(item);

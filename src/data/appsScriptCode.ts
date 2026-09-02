@@ -266,6 +266,13 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ع) ترجمة النصوص الذكية باستخدام LanguageApp
+    else if (action === "translateTexts" || action === "translate") {
+      var transRes = translateTextsWithLanguageApp(postData);
+      return ContentService.createTextOutput(JSON.stringify(transRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     return ContentService.createTextOutput(JSON.stringify({ success: false, message: "إجراء غير معروف" }))
       .setMimeType(ContentService.MimeType.JSON);
 
@@ -2925,6 +2932,36 @@ function addSettingsSubscriberToSheet(postData) {
     };
   } catch (err) {
     Logger.log("addSettingsSubscriberToSheet error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// -------------------------------------------------------------
+// 12. دالة ترجمة النصوص الذكية باستخدام Google LanguageApp
+// -------------------------------------------------------------
+function translateTextsWithLanguageApp(payload) {
+  try {
+    var items = payload.items || [];
+    var results = {};
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var rawText = item.text || item.ar || "";
+      if (!rawText || !rawText.trim()) continue;
+
+      var en = "";
+      var th = "";
+      try {
+        en = LanguageApp.translate(rawText, 'ar', 'en');
+      } catch(e) { en = rawText; }
+      try {
+        th = LanguageApp.translate(rawText, 'ar', 'th');
+      } catch(e) { th = rawText; }
+
+      results[item.id] = { en: en, th: th };
+    }
+    return { success: true, results: results };
+  } catch (err) {
+    Logger.log("translateTextsWithLanguageApp error: " + err.message);
     return { success: false, error: err.message };
   }
 }
