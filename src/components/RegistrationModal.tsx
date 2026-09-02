@@ -367,6 +367,15 @@ export default function RegistrationModal({
     return "ar";
   });
 
+  const modalBodyRef = useRef<HTMLDivElement | null>(null);
+
+  // Scroll to top when opening or changing language
+  useEffect(() => {
+    if (isOpen && modalBodyRef.current) {
+      modalBodyRef.current.scrollTop = 0;
+    }
+  }, [isOpen, formLang]);
+
   const t = FORM_UI_STRINGS[formLang];
 
   const handleCopyDirectLink = () => {
@@ -740,10 +749,13 @@ export default function RegistrationModal({
     try {
       const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || DEFAULT_SCRIPT_URL;
       
-      // 1. Fetch translations if available
+      // 1. Fetch translations if available with 1s timeout to avoid hanging on static deployments
       let loadedTrans = translationsMap;
       try {
-        const resT = await fetch("/api/form-translations").catch(() => null);
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 1000);
+        const resT = await fetch("/api/form-translations", { signal: controller.signal }).catch(() => null);
+        clearTimeout(timeoutId);
         if (resT && resT.ok) {
           const dataT = await resT.json().catch(() => null);
           if (dataT && dataT.translations && Object.keys(dataT.translations).length > 0) {
@@ -758,27 +770,14 @@ export default function RegistrationModal({
         }
       } catch (e) {}
 
-      // 2. Fetch questions using universal bridge (works on local server, direct Apps Script, and Google Visualization API)
+      // 2. Fetch questions using universal bridge (optimized for instant Vercel/GitHub loading)
       const fetchedQuestions = await fetchFormQuestionsBridge(activeScriptUrl);
       if (fetchedQuestions && fetchedQuestions.length > 0) {
         processQuestions(fetchedQuestions, loadedTrans);
         setDataSource("Google Sheet / Apps Script");
-      } else {
-        setQuestions((prev) => {
-          if (prev.length === 0) {
-            setLoadError("لم يتم العثور على أسئلة في جدول البيانات. يرجى التأكد من ورقة RegistrationQuestions.");
-          }
-          return prev;
-        });
       }
     } catch (err: any) {
       console.warn("Could not fetch registration questions:", err);
-      setQuestions((prev) => {
-        if (prev.length === 0) {
-          setLoadError("حدث خطأ أثناء تحميل الأسئلة. اضغط على زر التحديث لإعادة المحاولة.");
-        }
-        return prev;
-      });
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -1167,7 +1166,7 @@ export default function RegistrationModal({
     <AnimatePresence>
       {isOpen && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 overflow-y-auto"
+          className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 md:p-6 overflow-hidden"
           dir={formLang === "ar" ? "rtl" : "ltr"}
         >
           {/* Backdrop Blur */}
@@ -1181,10 +1180,10 @@ export default function RegistrationModal({
 
           {/* Modal Container */}
           <motion.div
-            initial={{ scale: 0.94, y: 20, opacity: 0 }}
+            initial={{ scale: 0.95, y: 15, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
-            exit={{ scale: 0.94, y: 20, opacity: 0 }}
-            className={`relative w-full max-w-2xl bg-slate-900 border border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 overflow-hidden my-auto max-h-[90vh] flex flex-col ${
+            exit={{ scale: 0.95, y: 15, opacity: 0 }}
+            className={`relative w-full max-w-2xl bg-slate-900 border border-amber-500/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-2xl z-10 overflow-hidden flex flex-col h-[94dvh] sm:h-auto sm:max-h-[90vh] ${
               formLang === "ar" ? "text-right" : "text-left"
             }`}
           >
@@ -1193,15 +1192,15 @@ export default function RegistrationModal({
 
             {/* Action Buttons: Copy Direct Link, Refresh, and Close */}
             <div
-              className={`absolute top-5 ${
-                formLang === "ar" ? "left-5" : "right-5"
-              } flex items-center gap-2 z-20`}
+              className={`absolute top-4 sm:top-5 ${
+                formLang === "ar" ? "left-4 sm:left-5" : "right-4 sm:right-5"
+              } flex items-center gap-1.5 sm:gap-2 z-20`}
             >
               <button
                 type="button"
                 onClick={handleCopyDirectLink}
                 title={formLang === "ar" ? "نسخ رابط الاستمارة المباشر لنشره للمشتركين" : "Copy direct form link to share"}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/30 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer shadow-sm"
+                className="inline-flex items-center gap-1 sm:gap-1.5 px-2.5 sm:px-3 py-1.5 bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/30 rounded-xl text-[11px] sm:text-xs font-bold font-sans transition-all cursor-pointer shadow-sm"
               >
                 {copiedLink ? (
                   <>
@@ -1219,36 +1218,36 @@ export default function RegistrationModal({
                 onClick={fetchQuestions}
                 disabled={isLoadingQuestions}
                 title="تحديث ومزامنة الأسئلة"
-                className="p-2 bg-slate-800/60 hover:bg-amber-500 hover:text-slate-950 text-slate-400 rounded-full transition-colors cursor-pointer disabled:opacity-50"
+                className="p-1.5 sm:p-2 bg-slate-800/60 hover:bg-amber-500 hover:text-slate-950 text-slate-400 rounded-full transition-colors cursor-pointer disabled:opacity-50"
               >
-                <RotateCw className={`w-4 h-4 ${isLoadingQuestions ? "animate-spin text-amber-400" : ""}`} />
+                <RotateCw className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isLoadingQuestions ? "animate-spin text-amber-400" : ""}`} />
               </button>
               <button
                 onClick={onClose}
-                className="p-2 bg-slate-800/60 hover:bg-red-500 hover:text-white text-slate-400 rounded-full transition-colors cursor-pointer"
+                className="p-1.5 sm:p-2 bg-slate-800/60 hover:bg-red-500 hover:text-white text-slate-400 rounded-full transition-colors cursor-pointer"
               >
-                <X className="w-5 h-5" />
+                <X className="w-4 h-4 sm:w-5 sm:h-5" />
               </button>
             </div>
 
             {/* Modal Header */}
-            <div className="text-center pb-4 border-b border-slate-800 shrink-0">
-              <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-2.5 border border-amber-500/20 shadow-sm">
-                <UserCheck className="w-6 h-6" />
+            <div className="text-center pt-2 pb-3.5 border-b border-slate-800 shrink-0">
+              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-amber-500/20 shadow-sm">
+                <UserCheck className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <h3 className="font-serif font-black text-2xl sm:text-3xl text-amber-400">
+              <h3 className="font-serif font-black text-xl sm:text-2xl md:text-3xl text-amber-400">
                 {t.title}
               </h3>
-              <p className="text-slate-400 font-sans text-xs sm:text-sm mt-1 leading-relaxed max-w-md mx-auto">
+              <p className="text-slate-400 font-sans text-xs sm:text-sm mt-1 leading-relaxed max-w-md mx-auto line-clamp-2 sm:line-clamp-none">
                 {t.subtitle}
               </p>
 
               {/* Language Switcher Tabs */}
-              <div className="mt-3.5 flex items-center justify-center gap-1.5 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl w-fit mx-auto shadow-inner">
+              <div className="mt-2.5 sm:mt-3 flex items-center justify-center gap-1.5 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl w-fit mx-auto shadow-inner">
                 <button
                   type="button"
                   onClick={() => setFormLang("ar")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
                     formLang === "ar"
                       ? "bg-amber-500 text-slate-950 shadow-md font-black"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
@@ -1260,7 +1259,7 @@ export default function RegistrationModal({
                 <button
                   type="button"
                   onClick={() => setFormLang("en")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
                     formLang === "en"
                       ? "bg-amber-500 text-slate-950 shadow-md font-black"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
@@ -1272,7 +1271,7 @@ export default function RegistrationModal({
                 <button
                   type="button"
                   onClick={() => setFormLang("th")}
-                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-3 py-1 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
                     formLang === "th"
                       ? "bg-amber-500 text-slate-950 shadow-md font-black"
                       : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
@@ -1284,15 +1283,18 @@ export default function RegistrationModal({
               </div>
 
               {isLoadingQuestions && (
-                <div className="mt-2.5 inline-flex items-center gap-1.5 text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full font-sans">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full font-sans">
+                  <Loader2 className="w-3 h-3 animate-spin" />
                   <span>{t.syncingQuestions}</span>
                 </div>
               )}
             </div>
 
             {/* Body Form */}
-            <div className="overflow-y-auto pr-1 pl-1 py-4 flex-1 space-y-6">
+            <div
+              ref={modalBodyRef}
+              className="overflow-y-auto overscroll-contain pr-1 pl-1 sm:px-2 py-4 flex-1 min-h-0 space-y-4 sm:space-y-5 scrollbar-thin"
+            >
               {isSuccess ? (
                 /* SUCCESS VIEW */
                 <div className="text-center py-8 px-4 space-y-5">

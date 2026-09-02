@@ -339,7 +339,7 @@ export async function submitContactInquiryBridge(
 }
 
 /**
- * Universal Form Questions Fetcher
+ * Universal Form Questions Fetcher (Optimized for lightning-fast loads on Vercel & GitHub Pages)
  */
 export async function fetchFormQuestionsBridge(
   explicitScriptUrl?: string,
@@ -348,21 +348,92 @@ export async function fetchFormQuestionsBridge(
   const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
   const targetSpreadsheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
 
-  // 1. Try local server API
-  try {
-    const res = await fetch(`/api/form-questions?scriptUrl=${encodeURIComponent(targetScriptUrl)}`);
-    if (res.ok) {
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.includes("application/json")) {
-        const data = await res.json();
-        if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
-          return data.questions;
+  // 1. If running on local/full-stack server, try local /api/form-questions with a quick timeout (1200ms)
+  const isStaticHost =
+    typeof window !== "undefined" &&
+    (window.location.hostname.endsWith("github.io") ||
+      window.location.hostname.endsWith("vercel.app") ||
+      window.location.hostname.endsWith("netlify.app") ||
+      window.location.protocol === "file:");
+
+  if (!isStaticHost) {
+    try {
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 1200);
+      const res = await fetch(`/api/form-questions?scriptUrl=${encodeURIComponent(targetScriptUrl)}`, {
+        signal: controller.signal
+      });
+      clearTimeout(timeoutId);
+      if (res.ok) {
+        const contentType = res.headers.get("content-type") || "";
+        if (contentType.includes("application/json")) {
+          const data = await res.json();
+          if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
+            return data.questions;
+          }
         }
       }
-    }
-  } catch (e) {}
+    } catch (e) {}
+  }
 
-  // 2. Try Apps Script Web App GET
+  // 2. Direct Google Visualization API (Very fast, ~200-400ms direct from Google CDN)
+  try {
+    const parseGvizText = (text: string): RegistrationQuestion[] | null => {
+      const jsonStart = text.indexOf("{");
+      const jsonEnd = text.lastIndexOf("}");
+      if (jsonStart === -1 || jsonEnd === -1) return null;
+      const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+      if (!json || !json.table || !json.table.rows || json.table.rows.length === 0) return null;
+      const parsedQuestions: RegistrationQuestion[] = [];
+      const rows = json.table.rows;
+
+      for (let i = 0; i < rows.length; i++) {
+        const r = rows[i]?.c || [];
+        const val = (idx: number) =>
+          r[idx] && r[idx].v !== null && r[idx].v !== undefined ? r[idx].v.toString().trim() : "";
+
+        const qText = val(0);
+        const qDesc = val(1);
+        const qType = val(2).toLowerCase();
+        const qOptionsStr = val(3);
+        const qRequired = val(4) === "نعم" || val(4) === "true" || val(4) === "1";
+        const qImage = val(5);
+        const qLink = val(6);
+
+        if (i === 0 && (qText === "السؤال" || qText === "عنوان الحقل" || qText === "Question")) {
+          continue; // Skip header
+        }
+
+        if (qText) {
+          const opts = qOptionsStr ? qOptionsStr.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+          parsedQuestions.push({
+            id: i + 1,
+            question: qText,
+            description: qDesc || undefined,
+            type: (qType || "text") as any,
+            options: opts,
+            required: qRequired,
+            imageUrl: qImage || undefined,
+            externalLink: qLink || undefined
+          });
+        }
+      }
+      return parsedQuestions.length > 0 ? parsedQuestions : null;
+    };
+
+    // Try primary sheet "RegistrationQuestions" directly
+    const primaryGvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=RegistrationQuestions`;
+    const gvizRes = await fetch(primaryGvizUrl);
+    if (gvizRes.ok) {
+      const text = await gvizRes.text();
+      const parsed = parseGvizText(text);
+      if (parsed && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (gvizErr) {}
+
+  // 3. Try Apps Script Web App GET
   try {
     const gasUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getFormQuestions`;
     const res = await fetch(gasUrl);
@@ -373,64 +444,6 @@ export async function fetchFormQuestionsBridge(
       }
     }
   } catch (e) {}
-
-  // 3. Try Google Visualization API Direct Sheets Reader
-  try {
-    const sheetNamesToTry = ["RegistrationQuestions", "اسئلة فورم", "أسئلة التسجيل", "Questions"];
-    for (const sName of sheetNamesToTry) {
-      try {
-        const gvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sName)}`;
-        const gvizRes = await fetch(gvizUrl);
-        if (gvizRes.ok) {
-          const text = await gvizRes.text();
-          const jsonStart = text.indexOf("{");
-          const jsonEnd = text.lastIndexOf("}");
-          if (jsonStart !== -1 && jsonEnd !== -1) {
-            const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
-            if (json && json.table && json.table.rows && json.table.rows.length > 0) {
-              const parsedQuestions: RegistrationQuestion[] = [];
-              const rows = json.table.rows;
-              
-              for (let i = 0; i < rows.length; i++) {
-                const r = rows[i]?.c || [];
-                const val = (idx: number) => (r[idx] && r[idx].v !== null && r[idx].v !== undefined) ? r[idx].v.toString().trim() : "";
-                
-                const qText = val(0);
-                const qDesc = val(1);
-                const qType = val(2).toLowerCase();
-                const qOptionsStr = val(3);
-                const qRequired = val(4) === "نعم" || val(4) === "true" || val(4) === "1";
-                const qImage = val(5);
-                const qLink = val(6);
-
-                if (i === 0 && (qText === "السؤال" || qText === "عنوان الحقل" || qText === "Question")) {
-                  continue; // Skip header
-                }
-
-                if (qText) {
-                  const opts = qOptionsStr ? qOptionsStr.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
-                  parsedQuestions.push({
-                    id: i + 1,
-                    question: qText,
-                    description: qDesc || undefined,
-                    type: (qType || "text") as any,
-                    options: opts,
-                    required: qRequired,
-                    imageUrl: qImage || undefined,
-                    externalLink: qLink || undefined
-                  });
-                }
-              }
-
-              if (parsedQuestions.length > 0) {
-                return parsedQuestions;
-              }
-            }
-          }
-        }
-      } catch (sheetErr) {}
-    }
-  } catch (gvizErr) {}
 
   // 4. Cached in LocalStorage
   if (typeof window !== "undefined") {

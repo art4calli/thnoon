@@ -34,7 +34,7 @@ export default function SubscriberPortal({
   onLogin,
   onOpenRegistration
 }: SubscriberPortalProps) {
-  const { t, dir } = useLanguage();
+  const { t, dir, currentLang, setLanguage } = useLanguage();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -46,6 +46,7 @@ export default function SubscriberPortal({
     try {
       const url = new URL(window.location.href);
       url.searchParams.set("portal", "true");
+      url.searchParams.set("lang", currentLang);
       url.hash = "portal";
       navigator.clipboard.writeText(url.toString());
       setCopiedLink(true);
@@ -143,8 +144,8 @@ export default function SubscriberPortal({
               </div>
 
               {/* Title Header */}
-              <div className="text-center mt-2 mb-6">
-                <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-3">
+              <div className="text-center mt-2 mb-4">
+                <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-2.5">
                   <User className="w-6 h-6" />
                 </div>
                 <h3 className="font-serif font-bold text-2xl text-amber-400">
@@ -153,6 +154,46 @@ export default function SubscriberPortal({
                 <p className="text-slate-400 font-sans text-xs mt-1 leading-relaxed">
                   {t("subscriber_login_subtitle", "أدخل رقم التسجيل الخاص بك أو امسح رمز الاستجابة السريعة (QR Code) للوصول المباشر إلى موادك الخاصة")}
                 </p>
+
+                {/* Multilingual Selector Pills for Portal */}
+                <div className="mt-3 flex items-center justify-center gap-1.5 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl w-fit mx-auto shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("ar")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+                      currentLang === "ar"
+                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <span className="text-sm">🇸🇦</span>
+                    <span>العربية</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("en")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+                      currentLang === "en"
+                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <span className="text-sm">🇬🇧</span>
+                    <span>English</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("th")}
+                    className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold font-sans transition-all cursor-pointer ${
+                      currentLang === "th"
+                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-slate-200 hover:bg-slate-800/50"
+                    }`}
+                  >
+                    <span className="text-sm">🇹🇭</span>
+                    <span>ภาษาไทย</span>
+                  </button>
+                </div>
               </div>
 
               {/* QR Scanner Quick Action Button */}
