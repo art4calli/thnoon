@@ -70,7 +70,7 @@ function getFeatureIcon(iconName: string) {
 }
 
 export default function App() {
-  const { t, currentLang, dir, syncWithAppData } = useLanguage();
+  const { t, currentLang, dir, syncWithAppData, setLanguage } = useLanguage();
   const [activeSection, setActiveSection] = useState("home");
   const [appData, setAppData] = useState<AppData | null>(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -235,41 +235,91 @@ export default function App() {
       })
       .catch(() => {});
 
-    // Check URL parameters for direct link to registration form or admin settings
-    try {
-      const searchParams = new URLSearchParams(window.location.search);
-      const hash = window.location.hash;
+    // Direct Link / Hash Routing for Registration, Subscriber Portal, and Admin
+    const checkDirectRoutes = () => {
+      try {
+        const searchParams = new URLSearchParams(window.location.search);
+        const hash = (window.location.hash || "").toLowerCase();
 
-      if (
-        searchParams.get("register") === "true" ||
-        searchParams.get("register") === "1" ||
-        searchParams.get("form") === "register" ||
-        searchParams.get("form") === "registration"
-      ) {
-        setIsRegistrationOpen(true);
-      }
-
-      const isAdminRequested =
-        searchParams.get("admin") === "true" ||
-        searchParams.get("admin") === "1" ||
-        searchParams.get("page") === "admin" ||
-        searchParams.get("page") === "settings" ||
-        searchParams.get("settings") === "true" ||
-        searchParams.get("secret") === "admin" ||
-        hash === "#admin" ||
-        hash === "#settings";
-
-      if (isAdminRequested) {
-        if (savedAdminAuth) {
-          setIsAdminLoggedIn(true);
-          setIsSettingsOpen(true);
-        } else {
-          setIsAdminLoginOpen(true);
+        // 1. Check language parameter (?lang=ar | ?lang=en | ?lang=th)
+        const langParam = searchParams.get("lang");
+        if (langParam === "ar" || langParam === "en" || langParam === "th") {
+          setLanguage(langParam);
         }
+
+        // 2. Direct Registration Form Link (?register=true | ?join=true | ?signup=true | ?form=register | #register | #join | #registration)
+        const isRegisterRequested =
+          searchParams.get("register") === "true" ||
+          searchParams.get("register") === "1" ||
+          searchParams.get("register") === "now" ||
+          searchParams.get("join") === "true" ||
+          searchParams.get("join") === "1" ||
+          searchParams.get("signup") === "true" ||
+          searchParams.get("form") === "register" ||
+          searchParams.get("form") === "registration" ||
+          searchParams.get("form") === "true" ||
+          searchParams.get("page") === "register" ||
+          searchParams.get("page") === "registration" ||
+          hash === "#register" ||
+          hash === "#registration" ||
+          hash === "#join" ||
+          hash === "#signup" ||
+          hash === "#form";
+
+        if (isRegisterRequested) {
+          setIsRegistrationOpen(true);
+        }
+
+        // 3. Direct Subscriber Portal Login Link (?portal=true | ?subscriber=true | ?login=true | #portal | #login | #subscribers)
+        const isPortalRequested =
+          searchParams.get("portal") === "true" ||
+          searchParams.get("portal") === "1" ||
+          searchParams.get("portal") === "login" ||
+          searchParams.get("subscriber") === "true" ||
+          searchParams.get("subscribers") === "true" ||
+          searchParams.get("login") === "true" ||
+          searchParams.get("login") === "1" ||
+          searchParams.get("page") === "portal" ||
+          searchParams.get("page") === "subscriber" ||
+          hash === "#portal" ||
+          hash === "#login" ||
+          hash === "#subscriber" ||
+          hash === "#subscribers";
+
+        if (isPortalRequested) {
+          setIsLoginOpen(true);
+        }
+
+        // 4. Admin Link (?admin=true | #admin)
+        const isAdminRequested =
+          searchParams.get("admin") === "true" ||
+          searchParams.get("admin") === "1" ||
+          searchParams.get("page") === "admin" ||
+          searchParams.get("page") === "settings" ||
+          searchParams.get("settings") === "true" ||
+          searchParams.get("secret") === "admin" ||
+          hash === "#admin" ||
+          hash === "#settings";
+
+        if (isAdminRequested) {
+          const isAuth =
+            localStorage.getItem("thnoon_admin_auth") === "true" ||
+            sessionStorage.getItem("thnoon_admin_auth") === "true";
+          if (isAuth) {
+            setIsAdminLoggedIn(true);
+            setIsSettingsOpen(true);
+          } else {
+            setIsAdminLoginOpen(true);
+          }
+        }
+      } catch (e) {
+        console.warn("Error parsing URL direct routes:", e);
       }
-    } catch (e) {
-      console.warn("Error parsing URL search params:", e);
-    }
+    };
+
+    checkDirectRoutes();
+    window.addEventListener("hashchange", checkDirectRoutes);
+    window.addEventListener("popstate", checkDirectRoutes);
 
     // Keyboard shortcut for discrete Admin login: Ctrl + Shift + A or Alt + A
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -287,8 +337,12 @@ export default function App() {
       }
     };
     window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+    return () => {
+      window.removeEventListener("keydown", handleKeyDown);
+      window.removeEventListener("hashchange", checkDirectRoutes);
+      window.removeEventListener("popstate", checkDirectRoutes);
+    };
+  }, [setLanguage]);
 
   const handleAdminLoginSuccess = () => {
     setIsAdminLoggedIn(true);

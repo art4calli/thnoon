@@ -8,7 +8,11 @@ import {
   AlertTriangle,
   QrCode,
   Camera,
-  Sparkles
+  Sparkles,
+  Share2,
+  Check,
+  UserPlus,
+  ExternalLink
 } from "lucide-react";
 import { SubscriberState } from "../types";
 import { useLanguage } from "../context/LanguageContext";
@@ -36,6 +40,20 @@ export default function SubscriberPortal({
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
+
+  const handleCopyPortalLink = () => {
+    try {
+      const url = new URL(window.location.href);
+      url.searchParams.set("portal", "true");
+      url.hash = "portal";
+      navigator.clipboard.writeText(url.toString());
+      setCopiedLink(true);
+      setTimeout(() => setCopiedLink(false), 2500);
+    } catch (e) {
+      console.warn("Clipboard error:", e);
+    }
+  };
 
   const performLogin = async (u: string, p: string) => {
     if (!u || !p) {
@@ -102,13 +120,27 @@ export default function SubscriberPortal({
             >
               <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600"></div>
 
-              {/* Close Button */}
-              <button
-                onClick={onClose}
-                className={`absolute top-4 ${dir === "rtl" ? "left-4" : "right-4"} p-1.5 bg-slate-800/50 hover:bg-red-500 hover:text-white text-slate-400 rounded-full transition-colors cursor-pointer`}
-              >
-                <X className="w-5 h-5" />
-              </button>
+              {/* Top Controls: Share & Close */}
+              <div className={`absolute top-4 ${dir === "rtl" ? "left-4" : "right-4"} flex items-center gap-1.5 z-20`}>
+                <button
+                  type="button"
+                  onClick={handleCopyPortalLink}
+                  title="نسخ رابط بوابة المشتركين المباشر لنشره"
+                  className="p-1.5 bg-slate-800/60 hover:bg-amber-500 hover:text-slate-950 text-amber-400 rounded-full transition-all cursor-pointer flex items-center gap-1"
+                >
+                  {copiedLink ? (
+                    <Check className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Share2 className="w-4 h-4" />
+                  )}
+                </button>
+                <button
+                  onClick={onClose}
+                  className="p-1.5 bg-slate-800/60 hover:bg-red-500 hover:text-white text-slate-400 rounded-full transition-colors cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
 
               {/* Title Header */}
               <div className="text-center mt-2 mb-6">
@@ -230,13 +262,12 @@ export default function SubscriberPortal({
                 </div>
               )}
 
-              <div className="mt-6 pt-4 border-t border-slate-800 text-center">
+              <div className="mt-6 pt-4 border-t border-slate-800 text-center space-y-2">
                 <p className="text-slate-400 text-xs font-sans">
-                  {t("subscriber_new_user_prompt", "هل أنت مشترك جديد وغير مسجل بعد؟")}
+                  {t("subscriber_new_user_prompt", "هل أنت مشترك جديد وترغب في الانضمام؟")}
                 </p>
                 <button
                   type="button"
-                  className="text-amber-400 hover:text-amber-300 text-xs font-sans font-bold mt-1.5 cursor-pointer underline decoration-amber-500/40 underline-offset-4 hover:decoration-amber-400 transition-all block mx-auto"
                   onClick={() => {
                     onClose();
                     if (onOpenRegistration) {
@@ -245,8 +276,10 @@ export default function SubscriberPortal({
                       window.location.href = "#contact";
                     }
                   }}
+                  className="w-full py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-amber-300 font-sans font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"
                 >
-                  {t("subscriber_contact_for_reg", "راسل الإدارة الآن للحصول على حسابك وتفعيل الإشتراك")}
+                  <UserPlus className="w-4 h-4 text-amber-400" />
+                  <span>{t("subscriber_open_reg_form_btn", "تعبئة استمارة تسجيل مشترك جديد (فورم التسجيل)")}</span>
                 </button>
               </div>
             </motion.div>

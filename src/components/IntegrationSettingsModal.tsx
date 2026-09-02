@@ -260,6 +260,16 @@ export default function IntegrationSettingsModal({
     }
   };
 
+  const handleCopyPortalLink = () => {
+    if (typeof window !== "undefined") {
+      const origin = window.location.origin;
+      const url = `${origin}/?portal=true`;
+      navigator.clipboard.writeText(url);
+      setCopiedLang("portal");
+      setTimeout(() => setCopiedLang(null), 2500);
+    }
+  };
+
   if (!isOpen) return null;
 
   const handleCopyCode = async () => {
@@ -1021,13 +1031,32 @@ export default function IntegrationSettingsModal({
                   </span>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-2.5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5">
+                  {/* Subscriber Portal Direct Link */}
+                  <div className="p-3 bg-gradient-to-r from-amber-500/10 to-yellow-500/10 border border-amber-500/30 rounded-xl flex items-center justify-between gap-2">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <span className="text-base">🔐</span>
+                      <div className="text-right truncate">
+                        <p className="text-xs font-bold text-amber-300">بوابة المشتركين</p>
+                        <p className="text-[10px] text-slate-400 font-mono truncate">?portal=true</p>
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleCopyPortalLink}
+                      className="px-2.5 py-1.5 bg-amber-500/20 hover:bg-amber-500 text-amber-300 hover:text-slate-950 text-xs font-bold rounded-lg transition-all shrink-0 cursor-pointer flex items-center gap-1"
+                    >
+                      {copiedLang === "portal" ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                      <span>{copiedLang === "portal" ? "تم!" : "نسخ"}</span>
+                    </button>
+                  </div>
+
                   {/* Arabic Direct Link */}
                   <div className="p-3 bg-slate-900/90 border border-slate-800 rounded-xl flex items-center justify-between gap-2">
                     <div className="flex items-center gap-2 overflow-hidden">
                       <span className="text-base">🇸🇦</span>
                       <div className="text-right truncate">
-                        <p className="text-xs font-bold text-amber-300">الرابط العربي</p>
+                        <p className="text-xs font-bold text-amber-300">استمارة التسجيل (عربي)</p>
                         <p className="text-[10px] text-slate-400 font-mono truncate">?register=true&lang=ar</p>
                       </div>
                     </div>
@@ -1046,7 +1075,7 @@ export default function IntegrationSettingsModal({
                     <div className="flex items-center gap-2 overflow-hidden">
                       <span className="text-base">🇬🇧</span>
                       <div className="text-right truncate">
-                        <p className="text-xs font-bold text-amber-300">English Link</p>
+                        <p className="text-xs font-bold text-amber-300">Form Link (English)</p>
                         <p className="text-[10px] text-slate-400 font-mono truncate">?register=true&lang=en</p>
                       </div>
                     </div>
@@ -1065,7 +1094,7 @@ export default function IntegrationSettingsModal({
                     <div className="flex items-center gap-2 overflow-hidden">
                       <span className="text-base">🇹🇭</span>
                       <div className="text-right truncate">
-                        <p className="text-xs font-bold text-amber-300">ลิงก์ภาษาไทย (Thai)</p>
+                        <p className="text-xs font-bold text-amber-300">แบบฟอร์ม (Thai)</p>
                         <p className="text-[10px] text-slate-400 font-mono truncate">?register=true&lang=th</p>
                       </div>
                     </div>

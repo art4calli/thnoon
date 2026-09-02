@@ -97,16 +97,16 @@ export default function LanguageSelector({ variant = "header", className = "" }:
       <button
         type="button"
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-1.5 bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-amber-500/30 hover:border-amber-500/60 px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm focus:outline-none focus:ring-1 focus:ring-amber-400"
+        className="flex items-center gap-1.5 bg-slate-900/85 hover:bg-slate-800 text-slate-200 border border-amber-500/30 hover:border-amber-500/60 px-2 sm:px-2.5 lg:px-3 py-1.5 rounded-full text-xs font-semibold transition-all shadow-sm focus:outline-none focus:ring-1 focus:ring-amber-400 cursor-pointer"
         title="تغيير لغة الموقع / Change Language"
       >
-        <span className="text-sm leading-none">{activeOption.flag}</span>
-        <span className="font-sans font-bold">{activeOption.nativeName}</span>
-        <ChevronDown className={`w-3.5 h-3.5 text-amber-400 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
+        <span className="text-base sm:text-sm leading-none">{activeOption.flag}</span>
+        <span className="font-sans font-bold hidden lg:inline">{activeOption.nativeName}</span>
+        <ChevronDown className={`w-3 h-3 text-amber-400/90 transition-transform duration-200 ${isOpen ? "rotate-180" : ""}`} />
       </button>
 
       {isOpen && (
-        <div className="absolute left-0 sm:right-0 mt-2 w-44 rounded-2xl bg-slate-950 border border-amber-500/30 shadow-2xl shadow-black/80 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
+        <div className="absolute left-0 sm:left-auto sm:right-0 mt-2 w-44 rounded-2xl bg-slate-950 border border-amber-500/30 shadow-2xl shadow-black/90 py-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
           <div className="px-3 py-1 text-[10px] uppercase tracking-wider text-amber-400 font-bold border-b border-slate-800">
             Language / اللغة
           </div>

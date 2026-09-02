@@ -163,8 +163,8 @@ export default function Header({
             })}
           </nav>
 
-          {/* User Authentication Actions, Language Switcher & Admin Mode */}
-          <div className="hidden sm:flex items-center gap-2.5">
+          {/* Desktop User Authentication Actions, Language Switcher & Admin Mode (>= lg) */}
+          <div className="hidden lg:flex items-center gap-2.5">
             {/* Language Selector Dropdown */}
             <LanguageSelector variant="header" />
 
