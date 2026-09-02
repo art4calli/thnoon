@@ -15,7 +15,7 @@ import RegistrationModal from "./components/RegistrationModal";
 import AdminLoginModal from "./components/AdminLoginModal";
 import { AppData, SubscriberState } from "./types";
 import { fetchAllAppDataDirect } from "./utils/sheetParser";
-import { loginSubscriberBridge, checkSubscriberAccountStatus } from "./utils/googleBackendBridge";
+import { loginSubscriberBridge, checkSubscriberAccountStatus, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID, DEFAULT_DRIVE_FOLDER_ID } from "./utils/googleBackendBridge";
 import { useLanguage } from "./context/LanguageContext";
 
 function getFeatureIcon(iconName: string) {
@@ -100,31 +100,71 @@ export default function App() {
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
-  // Configuration state
-  const [currentScriptUrl, setCurrentScriptUrl] = useState("");
-  const [currentSpreadsheetId, setCurrentSpreadsheetId] = useState("1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY");
-  const [currentDriveFolderId, setCurrentDriveFolderId] = useState("1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7");
+  // Configuration state with robust persistence & fallback for Vercel/GitHub Pages
+  const [currentScriptUrl, setCurrentScriptUrl] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url");
+      if (saved && saved.trim().startsWith("http")) return saved.trim();
+    }
+    const envUrl = import.meta.env.VITE_GOOGLE_SCRIPT_URL;
+    if (envUrl && envUrl.trim().startsWith("http")) return envUrl.trim();
+    return DEFAULT_SCRIPT_URL;
+  });
+  const [currentSpreadsheetId, setCurrentSpreadsheetId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("thnoon_spreadsheet_id");
+      if (saved && saved.trim()) return saved.trim();
+    }
+    const envId = import.meta.env.VITE_SPREADSHEET_ID;
+    if (envId && envId.trim()) return envId.trim();
+    return DEFAULT_SPREADSHEET_ID;
+  });
+  const [currentDriveFolderId, setCurrentDriveFolderId] = useState<string>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("thnoon_drive_folder_id");
+      if (saved && saved.trim()) return saved.trim();
+    }
+    return DEFAULT_DRIVE_FOLDER_ID;
+  });
 
-  // Fetch configuration from server on mount
+  // Fetch configuration from server on mount (if available) with localStorage fallback
   useEffect(() => {
     const fetchConfig = async () => {
       try {
         const res = await fetch("/api/config");
         if (res.ok) {
           const cfg = await res.json();
-          if (cfg.spreadsheetId) setCurrentSpreadsheetId(cfg.spreadsheetId);
-          if (cfg.scriptUrl !== undefined) setCurrentScriptUrl(cfg.scriptUrl);
-          if (cfg.driveFolderId !== undefined) setCurrentDriveFolderId(cfg.driveFolderId);
+          if (cfg.spreadsheetId) {
+            setCurrentSpreadsheetId(cfg.spreadsheetId);
+            localStorage.setItem("thnoon_spreadsheet_id", cfg.spreadsheetId);
+          }
+          if (cfg.scriptUrl && cfg.scriptUrl.trim().startsWith("http")) {
+            setCurrentScriptUrl(cfg.scriptUrl.trim());
+            localStorage.setItem("thnoon_script_url", cfg.scriptUrl.trim());
+            localStorage.setItem("gas_script_url", cfg.scriptUrl.trim());
+          }
+          if (cfg.driveFolderId) {
+            setCurrentDriveFolderId(cfg.driveFolderId);
+            localStorage.setItem("thnoon_drive_folder_id", cfg.driveFolderId);
+          }
           if (cfg.isAdmin) setIsAdminLoggedIn(true);
+        } else {
+          // Fallback for static hosts (Vercel, GitHub Pages) where /api/config is 404
+          const localUrl = localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url");
+          const localSheet = localStorage.getItem("thnoon_spreadsheet_id");
+          const localFolder = localStorage.getItem("thnoon_drive_folder_id");
+          if (localUrl && localUrl.trim().startsWith("http")) setCurrentScriptUrl(localUrl.trim());
+          if (localSheet && localSheet.trim()) setCurrentSpreadsheetId(localSheet.trim());
+          if (localFolder && localFolder.trim()) setCurrentDriveFolderId(localFolder.trim());
         }
       } catch (e) {
         console.warn("Could not fetch /api/config, checking localStorage:", e);
-        const localUrl = localStorage.getItem("thnoon_script_url");
+        const localUrl = localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url");
         const localSheet = localStorage.getItem("thnoon_spreadsheet_id");
         const localFolder = localStorage.getItem("thnoon_drive_folder_id");
-        if (localUrl) setCurrentScriptUrl(localUrl);
-        if (localSheet) setCurrentSpreadsheetId(localSheet);
-        if (localFolder) setCurrentDriveFolderId(localFolder);
+        if (localUrl && localUrl.trim().startsWith("http")) setCurrentScriptUrl(localUrl.trim());
+        if (localSheet && localSheet.trim()) setCurrentSpreadsheetId(localSheet.trim());
+        if (localFolder && localFolder.trim()) setCurrentDriveFolderId(localFolder.trim());
       }
     };
     fetchConfig();
@@ -283,23 +323,28 @@ export default function App() {
   };
 
   const handleSaveConfig = async (newScriptUrl: string, newSpreadsheetId: string, newDriveFolderId?: string) => {
-    setCurrentScriptUrl(newScriptUrl);
-    setCurrentSpreadsheetId(newSpreadsheetId);
-    if (newDriveFolderId) {
-      setCurrentDriveFolderId(newDriveFolderId);
-      localStorage.setItem("thnoon_drive_folder_id", newDriveFolderId);
+    const cleanUrl = (newScriptUrl || "").trim();
+    const cleanSheet = (newSpreadsheetId || "").trim();
+    const cleanFolder = (newDriveFolderId || currentDriveFolderId || "").trim();
+
+    setCurrentScriptUrl(cleanUrl);
+    setCurrentSpreadsheetId(cleanSheet);
+    if (cleanFolder) {
+      setCurrentDriveFolderId(cleanFolder);
+      localStorage.setItem("thnoon_drive_folder_id", cleanFolder);
     }
-    localStorage.setItem("thnoon_script_url", newScriptUrl);
-    localStorage.setItem("thnoon_spreadsheet_id", newSpreadsheetId);
+    localStorage.setItem("thnoon_script_url", cleanUrl);
+    localStorage.setItem("gas_script_url", cleanUrl);
+    localStorage.setItem("thnoon_spreadsheet_id", cleanSheet);
 
     try {
       await fetch("/api/config", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          scriptUrl: newScriptUrl,
-          spreadsheetId: newSpreadsheetId,
-          driveFolderId: newDriveFolderId || currentDriveFolderId
+          scriptUrl: cleanUrl,
+          spreadsheetId: cleanSheet,
+          driveFolderId: cleanFolder
         })
       });
     } catch (err) {

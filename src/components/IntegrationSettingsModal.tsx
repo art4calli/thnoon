@@ -8,7 +8,7 @@ import RegistrationAnswersViewer from "./RegistrationAnswersViewer";
 import SettingsSubscribersViewer from "./SettingsSubscribersViewer";
 import SiteTextsManager from "./SiteTextsManager";
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxs7_H152Ok8oknRYj5I_qWXcIxcjxNhbsx1HcE_RiueHoQmjm4AcAywVw69Mz7vOq1AQ/exec";
 
 interface IntegrationSettingsModalProps {
   isOpen: boolean;
