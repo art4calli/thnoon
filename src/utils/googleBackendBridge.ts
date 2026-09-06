@@ -348,142 +348,148 @@ export async function fetchFormQuestionsBridge(
   const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
   const targetSpreadsheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
 
-  // 1. If running on local/full-stack server, try local /api/form-questions with a quick timeout (1200ms)
-  const isStaticHost =
-    typeof window !== "undefined" &&
-    (window.location.hostname.endsWith("github.io") ||
-      window.location.hostname.endsWith("vercel.app") ||
-      window.location.hostname.endsWith("netlify.app") ||
-      window.location.protocol === "file:");
+  // 1. Direct Google Visualization API (Lightning fast ~200-300ms directly from Google worldwide CDN)
+  const parseGvizText = (text: string): RegistrationQuestion[] | null => {
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd === -1) return null;
+    const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
+    if (!json || !json.table || !json.table.rows || json.table.rows.length === 0) return null;
+    const parsedQuestions: RegistrationQuestion[] = [];
+    const rows = json.table.rows;
 
-  if (!isStaticHost) {
-    try {
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 1200);
-      const res = await fetch(`/api/form-questions?scriptUrl=${encodeURIComponent(targetScriptUrl)}`, {
-        signal: controller.signal
-      });
-      clearTimeout(timeoutId);
-      if (res.ok) {
-        const contentType = res.headers.get("content-type") || "";
-        if (contentType.includes("application/json")) {
-          const data = await res.json();
-          if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
-            return data.questions;
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i]?.c || [];
+      const val = (idx: number) =>
+        r[idx] && r[idx].v !== null && r[idx].v !== undefined ? r[idx].v.toString().trim() : "";
+
+      const qText = val(0);
+      const qDesc = val(1);
+      const qType = val(2).toLowerCase();
+      const qOptionsStr = val(3);
+      const qRequired =
+        val(4) === "نعم" ||
+        val(4) === "true" ||
+        val(4) === "yes" ||
+        val(4) === "1" ||
+        val(4) === "مطلوب" ||
+        val(4) === "اجباري" ||
+        val(4) === "إجباري";
+      const qImage = val(5);
+      const qLink = val(6);
+
+      // Skip header row if present
+      if (qText === "السؤال" || qText === "عنوان الحقل" || qText === "Question" || qText === "نص السؤال") {
+        continue;
+      }
+
+      if (qText) {
+        let fieldType: RegistrationQuestion["type"] = "text";
+        if (
+          qText === "صورة" ||
+          qType === "صورة" ||
+          qType === "image" ||
+          qType.includes("عرض صورة") ||
+          (qType.includes("رابط") && qImage && (!qLink || qLink === "-"))
+        ) {
+          fieldType = "image_display";
+        } else if (qType.includes("عنوان زر") || qType.includes("زر") || qType.includes("button")) {
+          fieldType = "button_link";
+        } else if (qType.includes("رفع") || qType.includes("ملف") || qType.includes("file")) {
+          fieldType = "file";
+        } else if (qType.includes("رقم هاتف") || qType.includes("هاتف") || qType.includes("phone")) {
+          fieldType = "phone";
+        } else if (qType.includes("رقم") || qType.includes("number")) {
+          fieldType = "number";
+        } else if (qType.includes("ايميل") || qType.includes("بريد") || qType.includes("email")) {
+          fieldType = "email";
+        } else if (qType.includes("رابط") || qType.includes("url") || qType.includes("link")) {
+          fieldType = "url";
+        } else if (qType.includes("اختيار") || qType.includes("choice") || qType.includes("select")) {
+          fieldType = "choice";
+        }
+
+        let opts: string[] = [];
+        if (qOptionsStr) {
+          if (qOptionsStr.includes("|||")) {
+            opts = qOptionsStr.split("|||").map((s: string) => s.trim()).filter(Boolean);
+          } else if (qOptionsStr.includes("\n")) {
+            opts = qOptionsStr.split("\n").map((s: string) => s.trim()).filter(Boolean);
+          } else {
+            opts = qOptionsStr.split(",").map((s: string) => s.trim()).filter(Boolean);
           }
         }
-      }
-    } catch (e) {}
-  }
 
-  // 2. Direct Google Visualization API (Very fast, ~200-400ms direct from Google CDN)
+        parsedQuestions.push({
+          id: parsedQuestions.length + 1,
+          question: qText,
+          description: qDesc || undefined,
+          type: fieldType,
+          options: opts.length > 0 ? opts : undefined,
+          required: qRequired,
+          imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
+          externalLink: (qLink && qLink !== "-") ? qLink : undefined
+        });
+      }
+    }
+    return parsedQuestions.length > 0 ? parsedQuestions : null;
+  };
+
   try {
-    const parseGvizText = (text: string): RegistrationQuestion[] | null => {
-      const jsonStart = text.indexOf("{");
-      const jsonEnd = text.lastIndexOf("}");
-      if (jsonStart === -1 || jsonEnd === -1) return null;
-      const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
-      if (!json || !json.table || !json.table.rows || json.table.rows.length === 0) return null;
-      const parsedQuestions: RegistrationQuestion[] = [];
-      const rows = json.table.rows;
-
-      for (let i = 0; i < rows.length; i++) {
-        const r = rows[i]?.c || [];
-        const val = (idx: number) =>
-          r[idx] && r[idx].v !== null && r[idx].v !== undefined ? r[idx].v.toString().trim() : "";
-
-        const qText = val(0);
-        const qDesc = val(1);
-        const qType = val(2).toLowerCase();
-        const qOptionsStr = val(3);
-        const qRequired =
-          val(4) === "نعم" ||
-          val(4) === "true" ||
-          val(4) === "yes" ||
-          val(4) === "1" ||
-          val(4) === "مطلوب" ||
-          val(4) === "اجباري" ||
-          val(4) === "إجباري";
-        const qImage = val(5);
-        const qLink = val(6);
-
-        // Skip header row if present
-        if (qText === "السؤال" || qText === "عنوان الحقل" || qText === "Question" || qText === "نص السؤال") {
-          continue;
-        }
-
-        if (qText) {
-          let fieldType: RegistrationQuestion["type"] = "text";
-          if (
-            qText === "صورة" ||
-            qType === "صورة" ||
-            qType === "image" ||
-            qType.includes("عرض صورة") ||
-            (qType.includes("رابط") && qImage && (!qLink || qLink === "-"))
-          ) {
-            fieldType = "image_display";
-          } else if (qType.includes("عنوان زر") || qType.includes("زر") || qType.includes("button")) {
-            fieldType = "button_link";
-          } else if (qType.includes("رفع") || qType.includes("ملف") || qType.includes("file")) {
-            fieldType = "file";
-          } else if (qType.includes("رقم هاتف") || qType.includes("هاتف") || qType.includes("phone")) {
-            fieldType = "phone";
-          } else if (qType.includes("رقم") || qType.includes("number")) {
-            fieldType = "number";
-          } else if (qType.includes("ايميل") || qType.includes("بريد") || qType.includes("email")) {
-            fieldType = "email";
-          } else if (qType.includes("رابط") || qType.includes("url") || qType.includes("link")) {
-            fieldType = "url";
-          } else if (qType.includes("اختيار") || qType.includes("choice") || qType.includes("select")) {
-            fieldType = "choice";
-          }
-
-          let opts: string[] = [];
-          if (qOptionsStr) {
-            if (qOptionsStr.includes("|||")) {
-              opts = qOptionsStr.split("|||").map((s: string) => s.trim()).filter(Boolean);
-            } else if (qOptionsStr.includes("\n")) {
-              opts = qOptionsStr.split("\n").map((s: string) => s.trim()).filter(Boolean);
-            } else {
-              opts = qOptionsStr.split(",").map((s: string) => s.trim()).filter(Boolean);
-            }
-          }
-
-          parsedQuestions.push({
-            id: parsedQuestions.length + 1,
-            question: qText,
-            description: qDesc || undefined,
-            type: fieldType,
-            options: opts.length > 0 ? opts : undefined,
-            required: qRequired,
-            imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
-            externalLink: (qLink && qLink !== "-") ? qLink : undefined
-          });
-        }
-      }
-      return parsedQuestions.length > 0 ? parsedQuestions : null;
-    };
-
     // Try primary sheet "RegistrationQuestions" directly with headers=1
     const primaryGvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&headers=1&sheet=RegistrationQuestions`;
-    const gvizRes = await fetch(primaryGvizUrl);
+    const gvizRes = await fetch(primaryGvizUrl, { cache: "no-store" });
     if (gvizRes.ok) {
       const text = await gvizRes.text();
       const parsed = parseGvizText(text);
       if (parsed && parsed.length > 0) {
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("thnoon_cached_registration_questions", JSON.stringify(parsed));
+          } catch (e) {}
+        }
         return parsed;
       }
     }
   } catch (gvizErr) {}
 
-  // 3. Try Apps Script Web App GET
+  // 2. Direct Apps Script Web App GET (?action=getFormQuestions)
   try {
     const gasUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getFormQuestions`;
-    const res = await fetch(gasUrl);
+    const res = await fetch(gasUrl, { cache: "no-store" });
     if (res.ok) {
       const data = await res.json();
       if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
+        if (typeof window !== "undefined") {
+          try {
+            localStorage.setItem("thnoon_cached_registration_questions", JSON.stringify(data.questions));
+          } catch (e) {}
+        }
         return data.questions;
+      }
+    }
+  } catch (e) {}
+
+  // 3. Try local /api/form-questions if running in full-stack Node container
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1200);
+    const res = await fetch(`/api/form-questions?scriptUrl=${encodeURIComponent(targetScriptUrl)}`, {
+      signal: controller.signal
+    });
+    clearTimeout(timeoutId);
+    if (res.ok) {
+      const contentType = res.headers.get("content-type") || "";
+      if (contentType.includes("application/json")) {
+        const data = await res.json();
+        if (data && data.questions && Array.isArray(data.questions) && data.questions.length > 0) {
+          if (typeof window !== "undefined") {
+            try {
+              localStorage.setItem("thnoon_cached_registration_questions", JSON.stringify(data.questions));
+            } catch (e) {}
+          }
+          return data.questions;
+        }
       }
     }
   } catch (e) {}

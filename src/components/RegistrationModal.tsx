@@ -287,6 +287,7 @@ interface RegistrationModalProps {
   onClose: () => void;
   questions?: RegistrationQuestion[];
   scriptUrl?: string;
+  spreadsheetId?: string;
   driveFolderId?: string;
 }
 
@@ -295,6 +296,7 @@ export default function RegistrationModal({
   onClose,
   questions: propQuestions,
   scriptUrl,
+  spreadsheetId,
   driveFolderId = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7"
 }: RegistrationModalProps) {
   const [questions, setQuestions] = useState<RegistrationQuestion[]>(() => {
@@ -686,7 +688,7 @@ export default function RegistrationModal({
     return () => window.removeEventListener("thnoon_translations_updated", handler);
   }, []);
 
-  // Fetch questions whenever modal opens or scriptUrl changes
+  // Fetch questions whenever modal opens or scriptUrl/spreadsheetId changes
   useEffect(() => {
     if (isOpen) {
       if (propQuestions && propQuestions.length > 0) {
@@ -695,7 +697,7 @@ export default function RegistrationModal({
         fetchQuestions();
       }
     }
-  }, [isOpen, propQuestions, scriptUrl]);
+  }, [isOpen, propQuestions, scriptUrl, spreadsheetId]);
 
   const processQuestions = (rawQuestions: RegistrationQuestion[], customTrans?: Record<string, any>) => {
     const currentTrans = customTrans || translationsMap;
@@ -735,6 +737,7 @@ export default function RegistrationModal({
     setLoadError(null);
     try {
       const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || DEFAULT_SCRIPT_URL;
+      const activeSpreadsheetId = spreadsheetId || (typeof window !== "undefined" ? localStorage.getItem("thnoon_spreadsheet_id") : null) || DEFAULT_SPREADSHEET_ID;
       
       // 1. Fetch translations if available with 1s timeout to avoid hanging on static deployments
       let loadedTrans = translationsMap;
@@ -758,7 +761,7 @@ export default function RegistrationModal({
       } catch (e) {}
 
       // 2. Fetch questions using universal bridge (optimized for instant Vercel/GitHub loading)
-      const fetchedQuestions = await fetchFormQuestionsBridge(activeScriptUrl);
+      const fetchedQuestions = await fetchFormQuestionsBridge(activeScriptUrl, activeSpreadsheetId);
       if (fetchedQuestions && fetchedQuestions.length > 0) {
         processQuestions(fetchedQuestions, loadedTrans);
         setDataSource("Google Sheet / Apps Script");

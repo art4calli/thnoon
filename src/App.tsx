@@ -15,7 +15,7 @@ import RegistrationModal from "./components/RegistrationModal";
 import AdminLoginModal from "./components/AdminLoginModal";
 import { AppData, SubscriberState } from "./types";
 import { fetchAllAppDataDirect } from "./utils/sheetParser";
-import { loginSubscriberBridge, checkSubscriberAccountStatus, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID, DEFAULT_DRIVE_FOLDER_ID } from "./utils/googleBackendBridge";
+import { loginSubscriberBridge, checkSubscriberAccountStatus, fetchFormQuestionsBridge, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID, DEFAULT_DRIVE_FOLDER_ID } from "./utils/googleBackendBridge";
 import { useLanguage } from "./context/LanguageContext";
 
 function getFeatureIcon(iconName: string) {
@@ -168,6 +168,16 @@ export default function App() {
       }
     };
     fetchConfig();
+
+    // Prefetch Registration Questions from Google Sheet in the background on app load
+    // so questions are already cached and ready instantly on any new device (phone/tablet/computer)
+    fetchFormQuestionsBridge(currentScriptUrl, currentSpreadsheetId)
+      .then((qs) => {
+        if (qs && qs.length > 0) {
+          console.log(`[App] Preloaded ${qs.length} registration questions from RegistrationQuestions sheet`);
+        }
+      })
+      .catch(() => {});
 
     // Check saved admin session
     const savedAdminAuth =
@@ -924,6 +934,7 @@ export default function App() {
         isOpen={isRegistrationOpen}
         onClose={() => setIsRegistrationOpen(false)}
         scriptUrl={currentScriptUrl}
+        spreadsheetId={currentSpreadsheetId}
         driveFolderId={currentDriveFolderId}
       />
 
