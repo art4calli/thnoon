@@ -396,33 +396,76 @@ export async function fetchFormQuestionsBridge(
         const qDesc = val(1);
         const qType = val(2).toLowerCase();
         const qOptionsStr = val(3);
-        const qRequired = val(4) === "نعم" || val(4) === "true" || val(4) === "1";
+        const qRequired =
+          val(4) === "نعم" ||
+          val(4) === "true" ||
+          val(4) === "yes" ||
+          val(4) === "1" ||
+          val(4) === "مطلوب" ||
+          val(4) === "اجباري" ||
+          val(4) === "إجباري";
         const qImage = val(5);
         const qLink = val(6);
 
-        if (i === 0 && (qText === "السؤال" || qText === "عنوان الحقل" || qText === "Question")) {
-          continue; // Skip header
+        // Skip header row if present
+        if (qText === "السؤال" || qText === "عنوان الحقل" || qText === "Question" || qText === "نص السؤال") {
+          continue;
         }
 
         if (qText) {
-          const opts = qOptionsStr ? qOptionsStr.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+          let fieldType: RegistrationQuestion["type"] = "text";
+          if (
+            qText === "صورة" ||
+            qType === "صورة" ||
+            qType === "image" ||
+            qType.includes("عرض صورة") ||
+            (qType.includes("رابط") && qImage && (!qLink || qLink === "-"))
+          ) {
+            fieldType = "image_display";
+          } else if (qType.includes("عنوان زر") || qType.includes("زر") || qType.includes("button")) {
+            fieldType = "button_link";
+          } else if (qType.includes("رفع") || qType.includes("ملف") || qType.includes("file")) {
+            fieldType = "file";
+          } else if (qType.includes("رقم هاتف") || qType.includes("هاتف") || qType.includes("phone")) {
+            fieldType = "phone";
+          } else if (qType.includes("رقم") || qType.includes("number")) {
+            fieldType = "number";
+          } else if (qType.includes("ايميل") || qType.includes("بريد") || qType.includes("email")) {
+            fieldType = "email";
+          } else if (qType.includes("رابط") || qType.includes("url") || qType.includes("link")) {
+            fieldType = "url";
+          } else if (qType.includes("اختيار") || qType.includes("choice") || qType.includes("select")) {
+            fieldType = "choice";
+          }
+
+          let opts: string[] = [];
+          if (qOptionsStr) {
+            if (qOptionsStr.includes("|||")) {
+              opts = qOptionsStr.split("|||").map((s: string) => s.trim()).filter(Boolean);
+            } else if (qOptionsStr.includes("\n")) {
+              opts = qOptionsStr.split("\n").map((s: string) => s.trim()).filter(Boolean);
+            } else {
+              opts = qOptionsStr.split(",").map((s: string) => s.trim()).filter(Boolean);
+            }
+          }
+
           parsedQuestions.push({
-            id: i + 1,
+            id: parsedQuestions.length + 1,
             question: qText,
             description: qDesc || undefined,
-            type: (qType || "text") as any,
-            options: opts,
+            type: fieldType,
+            options: opts.length > 0 ? opts : undefined,
             required: qRequired,
-            imageUrl: qImage || undefined,
-            externalLink: qLink || undefined
+            imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
+            externalLink: (qLink && qLink !== "-") ? qLink : undefined
           });
         }
       }
       return parsedQuestions.length > 0 ? parsedQuestions : null;
     };
 
-    // Try primary sheet "RegistrationQuestions" directly
-    const primaryGvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=RegistrationQuestions`;
+    // Try primary sheet "RegistrationQuestions" directly with headers=1
+    const primaryGvizUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&headers=1&sheet=RegistrationQuestions`;
     const gvizRes = await fetch(primaryGvizUrl);
     if (gvizRes.ok) {
       const text = await gvizRes.text();
@@ -451,24 +494,16 @@ export async function fetchFormQuestionsBridge(
       const cached = localStorage.getItem("thnoon_cached_registration_questions");
       if (cached) {
         const parsed = JSON.parse(cached);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          const isObsolete = parsed.some((q: any) => q.question === "المستوى الحالي في الخط العربي");
+          if (!isObsolete) return parsed;
+        }
       }
     } catch (e) {}
   }
 
-  // 5. Default Fallback Questions
-  return [
-    { id: 1, question: "الاسم", type: "text", required: true },
-    { id: 2, question: "الاسم بالعربي", type: "text", required: false },
-    { id: 3, question: "العمر", type: "number", required: false },
-    { id: 4, question: "رقم الهاتف", type: "tel", required: true },
-    { id: 5, question: "ايميل", type: "email", required: true },
-    { id: 6, question: "ID Line", type: "text", required: false },
-    { id: 7, question: "فيس بوك", type: "url", required: false },
-    { id: 8, question: "هل تحب الخط العربي؟", type: "radio", options: ["نعم جداً", "مهتم بالتعلم", "مبتدئ"], required: false },
-    { id: 9, question: "ما اسم استاذك الذي علمك الخط؟", type: "text", required: false },
-    { id: 10, question: "رفع ملف", type: "file", required: false }
-  ];
+  // Never return default fake questions to avoid confusion
+  return [];
 }
 
 /**

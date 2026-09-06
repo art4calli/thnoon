@@ -280,23 +280,7 @@ export function getLocalizedQuestionOptions(q: RegistrationQuestion, lang: FormL
   return q.options || [];
 }
 
-export const DEFAULT_ACTIVE_QUESTIONS: RegistrationQuestion[] = [
-  { id: 1, question: "الاسم", description: "يرجى كتابة اسمك الكامل كما هو مدون في الهوية", type: "text", required: true },
-  { id: 2, question: "الاسم بالعربي", description: "اسمك الكريم باللغة العربية (إن وُجد)", type: "text", required: true },
-  { id: 3, question: "العمر", description: "العمر بالسنوات (أرقام فقط)", type: "number", required: true },
-  { id: 4, question: "رقم الهاتف", description: "رقم الهاتف أو الواتساب مع مفتاح الدولة", type: "phone", required: true },
-  { id: 5, question: "ايميل", description: "بريدك الإلكتروني المعتمد لاستلام الإشعار", type: "email", required: true },
-  { id: 6, question: "ID Line", description: "معرف تطبيق لاين الخاص بك للتواصل السريع", type: "text", required: false, imageUrl: "https://drive.google.com/thumbnail?id=1wUPfYMrl3t6j0RPaw6Vk-WiqAaECbSNQ&sz=w1201" },
-  { id: 7, question: "افتح ملف بي دي اف", description: "", type: "button_link", required: false, externalLink: "https://drive.google.com/thumbnail?id=1wUPfYMrl3t6j0RPaw6Vk-WiqAaECbSNQ&sz=w1201" },
-  { id: 8, question: "فيس بوك", description: "رابط أو اسم حسابك على فيسبوك", type: "text", required: false, externalLink: "https://drive.google.com/thumbnail?id=1wUPfYMrl3t6j0RPaw6Vk-WiqAaECbSNQ&sz=w1201" },
-  { id: 9, question: "هل تحب الخط العربي؟", description: "اختر الإجابة المناسبة لمستواك", type: "choice", options: ["✅ نعم = เคย", "❌ لا = ไม่เคย"], required: true },
-  { id: 10, question: "ما اسم استاذك الذي علمك الخط؟", description: "اسم الخطاط أو المعلم الذي تعلمت على يديه", type: "text", required: false },
-  { id: 11, question: "هل تعرفين انوان الخط", description: "1", type: "choice", options: ["✅ نعم = เคย", "❌ لا = ไม่เคย"], required: true },
-  { id: 12, question: "هل تحب الفن", description: "2", type: "text", required: false },
-  { id: 13, question: "صورة", description: "", type: "image_display", required: false, imageUrl: "https://drive.google.com/thumbnail?id=1wUPfYMrl3t6j0RPaw6Vk-WiqAaECbSNQ&sz=w1201" },
-  { id: 14, question: "رفع ملف", description: "", type: "file", required: false },
-  { id: 15, question: "افتح ملف بي دي اف", description: "", type: "button_link", required: false, externalLink: "https://drive.google.com/thumbnail?id=1wUPfYMrl3t6j0RPaw6Vk-WiqAaECbSNQ&sz=w1201" }
-];
+export const DEFAULT_ACTIVE_QUESTIONS: RegistrationQuestion[] = [];
 
 interface RegistrationModalProps {
   isOpen: boolean;
@@ -320,11 +304,14 @@ export default function RegistrationModal({
         const stored = localStorage.getItem("thnoon_cached_registration_questions");
         if (stored) {
           const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            const isObsolete = parsed.some((q: any) => q.question === "المستوى الحالي في الخط العربي");
+            if (!isObsolete) return parsed;
+          }
         }
       } catch (e) {}
     }
-    return DEFAULT_ACTIVE_QUESTIONS;
+    return [];
   });
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -775,9 +762,15 @@ export default function RegistrationModal({
       if (fetchedQuestions && fetchedQuestions.length > 0) {
         processQuestions(fetchedQuestions, loadedTrans);
         setDataSource("Google Sheet / Apps Script");
+        setLoadError(null);
+      } else {
+        setQuestions([]);
+        setLoadError("تعذر العثور على أي أسئلة في ورقة RegistrationQuestions بجدول قوقل شيت أو لم يتم تحميلها بعد.");
       }
     } catch (err: any) {
       console.warn("Could not fetch registration questions:", err);
+      setQuestions([]);
+      setLoadError("حدث خطأ في النظام أثناء محاولة جلب الأسئلة من قوقل شيت.");
     } finally {
       setIsLoadingQuestions(false);
     }
@@ -1320,20 +1313,30 @@ export default function RegistrationModal({
                   </div>
                 </div>
               ) : questions.length === 0 ? (
-                /* LOADING OR EMPTY / RETRY STATE */
+                /* LOADING OR EMPTY / SYSTEM ERROR STATE */
                 <div className="text-center py-12 px-4 space-y-4">
-                  <div className="w-14 h-14 bg-amber-500/10 text-amber-400 rounded-full flex items-center justify-center mx-auto border border-amber-500/30">
-                    <RefreshCw className={`w-7 h-7 ${isLoadingQuestions ? "animate-spin" : ""}`} />
+                  <div
+                    className={`w-14 h-14 rounded-full flex items-center justify-center mx-auto border ${
+                      loadError && !isLoadingQuestions
+                        ? "bg-rose-500/10 text-rose-400 border-rose-500/30"
+                        : "bg-amber-500/10 text-amber-400 border-amber-500/30"
+                    }`}
+                  >
+                    {loadError && !isLoadingQuestions ? (
+                      <AlertCircle className="w-7 h-7" />
+                    ) : (
+                      <RefreshCw className={`w-7 h-7 ${isLoadingQuestions ? "animate-spin" : ""}`} />
+                    )}
                   </div>
                   <h4 className="text-base font-bold text-slate-200 font-serif">
                     {isLoadingQuestions
-                      ? "جاري تحميل وتحديث أسئلة الاستمارة من قوقل شيت..."
+                      ? "جاري تحميل وتحديث أسئلة الاستمارة من ورقة RegistrationQuestions..."
                       : (loadError || "لم يتم العثور على أسئلة جاهزة في قوقل شيت")}
                   </h4>
                   <p className="text-xs text-slate-400 max-w-sm mx-auto leading-relaxed">
                     {isLoadingQuestions
-                      ? "يرجى الانتظار بضع ثوانٍ لمزامنة الحقول تلقائياً..."
-                      : "يمكنك الضغط على الزر أدناه لإعادة جلب الأسئلة المعتمدة من جدول البيانات."}
+                      ? "يرجى الانتظار بضع ثوانٍ لمزامنة الحقول تلقائياً مع جدول البيانات..."
+                      : "حدث تعذر في قراءة الأسئلة من ورقة RegistrationQuestions. لن يتم عرض أسئلة افتراضية منعاً لحدوث أي لخبطة أثناء التسجيل. يرجى الضغط على الزر أدناه لإعادة المحاولة."}
                   </p>
                   {!isLoadingQuestions && (
                     <button
@@ -1342,7 +1345,7 @@ export default function RegistrationModal({
                       className="px-6 py-2.5 bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-xs rounded-xl shadow-lg inline-flex items-center gap-2 cursor-pointer transition-all"
                     >
                       <RefreshCw className="w-4 h-4" />
-                      <span>تحديث ومزامنة الأسئلة الآن</span>
+                      <span>إعادة محاولة جلب الأسئلة الآن</span>
                     </button>
                   )}
                 </div>

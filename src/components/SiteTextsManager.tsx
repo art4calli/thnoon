@@ -39,11 +39,10 @@ export default function SiteTextsManager() {
   const [isSaving, setIsSaving] = useState(false);
   const [expandedCategories, setExpandedCategories] = useState<Record<string, boolean>>({});
 
-  // Categories extraction (exclude registration as it has its own dedicated form and management)
+  // Categories extraction
   const categories = useMemo(() => {
     const map = new Map<string, { id: string; label: string; count: number }>();
     translations.forEach((item) => {
-      if (item.category === "registration") return;
       const existing = map.get(item.category);
       if (existing) {
         existing.count += 1;
@@ -61,7 +60,6 @@ export default function SiteTextsManager() {
   // Filtered list
   const filteredTranslations = useMemo(() => {
     return translations.filter((item) => {
-      if (item.category === "registration") return false;
       const matchCat = selectedCategory === "all" || item.category === selectedCategory;
       if (!matchCat) return false;
 

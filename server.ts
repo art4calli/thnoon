@@ -408,9 +408,9 @@ function parseSheetTable(table: any): any[][] {
 }
 
 // Fetch sheet helper using Google Visualization API (free, needs no credentials if sheet is viewable)
-async function getSheetValues(sheetName: string): Promise<any[][]> {
+async function getSheetValues(sheetName: string, headers: number = 0): Promise<any[][]> {
   try {
-    const url = `https://docs.google.com/spreadsheets/d/${currentSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+    const url = `https://docs.google.com/spreadsheets/d/${currentSpreadsheetId}/gviz/tq?tqx=out:json${headers > 0 ? `&headers=${headers}` : ""}&sheet=${encodeURIComponent(sheetName)}`;
     const response = await fetch(url);
     if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
     const text = await response.text();
@@ -1278,59 +1278,6 @@ app.post("/api/contact", async (req, res) => {
   });
 });
 
-// GET FORM QUESTIONS ENDPOINT
-app.get("/api/form-questions", async (req, res) => {
-  const scriptUrl = currentScriptUrl;
-  if (scriptUrl && scriptUrl.trim().startsWith("http")) {
-    try {
-      const url = `${scriptUrl}${scriptUrl.includes("?") ? "&" : "?"}action=getFormQuestions`;
-      const response = await fetch(url);
-      const data = await response.json();
-      if (data && data.questions) {
-        return res.json(data);
-      }
-    } catch (err) {
-      console.error("Error fetching form questions from Apps Script:", err);
-    }
-  }
-
-  // Fallback to reading 'اسئلة فورم' from Google Sheets directly
-  try {
-    const rows = await getSheetValues("اسئلة فورم");
-    if (rows && rows.length > 1) {
-      const questions = [];
-      for (let i = 1; i < rows.length; i++) {
-        const row = rows[i];
-        if (row && row[1]) {
-          const optionsStr = row[3] ? row[3].toString() : "";
-          const optionsArr = optionsStr ? optionsStr.split(",").map((s: string) => s.trim()) : [];
-          questions.push({
-            id: row[0] || i,
-            question: row[1],
-            type: row[2] || "text",
-            options: optionsArr
-          });
-        }
-      }
-      return res.json({ success: true, questions });
-    }
-  } catch (e) {
-    console.error("Error parsing form questions sheet directly:", e);
-  }
-
-  // Default fallback questions
-  return res.json({
-    success: true,
-    questions: [
-      { id: 1, question: "المستوى الحالي في الخط العربي", type: "choice", options: ["مبتدئ", "متوسط", "متقدم"] },
-      { id: 2, question: "نوع الخط المراد تعلمه أو التركيز عليه", type: "choice", options: ["خط الثلث", "خط النسخ", "خط الرقعة", "الخط الديواني", "الخط الكوفي"] },
-      { id: 3, question: "هل سبق لك المشاركة في معارض أو دورات خطية؟", type: "choice", options: ["نعم", "لا"] },
-      { id: 4, question: "الهدف الرئيسي من الانضمام للبرنامج التدريبي", type: "text", options: [] },
-      { id: 5, question: "ملاحظات إضافية أو استفسارات خاصة", type: "text", options: [] }
-    ]
-  });
-});
-
 // SUBMIT REGISTRATION ENDPOINT
 app.post("/api/register", async (req, res) => {
   const regData = req.body;
@@ -1807,8 +1754,8 @@ async function handleGetFormQuestions(req: express.Request, res: express.Respons
 
     for (const name of possibleSheetNames) {
       try {
-        qRows = await getSheetValues(name);
-        if (qRows && qRows.length > 1) {
+        qRows = await getSheetValues(name, 1);
+        if (qRows && qRows.length > 0) {
           console.log(`Found ${qRows.length} rows in sheet tab [${name}]`);
           break;
         }
@@ -1817,25 +1764,28 @@ async function handleGetFormQuestions(req: express.Request, res: express.Respons
       }
     }
 
-    if (!qRows || qRows.length < 2) {
+    if (!qRows || qRows.length === 0) {
       const cached = loadCachedFormQuestions();
       if (cached && cached.length > 0) {
         return res.json({ success: true, questions: cached, source: "server_cache" });
       }
-      return res.json({ success: true, questions: [] });
+      return res.json({
+        success: false,
+        questions: [],
+        error: "لم يتم العثور على أي أسئلة في ورقة RegistrationQuestions"
+      });
     }
 
-    // Row 0 is header: [نص السؤال, الوصف, نوع العنصر, خيارات, اجبار الاجابة, رابط الصورة, رابط خارجي]
     const questions: any[] = [];
     // Load saved form translations
     const savedTranslations = loadFormTranslations();
 
-    for (let i = 1; i < qRows.length; i++) {
+    for (let i = 0; i < qRows.length; i++) {
       const row = qRows[i];
       if (!row || row.length === 0) continue;
 
       const questionText = row[0]?.toString().trim() || "";
-      if (!questionText) continue;
+      if (!questionText || questionText === "السؤال" || questionText === "نص السؤال" || questionText === "Question") continue;
 
       const description = row[1]?.toString().trim() || "";
       const rawType = row[2]?.toString().trim().toLowerCase() || "نص";
@@ -1889,11 +1839,12 @@ async function handleGetFormQuestions(req: express.Request, res: express.Respons
         (rawRequired !== "" && rawRequired !== "لا" && rawRequired !== "false" && rawRequired !== "no" && rawRequired !== "0" && rawRequired !== "-");
       const imageUrl = (rawImg && rawImg !== "-") ? formatImageUrl(rawImg) : undefined;
 
+      const qIndex = questions.length + 1;
       // Find translation by questionText or question id
-      const fieldTranslation = findQuestionTranslation(questionText, i, savedTranslations);
+      const fieldTranslation = findQuestionTranslation(questionText, qIndex, savedTranslations);
 
       questions.push({
-        id: i,
+        id: qIndex,
         question: questionText,
         description: description || undefined,
         type: fieldType,
@@ -1907,16 +1858,21 @@ async function handleGetFormQuestions(req: express.Request, res: express.Respons
 
     if (questions.length > 0) {
       saveCachedFormQuestions(questions);
+      return res.json({ success: true, questions, source: "google_sheets_csv" });
     }
 
-    return res.json({ success: true, questions, source: "google_sheets_csv" });
+    return res.json({
+      success: false,
+      questions: [],
+      error: "لم يتم العثور على أي أسئلة صالحة في ورقة RegistrationQuestions"
+    });
   } catch (error: any) {
     console.error("Error reading form questions:", error);
     const cached = loadCachedFormQuestions();
     if (cached && cached.length > 0) {
       return res.json({ success: true, questions: cached, source: "server_cache" });
     }
-    return res.json({ success: true, questions: [] });
+    return res.json({ success: false, questions: [], error: error.message });
   }
 }
 

@@ -951,6 +951,15 @@ export const DEFAULT_SITE_TRANSLATIONS: TranslationItem[] = [
     en: "Contact administration now to receive your account and activate subscription"
   },
   {
+    id: "subscriber_open_reg_form_btn",
+    category: "subscriber",
+    categoryLabel: "بوابة المشتركين والدخول",
+    label: "زر تعبئة استمارة تسجيل مشترك جديد (فورم التسجيل)",
+    ar: "تعبئة استمارة تسجيل مشترك جديد (فورم التسجيل)",
+    th: "กรอกแบบฟอร์มลงทะเบียนสมาชิกใหม่ (แบบฟอร์มลงทะเบียน)",
+    en: "Fill New Subscriber Registration Form"
+  },
+  {
     id: "subscriber_refresh_cards_btn",
     category: "subscriber",
     categoryLabel: "بوابة المشتركين والدخول",
