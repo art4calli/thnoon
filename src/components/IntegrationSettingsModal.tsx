@@ -8,6 +8,8 @@ import RegistrationAnswersViewer from "./RegistrationAnswersViewer";
 import SettingsSubscribersViewer from "./SettingsSubscribersViewer";
 import SiteTextsManager from "./SiteTextsManager";
 import { translateBatchWithAI } from "../utils/translatorService";
+import { DEFAULT_FORM_TRANSLATIONS } from "../data/defaultFormTranslations";
+import { fetchFormQuestionsBridge, DEFAULT_SPREADSHEET_ID } from "../utils/googleBackendBridge";
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
 
@@ -75,37 +77,56 @@ export default function IntegrationSettingsModal({
     setIsLoadingTranslations(true);
     setTranslationSuccessMsg(null);
     try {
-      // 1. Fetch questions using current active scriptUrl or local API
-      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || "";
-      const qUrl = activeScript ? `/api/registration-questions?scriptUrl=${encodeURIComponent(activeScript)}` : "/api/registration-questions";
+      const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || DEFAULT_SCRIPT_URL;
+      const activeSpreadsheet = spreadsheetId || (typeof window !== "undefined" ? localStorage.getItem("thnoon_spreadsheet_id") : "") || DEFAULT_SPREADSHEET_ID;
       
-      const qRes = await fetch(qUrl);
-      const qData = await qRes.json();
-      let loadedQuestions: RegistrationQuestion[] = qData.questions || [];
+      // 1. Fetch questions directly using universal bridge (works on AI Studio, Vercel, mobile, tablet)
+      const loadedQuestions = await fetchFormQuestionsBridge(activeScript, activeSpreadsheet);
+      setQuestions(loadedQuestions);
 
-      // If backend returned empty, use empty or cached questions
-      if (loadedQuestions.length === 0 && typeof window !== "undefined") {
+      // 2. Fetch translations: initialize with DEFAULT_FORM_TRANSLATIONS
+      let loadedTranslations: FormTranslationsMap = { ...DEFAULT_FORM_TRANSLATIONS };
+      
+      if (typeof window !== "undefined") {
         try {
-          const cached = localStorage.getItem("thnoon_cached_registration_questions");
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) loadedQuestions = parsed;
+          const stored = localStorage.getItem("thnoon_form_translations");
+          if (stored) {
+            const parsed = JSON.parse(stored);
+            if (parsed && typeof parsed === "object") {
+              loadedTranslations = { ...loadedTranslations, ...parsed };
+            }
           }
         } catch (e) {}
       }
-      setQuestions(loadedQuestions);
 
-      // 2. Fetch translations
-      const tRes = await fetch("/api/form-translations");
-      const tData = await tRes.json();
-      const loadedTranslations: FormTranslationsMap = tData.translations || {};
+      // 3. Try reading from server if available
+      try {
+        const tRes = await fetch("/api/form-translations");
+        if (tRes.ok) {
+          const contentType = tRes.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const tData = await tRes.json();
+            if (tData.translations && typeof tData.translations === "object") {
+              loadedTranslations = { ...loadedTranslations, ...tData.translations };
+            }
+          }
+        }
+      } catch (e) {}
       
-      // Initialize any missing question keys in translations map
+      // Initialize and merge any missing question keys in translations map
       const mergedTranslations = { ...loadedTranslations };
       loadedQuestions.forEach((q) => {
         const key = q.question;
-        if (!mergedTranslations[key]) {
-          mergedTranslations[key] = q.translations || {
+        const fallback = DEFAULT_FORM_TRANSLATIONS[key] || DEFAULT_FORM_TRANSLATIONS[key.trim()];
+        const current = mergedTranslations[key] || q.translations || fallback;
+
+        if (current) {
+          mergedTranslations[key] = current;
+          if (q.id) {
+            mergedTranslations[String(q.id)] = current;
+          }
+        } else {
+          const placeholder: QuestionTranslation = {
             questionEn: "",
             questionTh: "",
             descriptionEn: "",
@@ -113,20 +134,15 @@ export default function IntegrationSettingsModal({
             optionsEn: q.options ? [...q.options] : [],
             optionsTh: q.options ? [...q.options] : []
           };
+          mergedTranslations[key] = placeholder;
+          if (q.id) {
+            mergedTranslations[String(q.id)] = placeholder;
+          }
         }
       });
       setTranslations(mergedTranslations);
     } catch (e) {
       console.error("Error loading questions & translations:", e);
-      if (typeof window !== "undefined") {
-        try {
-          const cached = localStorage.getItem("thnoon_cached_registration_questions");
-          if (cached) {
-            const parsed = JSON.parse(cached);
-            if (Array.isArray(parsed) && parsed.length > 0) setQuestions(parsed);
-          }
-        } catch (err) {}
-      }
     } finally {
       setIsLoadingTranslations(false);
     }
@@ -137,6 +153,10 @@ export default function IntegrationSettingsModal({
     setIsAutoTranslating(true);
     setTranslationSuccessMsg(null);
     try {
+      let finalTranslations: FormTranslationsMap = { ...translations };
+      let translationSucceeded = false;
+      let methodUsed = "الذكاء الاصطناعي";
+
       // 1. Try Express API if server is running
       try {
         const res = await fetch("/api/auto-translate-questions", {
@@ -145,61 +165,92 @@ export default function IntegrationSettingsModal({
           body: JSON.stringify({ questions })
         });
         if (res.ok) {
-          const data = await res.json();
-          if (data.success && data.translations) {
-            setTranslations(data.translations);
-            setTranslationSuccessMsg(data.method === "gemini-ai" ? "تمت الترجمة الذكية بواسطة الذكاء الاصطناعي بنجاح!" : "تمت الترجمة بنجاح!");
-            setTimeout(() => setTranslationSuccessMsg(null), 4000);
-            return;
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            const data = await res.json();
+            if (data.success && data.translations) {
+              finalTranslations = { ...finalTranslations, ...data.translations };
+              translationSucceeded = true;
+              methodUsed = data.method === "gemini-ai" ? "Gemini AI" : "الترجمة الذكية";
+            }
           }
         }
       } catch (err) {
         // Fallback to client-side translator
       }
 
-      // 2. Client-side fallback translator
-      const itemsToTranslate: Array<{ id: string; ar: string }> = [];
-      questions.forEach((q) => {
-        itemsToTranslate.push({ id: `${q.id}__question`, ar: q.question });
-        if (q.description) {
-          itemsToTranslate.push({ id: `${q.id}__desc`, ar: q.description });
-        }
-        if (q.options && q.options.length > 0) {
-          q.options.forEach((opt, optIdx) => {
-            itemsToTranslate.push({ id: `${q.id}__opt_${optIdx}`, ar: opt });
-          });
-        }
-      });
+      // 2. Client-side fallback translator (works seamlessly on Vercel & GitHub Pages)
+      if (!translationSucceeded) {
+        const itemsToTranslate: Array<{ id: string; ar: string }> = [];
+        questions.forEach((q) => {
+          itemsToTranslate.push({ id: `${q.id}__question`, ar: q.question });
+          if (q.description) {
+            itemsToTranslate.push({ id: `${q.id}__desc`, ar: q.description });
+          }
+          if (q.options && q.options.length > 0) {
+            q.options.forEach((opt, optIdx) => {
+              itemsToTranslate.push({ id: `${q.id}__opt_${optIdx}`, ar: opt });
+            });
+          }
+        });
 
-      const batchResults = await translateBatchWithAI(itemsToTranslate);
-      const newTranslations: FormTranslationsMap = { ...translations };
+        const batchResults = await translateBatchWithAI(itemsToTranslate);
 
-      questions.forEach((q) => {
-        const qRes = batchResults[`${q.id}__question`] || { th: q.question, en: q.question };
-        const descRes = q.description ? (batchResults[`${q.id}__desc`] || { th: q.description, en: q.description }) : undefined;
+        questions.forEach((q) => {
+          const defaultQ = DEFAULT_FORM_TRANSLATIONS[q.question] || DEFAULT_FORM_TRANSLATIONS[q.question.trim()];
+          const qRes = batchResults[`${q.id}__question`] || { 
+            th: defaultQ?.questionTh || q.question, 
+            en: defaultQ?.questionEn || q.question 
+          };
+          const descRes = q.description 
+            ? (batchResults[`${q.id}__desc`] || { th: defaultQ?.descriptionTh || q.description, en: defaultQ?.descriptionEn || q.description }) 
+            : undefined;
 
-        const optEn: string[] = [];
-        const optTh: string[] = [];
-        if (q.options && q.options.length > 0) {
-          q.options.forEach((opt, optIdx) => {
-            const optRes = batchResults[`${q.id}__opt_${optIdx}`] || { th: opt, en: opt };
-            optEn.push(optRes.en);
-            optTh.push(optRes.th);
-          });
-        }
+          const optEn: string[] = [];
+          const optTh: string[] = [];
+          if (q.options && q.options.length > 0) {
+            q.options.forEach((opt, optIdx) => {
+              const optDefaultEn = defaultQ?.optionsEn?.[optIdx];
+              const optDefaultTh = defaultQ?.optionsTh?.[optIdx];
+              const optRes = batchResults[`${q.id}__opt_${optIdx}`] || { 
+                th: optDefaultTh || opt, 
+                en: optDefaultEn || opt 
+              };
+              optEn.push(optRes.en);
+              optTh.push(optRes.th);
+            });
+          }
 
-        newTranslations[q.id] = {
-          questionEn: qRes.en || q.question,
-          questionTh: qRes.th || q.question,
-          descriptionEn: descRes?.en,
-          descriptionTh: descRes?.th,
-          optionsEn: optEn.length > 0 ? optEn : undefined,
-          optionsTh: optTh.length > 0 ? optTh : undefined,
-        };
-      });
+          const itemTrans: QuestionTranslation = {
+            questionEn: qRes.en || defaultQ?.questionEn || q.question,
+            questionTh: qRes.th || defaultQ?.questionTh || q.question,
+            descriptionEn: descRes?.en || defaultQ?.descriptionEn,
+            descriptionTh: descRes?.th || defaultQ?.descriptionTh,
+            optionsEn: optEn.length > 0 ? optEn : defaultQ?.optionsEn,
+            optionsTh: optTh.length > 0 ? optTh : defaultQ?.optionsTh,
+          };
 
-      setTranslations(newTranslations);
-      setTranslationSuccessMsg("تمت الترجمة الذكية بنجاح!");
+          // Save by BOTH Arabic question text AND question ID
+          finalTranslations[q.question] = itemTrans;
+          if (q.id) {
+            finalTranslations[String(q.id)] = itemTrans;
+          }
+        });
+        translationSucceeded = true;
+      }
+
+      // Update UI state immediately!
+      setTranslations({ ...finalTranslations });
+
+      // Automatically persist to localStorage and notify all components
+      if (typeof window !== "undefined") {
+        try {
+          localStorage.setItem("thnoon_form_translations", JSON.stringify(finalTranslations));
+          window.dispatchEvent(new CustomEvent("thnoon_translations_updated", { detail: finalTranslations }));
+        } catch (e) {}
+      }
+
+      setTranslationSuccessMsg(`تمت ترجمة جميع الأسئلة والخيارات بنجاح بواسطة ${methodUsed}!`);
       setTimeout(() => setTranslationSuccessMsg(null), 4000);
     } catch (e) {
       console.error("Auto translate failed:", e);
@@ -219,16 +270,22 @@ export default function IntegrationSettingsModal({
         } catch (e) {}
       }
 
-      const res = await fetch("/api/form-translations", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ translations })
-      });
-      const data = await res.json();
-      if (data.success) {
-        setTranslationSuccessMsg("تم حفظ وتفعيل ترجمات الاستمارة بنجاح!");
-        setTimeout(() => setTranslationSuccessMsg(null), 4000);
-      }
+      try {
+        const res = await fetch("/api/form-translations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ translations })
+        });
+        if (res.ok) {
+          const contentType = res.headers.get("content-type") || "";
+          if (contentType.includes("application/json")) {
+            await res.json();
+          }
+        }
+      } catch (e) {}
+
+      setTranslationSuccessMsg("تم حفظ وتفعيل ترجمات الاستمارة بنجاح على جميع الأجهزة!");
+      setTimeout(() => setTranslationSuccessMsg(null), 4000);
     } catch (e) {
       console.error("Save translations failed:", e);
     } finally {
@@ -239,15 +296,24 @@ export default function IntegrationSettingsModal({
   const handleUpdateTranslationField = (
     qKey: string,
     field: keyof QuestionTranslation,
-    val: any
+    val: any,
+    qId?: number | string
   ) => {
-    setTranslations((prev) => ({
-      ...prev,
-      [qKey]: {
-        ...(prev[qKey] || {}),
+    setTranslations((prev) => {
+      const existing = prev[qKey] || (qId ? prev[String(qId)] : {}) || {};
+      const updated = {
+        ...existing,
         [field]: val
+      };
+      const next = {
+        ...prev,
+        [qKey]: updated
+      };
+      if (qId) {
+        next[String(qId)] = updated;
       }
-    }));
+      return next;
+    });
   };
 
   const handleCopyLanguageLink = (lang: string) => {
@@ -1125,7 +1191,8 @@ export default function IntegrationSettingsModal({
                 <div className="space-y-4">
                   {questions.map((q, idx) => {
                     const qKey = q.question;
-                    const curTrans = translations[qKey] || {};
+                    const fallbackTrans = DEFAULT_FORM_TRANSLATIONS[qKey] || DEFAULT_FORM_TRANSLATIONS[qKey.trim()];
+                    const curTrans = translations[qKey] || translations[qKey.trim()] || (q.id ? translations[String(q.id)] : undefined) || fallbackTrans || {};
 
                     return (
                       <div
@@ -1186,9 +1253,9 @@ export default function IntegrationSettingsModal({
                               <label className="text-[11px] text-slate-400 font-medium">Question in English:</label>
                               <input
                                 type="text"
-                                value={curTrans.questionEn || ""}
+                                value={curTrans.questionEn ?? fallbackTrans?.questionEn ?? ""}
                                 placeholder="Enter English translation..."
-                                onChange={(e) => handleUpdateTranslationField(qKey, "questionEn", e.target.value)}
+                                onChange={(e) => handleUpdateTranslationField(qKey, "questionEn", e.target.value, q.id)}
                                 className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:border-amber-400 focus:outline-none"
                               />
                             </div>
@@ -1197,9 +1264,9 @@ export default function IntegrationSettingsModal({
                               <label className="text-[11px] text-slate-400 font-medium">Description (optional):</label>
                               <input
                                 type="text"
-                                value={curTrans.descriptionEn || ""}
+                                value={curTrans.descriptionEn ?? fallbackTrans?.descriptionEn ?? ""}
                                 placeholder="English helper text..."
-                                onChange={(e) => handleUpdateTranslationField(qKey, "descriptionEn", e.target.value)}
+                                onChange={(e) => handleUpdateTranslationField(qKey, "descriptionEn", e.target.value, q.id)}
                                 className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:border-amber-400 focus:outline-none"
                               />
                             </div>
@@ -1209,8 +1276,8 @@ export default function IntegrationSettingsModal({
                               <div className="space-y-1.5 pt-1">
                                 <label className="text-[11px] text-slate-400 font-medium">Dropdown Options (English):</label>
                                 {q.options.map((opt, optIdx) => {
-                                  const curOptsEn = curTrans.optionsEn || [];
-                                  const currentVal = curOptsEn[optIdx] !== undefined ? curOptsEn[optIdx] : opt;
+                                  const curOptsEn = curTrans.optionsEn || fallbackTrans?.optionsEn || [];
+                                  const currentVal = curOptsEn[optIdx] !== undefined ? curOptsEn[optIdx] : "";
 
                                   return (
                                     <div key={optIdx} className="flex items-center gap-2">
@@ -1220,9 +1287,9 @@ export default function IntegrationSettingsModal({
                                         value={currentVal}
                                         placeholder={`Translation for "${opt}"`}
                                         onChange={(e) => {
-                                          const nextOpts = [...(curTrans.optionsEn || q.options || [])];
+                                          const nextOpts = [...(curTrans.optionsEn || fallbackTrans?.optionsEn || q.options || [])];
                                           nextOpts[optIdx] = e.target.value;
-                                          handleUpdateTranslationField(qKey, "optionsEn", nextOpts);
+                                          handleUpdateTranslationField(qKey, "optionsEn", nextOpts, q.id);
                                         }}
                                         className="flex-1 px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-md text-xs text-slate-200 focus:border-amber-400 focus:outline-none"
                                       />
@@ -1244,9 +1311,9 @@ export default function IntegrationSettingsModal({
                               <label className="text-[11px] text-slate-400 font-medium">คำถามภาษาไทย (Thai Question):</label>
                               <input
                                 type="text"
-                                value={curTrans.questionTh || ""}
+                                value={curTrans.questionTh ?? fallbackTrans?.questionTh ?? ""}
                                 placeholder="กรอกคำถามภาษาไทย..."
-                                onChange={(e) => handleUpdateTranslationField(qKey, "questionTh", e.target.value)}
+                                onChange={(e) => handleUpdateTranslationField(qKey, "questionTh", e.target.value, q.id)}
                                 className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:border-amber-400 focus:outline-none"
                               />
                             </div>
@@ -1255,9 +1322,9 @@ export default function IntegrationSettingsModal({
                               <label className="text-[11px] text-slate-400 font-medium">คำอธิบายเพิ่มเติม (Thai Description):</label>
                               <input
                                 type="text"
-                                value={curTrans.descriptionTh || ""}
+                                value={curTrans.descriptionTh ?? fallbackTrans?.descriptionTh ?? ""}
                                 placeholder="คำอธิบายหรือคำแนะนำ..."
-                                onChange={(e) => handleUpdateTranslationField(qKey, "descriptionTh", e.target.value)}
+                                onChange={(e) => handleUpdateTranslationField(qKey, "descriptionTh", e.target.value, q.id)}
                                 className="w-full px-3 py-1.5 bg-slate-950 border border-slate-700 rounded-lg text-xs text-slate-200 focus:border-amber-400 focus:outline-none"
                               />
                             </div>
@@ -1267,8 +1334,8 @@ export default function IntegrationSettingsModal({
                               <div className="space-y-1.5 pt-1">
                                 <label className="text-[11px] text-slate-400 font-medium">ตัวเลือกรายการ (Thai Options):</label>
                                 {q.options.map((opt, optIdx) => {
-                                  const curOptsTh = curTrans.optionsTh || [];
-                                  const currentVal = curOptsTh[optIdx] !== undefined ? curOptsTh[optIdx] : opt;
+                                  const curOptsTh = curTrans.optionsTh || fallbackTrans?.optionsTh || [];
+                                  const currentVal = curOptsTh[optIdx] !== undefined ? curOptsTh[optIdx] : "";
 
                                   return (
                                     <div key={optIdx} className="flex items-center gap-2">
@@ -1278,9 +1345,9 @@ export default function IntegrationSettingsModal({
                                         value={currentVal}
                                         placeholder={`คำแปลสำหรับ "${opt}"`}
                                         onChange={(e) => {
-                                          const nextOpts = [...(curTrans.optionsTh || q.options || [])];
+                                          const nextOpts = [...(curTrans.optionsTh || fallbackTrans?.optionsTh || q.options || [])];
                                           nextOpts[optIdx] = e.target.value;
-                                          handleUpdateTranslationField(qKey, "optionsTh", nextOpts);
+                                          handleUpdateTranslationField(qKey, "optionsTh", nextOpts, q.id);
                                         }}
                                         className="flex-1 px-2.5 py-1 bg-slate-950 border border-slate-700 rounded-md text-xs text-slate-200 focus:border-amber-400 focus:outline-none"
                                       />

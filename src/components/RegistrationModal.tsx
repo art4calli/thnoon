@@ -29,6 +29,7 @@ import {
   Globe
 } from "lucide-react";
 import { RegistrationQuestion, QuestionTranslation } from "../types";
+import { DEFAULT_FORM_TRANSLATIONS } from "../data/defaultFormTranslations";
 import { formatImageUrl } from "../utils/imageUtils";
 import {
   submitRegistrationBridge,
@@ -223,7 +224,8 @@ export function getQuestionTranslation(
   const qText = (q.question || "").trim();
   const normTarget = normalizeArabicText(qText);
   const fallbackDict: Record<string, QuestionTranslation> = {
-    "الاسم": { questionEn: "Name", questionTh: "ชื่อ-นามสกุล", descriptionEn: "Please write your full name as shown on your ID", descriptionTh: "กรุณาระบุชื่อ-นามสกุลเต็มตามที่ปรากฏบนบัตรประจำตัว" },
+    ...DEFAULT_FORM_TRANSLATIONS,
+    "الاسم": { questionEn: "Full Name", questionTh: "ชื่อ-นามสกุล", descriptionEn: "Please write your full name as shown on your ID", descriptionTh: "กรุณาระบุชื่อ-นามสกุลเต็มตามที่ปรากฏบนบัตรประจำตัว" },
     "الاسم بالعربي": { questionEn: "Name in Arabic", questionTh: "ชื่อภาษาอาหรับ", descriptionEn: "Your name in Arabic (if any)", descriptionTh: "ชื่อของคุณเป็นภาษาอาหรับ (ถ้ามี)" },
     "العمر": { questionEn: "Age", questionTh: "อายุ", descriptionEn: "Age in years (numbers only)", descriptionTh: "อายุเป็นปี (ตัวเลขเท่านั้น)" },
     "رقم الهاتف": { questionEn: "Phone Number", questionTh: "หมายเลขโทรศัพท์", descriptionEn: "Phone or WhatsApp number with country code", descriptionTh: "เบอร์โทรศัพท์หรือ WhatsApp พร้อมรหัสประเทศ" },
@@ -333,14 +335,32 @@ export default function RegistrationModal({
   const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
   const [customButtonTitle, setCustomButtonTitle] = useState<string>("إرسال طلب التسجيل والاشتراك");
   const [translationsMap, setTranslationsMap] = useState<Record<string, any>>(() => {
+    let base = { ...DEFAULT_FORM_TRANSLATIONS };
     if (typeof window !== "undefined") {
       try {
         const stored = localStorage.getItem("thnoon_form_translations");
-        if (stored) return JSON.parse(stored);
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && typeof parsed === "object") {
+            base = { ...base, ...parsed };
+          }
+        }
       } catch (e) {}
     }
-    return {};
+    return base;
   });
+
+  // Real-time synchronization when translations are updated in Settings
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const handleSync = (e: any) => {
+      if (e.detail && typeof e.detail === "object") {
+        setTranslationsMap((prev) => ({ ...prev, ...e.detail }));
+      }
+    };
+    window.addEventListener("thnoon_translations_updated", handleSync);
+    return () => window.removeEventListener("thnoon_translations_updated", handleSync);
+  }, []);
 
   // Multilingual State: 'ar' | 'en' | 'th'
   const [formLang, setFormLang] = useState<FormLang>(() => {

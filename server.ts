@@ -1972,7 +1972,7 @@ Return ONLY a JSON object where the keys are the exact original Arabic question 
 }`;
 
         const response = await ai.models.generateContent({
-          model: "gemini-3.7-flash",
+          model: "gemini-2.5-flash",
           contents: prompt,
           config: {
             responseMimeType: "application/json"
@@ -1993,37 +1993,77 @@ Return ONLY a JSON object where the keys are the exact original Arabic question 
         saveFormTranslations(translationsMap);
         return res.json({ success: true, translations: translationsMap, method: "gemini-ai" });
       } catch (geminiError: any) {
-        console.warn("Gemini translation error, falling back to dictionary:", geminiError);
+        console.warn("Gemini translation error, falling back to online/dictionary translation:", geminiError);
       }
     }
 
-    // Fallback dictionary translation if AI key is missing or failed
+    // Fallback translation if AI key is missing or failed
     for (const q of questions) {
-      const qText = q.question;
+      const qText = (q.question || "").trim();
+      if (!qText) continue;
       const key = qText;
       const existing = translationsMap[key] || {};
       
-      const foundInDict = FALLBACK_TRANSLATION_DICT[qText.trim()];
-      const translatedEn = existing.questionEn || (foundInDict ? foundInDict.en : qText);
-      const translatedTh = existing.questionTh || (foundInDict ? foundInDict.th : qText);
+      const foundInDict = FALLBACK_TRANSLATION_DICT[qText];
+      
+      let translatedEn = existing.questionEn || (foundInDict ? foundInDict.en : "");
+      let translatedTh = existing.questionTh || (foundInDict ? foundInDict.th : "");
+
+      if (!translatedEn) {
+        translatedEn = await translateWithGoogleFree(qText, "en") || qText;
+      }
+      if (!translatedTh) {
+        translatedTh = await translateWithGoogleFree(qText, "th") || qText;
+      }
+
+      // Translate description
+      let descEn = existing.descriptionEn;
+      let descTh = existing.descriptionTh;
+      if (q.description && (!descEn || !descTh)) {
+        if (!descEn) descEn = await translateWithGoogleFree(q.description, "en") || q.description;
+        if (!descTh) descTh = await translateWithGoogleFree(q.description, "th") || q.description;
+      }
 
       // Translate options
-      const optEn = existing.optionsEn || (q.options ? q.options.map((opt: string) => FALLBACK_TRANSLATION_DICT[opt.trim()]?.en || opt) : undefined);
-      const optTh = existing.optionsTh || (q.options ? q.options.map((opt: string) => FALLBACK_TRANSLATION_DICT[opt.trim()]?.th || opt) : undefined);
+      let optEn = existing.optionsEn;
+      let optTh = existing.optionsTh;
+      if (q.options && Array.isArray(q.options) && (!optEn || !optTh)) {
+        if (!optEn) {
+          optEn = await Promise.all(
+            q.options.map(async (opt: string) => {
+              const d = FALLBACK_TRANSLATION_DICT[opt.trim()];
+              return d ? d.en : (await translateWithGoogleFree(opt, "en")) || opt;
+            })
+          );
+        }
+        if (!optTh) {
+          optTh = await Promise.all(
+            q.options.map(async (opt: string) => {
+              const d = FALLBACK_TRANSLATION_DICT[opt.trim()];
+              return d ? d.th : (await translateWithGoogleFree(opt, "th")) || opt;
+            })
+          );
+        }
+      }
 
-      translationsMap[key] = {
+      const itemTranslation = {
         ...existing,
         questionEn: translatedEn,
         questionTh: translatedTh,
-        descriptionEn: existing.descriptionEn || (q.description ? q.description : undefined),
-        descriptionTh: existing.descriptionTh || (q.description ? q.description : undefined),
+        descriptionEn: descEn || undefined,
+        descriptionTh: descTh || undefined,
         optionsEn: optEn,
         optionsTh: optTh
       };
+
+      translationsMap[key] = itemTranslation;
+      if (q.id) {
+        translationsMap[String(q.id)] = itemTranslation;
+      }
     }
 
     saveFormTranslations(translationsMap);
-    return res.json({ success: true, translations: translationsMap, method: "dictionary_fallback" });
+    return res.json({ success: true, translations: translationsMap, method: "online_fallback" });
   } catch (error: any) {
     console.error("Auto translate error:", error);
     return res.status(500).json({ success: false, message: error?.message || "فشلت الترجمة التلقائية" });
