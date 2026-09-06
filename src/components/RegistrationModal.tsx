@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { RegistrationQuestion, QuestionTranslation } from "../types";
 import { DEFAULT_FORM_TRANSLATIONS } from "../data/defaultFormTranslations";
+import { getSavedFormQuestions, DEFAULT_CONFIGURED_QUESTIONS } from "../data/configuredFormQuestions";
 import { formatImageUrl } from "../utils/imageUtils";
 import {
   submitRegistrationBridge,
@@ -303,23 +304,11 @@ export default function RegistrationModal({
 }: RegistrationModalProps) {
   const [questions, setQuestions] = useState<RegistrationQuestion[]>(() => {
     if (propQuestions && propQuestions.length > 0) return propQuestions;
-    if (typeof window !== "undefined") {
-      try {
-        const stored = localStorage.getItem("thnoon_cached_registration_questions");
-        if (stored) {
-          const parsed = JSON.parse(stored);
-          if (Array.isArray(parsed) && parsed.length > 0) {
-            const isObsolete = parsed.some((q: any) => q.question === "المستوى الحالي في الخط العربي");
-            if (!isObsolete) return parsed;
-          }
-        }
-      } catch (e) {}
-    }
-    return [];
+    return getSavedFormQuestions();
   });
   const [isLoadingQuestions, setIsLoadingQuestions] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [dataSource, setDataSource] = useState<string>("");
+  const [dataSource, setDataSource] = useState<string>("ترجمة ولغات الاستمارة");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [filePreviews, setFilePreviews] = useState<Record<string, string>>({});
   const [uploadingFiles, setUploadingFiles] = useState<Record<string, boolean>>({});
@@ -690,10 +679,15 @@ export default function RegistrationModal({
     startCamera(nextMode);
   };
 
-  // Listen to external translations update events (from settings modal or storage)
+  // Listen to external translations & questions update events (from settings modal or storage)
   useEffect(() => {
     const handler = (e: any) => {
-      const updatedMap = e?.detail || {};
+      const detail = e?.detail;
+      if (detail && detail.questions && Array.isArray(detail.questions) && detail.questions.length > 0) {
+        processQuestions(detail.questions);
+        return;
+      }
+      const updatedMap = (detail && !detail.questions) ? detail : {};
       if (updatedMap && Object.keys(updatedMap).length > 0) {
         setTranslationsMap(updatedMap);
         setQuestions((prev) =>
@@ -708,16 +702,16 @@ export default function RegistrationModal({
     return () => window.removeEventListener("thnoon_translations_updated", handler);
   }, []);
 
-  // Fetch questions whenever modal opens or scriptUrl/spreadsheetId changes
+  // Load configured questions whenever modal opens
   useEffect(() => {
     if (isOpen) {
       if (propQuestions && propQuestions.length > 0) {
         processQuestions(propQuestions);
       } else {
-        fetchQuestions();
+        loadConfiguredQuestions();
       }
     }
-  }, [isOpen, propQuestions, scriptUrl, spreadsheetId]);
+  }, [isOpen, propQuestions]);
 
   const processQuestions = (rawQuestions: RegistrationQuestion[], customTrans?: Record<string, any>) => {
     const currentTrans = customTrans || translationsMap;
@@ -752,51 +746,30 @@ export default function RegistrationModal({
     }
   };
 
-  const fetchQuestions = async () => {
-    setIsLoadingQuestions(true);
+  /**
+   * Loads form questions directly from configured translations module
+   * As specified: The registration form never queries the Google Sheet directly
+   */
+  const loadConfiguredQuestions = () => {
+    setIsLoadingQuestions(false);
     setLoadError(null);
     try {
-      const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || DEFAULT_SCRIPT_URL;
-      const activeSpreadsheetId = spreadsheetId || (typeof window !== "undefined" ? localStorage.getItem("thnoon_spreadsheet_id") : null) || DEFAULT_SPREADSHEET_ID;
-      
-      // 1. Fetch translations if available with 1s timeout to avoid hanging on static deployments
-      let loadedTrans = translationsMap;
-      try {
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 1000);
-        const resT = await fetch("/api/form-translations", { signal: controller.signal }).catch(() => null);
-        clearTimeout(timeoutId);
-        if (resT && resT.ok) {
-          const dataT = await resT.json().catch(() => null);
-          if (dataT && dataT.translations && Object.keys(dataT.translations).length > 0) {
-            loadedTrans = dataT.translations;
-            setTranslationsMap(loadedTrans);
-            if (typeof window !== "undefined") {
-              try {
-                localStorage.setItem("thnoon_form_translations", JSON.stringify(loadedTrans));
-              } catch (e) {}
-            }
-          }
-        }
-      } catch (e) {}
-
-      // 2. Fetch questions using universal bridge (optimized for instant Vercel/GitHub loading)
-      const fetchedQuestions = await fetchFormQuestionsBridge(activeScriptUrl, activeSpreadsheetId);
-      if (fetchedQuestions && fetchedQuestions.length > 0) {
-        processQuestions(fetchedQuestions, loadedTrans);
-        setDataSource("Google Sheet / Apps Script");
-        setLoadError(null);
+      const configured = getSavedFormQuestions();
+      if (configured && configured.length > 0) {
+        processQuestions(configured);
+        setDataSource("ترجمة ولغات الاستمارة");
       } else {
-        setQuestions([]);
-        setLoadError("تعذر العثور على أي أسئلة في ورقة RegistrationQuestions بجدول قوقل شيت أو لم يتم تحميلها بعد.");
+        processQuestions(DEFAULT_CONFIGURED_QUESTIONS);
+        setDataSource("الأسئلة والترجمات المعتمدة");
       }
     } catch (err: any) {
-      console.warn("Could not fetch registration questions:", err);
-      setQuestions([]);
-      setLoadError("حدث خطأ في النظام أثناء محاولة جلب الأسئلة من قوقل شيت.");
-    } finally {
-      setIsLoadingQuestions(false);
+      console.warn("Could not load configured questions:", err);
+      processQuestions(DEFAULT_CONFIGURED_QUESTIONS);
     }
+  };
+
+  const fetchQuestions = async () => {
+    loadConfiguredQuestions();
   };
 
   const handleInputChange = (fieldKey: string, value: string) => {

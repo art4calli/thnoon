@@ -9,6 +9,7 @@ import SettingsSubscribersViewer from "./SettingsSubscribersViewer";
 import SiteTextsManager from "./SiteTextsManager";
 import { translateBatchWithAI } from "../utils/translatorService";
 import { DEFAULT_FORM_TRANSLATIONS } from "../data/defaultFormTranslations";
+import { getSavedFormQuestions, saveConfiguredFormQuestions } from "../data/configuredFormQuestions";
 import { fetchFormQuestionsBridge, DEFAULT_SPREADSHEET_ID } from "../utils/googleBackendBridge";
 
 const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
@@ -80,8 +81,17 @@ export default function IntegrationSettingsModal({
       const activeScript = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || DEFAULT_SCRIPT_URL;
       const activeSpreadsheet = spreadsheetId || (typeof window !== "undefined" ? localStorage.getItem("thnoon_spreadsheet_id") : "") || DEFAULT_SPREADSHEET_ID;
       
-      // 1. Fetch questions directly using universal bridge (works on AI Studio, Vercel, mobile, tablet)
-      const loadedQuestions = await fetchFormQuestionsBridge(activeScript, activeSpreadsheet);
+      // 1. Fetch questions directly from sheet or fall back to saved configured questions
+      let loadedQuestions: RegistrationQuestion[] = [];
+      try {
+        loadedQuestions = await fetchFormQuestionsBridge(activeScript, activeSpreadsheet);
+      } catch (err) {
+        console.warn("Could not fetch questions from Google Sheet:", err);
+      }
+
+      if (!loadedQuestions || loadedQuestions.length === 0) {
+        loadedQuestions = getSavedFormQuestions();
+      }
       setQuestions(loadedQuestions);
 
       // 2. Fetch translations: initialize with DEFAULT_FORM_TRANSLATIONS
@@ -242,15 +252,43 @@ export default function IntegrationSettingsModal({
       // Update UI state immediately!
       setTranslations({ ...finalTranslations });
 
+      // Compile configured questions with the new translations
+      const questionsWithTranslations = questions.map((q) => {
+        const fallbackTrans = DEFAULT_FORM_TRANSLATIONS[q.question] || DEFAULT_FORM_TRANSLATIONS[q.question.trim()];
+        const trans = finalTranslations[q.question] || (q.id ? finalTranslations[String(q.id)] : undefined) || fallbackTrans || q.translations;
+        return {
+          ...q,
+          translations: trans
+        };
+      });
+
       // Automatically persist to localStorage and notify all components
+      saveConfiguredFormQuestions(questionsWithTranslations);
+
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem("thnoon_form_translations", JSON.stringify(finalTranslations));
-          window.dispatchEvent(new CustomEvent("thnoon_translations_updated", { detail: finalTranslations }));
         } catch (e) {}
       }
 
-      setTranslationSuccessMsg(`تمت ترجمة جميع الأسئلة والخيارات بنجاح بواسطة ${methodUsed}!`);
+      // Persist to server
+      try {
+        await fetch("/api/form-translations", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ translations: finalTranslations })
+        });
+      } catch (e) {}
+
+      try {
+        await fetch("/api/form-questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questions: questionsWithTranslations })
+        });
+      } catch (e) {}
+
+      setTranslationSuccessMsg(`تمت ترجمة جميع الأسئلة والخيارات وتفعيلها في الاستمارة بنجاح بواسطة ${methodUsed}!`);
       setTimeout(() => setTranslationSuccessMsg(null), 4000);
     } catch (e) {
       console.error("Auto translate failed:", e);
@@ -263,28 +301,43 @@ export default function IntegrationSettingsModal({
     setIsSavingTranslations(true);
     setTranslationSuccessMsg(null);
     try {
+      // 1. Compile questions with their respective translations
+      const questionsWithTranslations = questions.map((q) => {
+        const fallbackTrans = DEFAULT_FORM_TRANSLATIONS[q.question] || DEFAULT_FORM_TRANSLATIONS[q.question.trim()];
+        const trans = translations[q.question] || (q.id ? translations[String(q.id)] : undefined) || fallbackTrans || q.translations;
+        return {
+          ...q,
+          translations: trans
+        };
+      });
+
+      // 2. Persist to configured questions (localStorage + custom event)
+      saveConfiguredFormQuestions(questionsWithTranslations);
+
       if (typeof window !== "undefined") {
         try {
           localStorage.setItem("thnoon_form_translations", JSON.stringify(translations));
-          window.dispatchEvent(new CustomEvent("thnoon_translations_updated", { detail: translations }));
         } catch (e) {}
       }
 
+      // 3. Persist to server
       try {
-        const res = await fetch("/api/form-translations", {
+        await fetch("/api/form-translations", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ translations })
         });
-        if (res.ok) {
-          const contentType = res.headers.get("content-type") || "";
-          if (contentType.includes("application/json")) {
-            await res.json();
-          }
-        }
       } catch (e) {}
 
-      setTranslationSuccessMsg("تم حفظ وتفعيل ترجمات الاستمارة بنجاح على جميع الأجهزة!");
+      try {
+        await fetch("/api/form-questions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ questions: questionsWithTranslations })
+        });
+      } catch (e) {}
+
+      setTranslationSuccessMsg("تم حفظ وتفعيل أسئلة وترجمات الاستمارة بنجاح على جميع الأجهزة!");
       setTimeout(() => setTranslationSuccessMsg(null), 4000);
     } catch (e) {
       console.error("Save translations failed:", e);
@@ -1017,10 +1070,10 @@ export default function IntegrationSettingsModal({
                   <div>
                     <h3 className="text-sm font-bold text-amber-300 flex items-center gap-2 font-serif">
                       <Languages className="w-4 h-4 text-amber-400" />
-                      <span>إدارة ترجمات الاستمارة (العربية - English - ภาษาไทย)</span>
+                      <span>إدارة وترجمة أسئلة الاستمارة (العربية - English - ภาษาไทย)</span>
                     </h3>
                     <p className="text-xs text-slate-300 font-sans mt-0.5">
-                      الأسئلة العربية تأتي تلقائياً من شيت <code className="text-amber-400">RegistrationQuestions</code>، ويمكنك إدخال الترجمة الإنجليزية والتايلاندية هنا أو ترجمتها بالذكاء الاصطناعي بنقرة واحدة!
+                      يتم جلب الأسئلة العربية من ورقة <code className="text-amber-400">RegistrationQuestions</code> وتبقى ثابتة، ويتم ترجمتها هنا. استمارة التسجيل تأخذ الأسئلة والترجمات حصرياً من هنا دون اتصال مباشر بالشيت لضمان السرعة الفورية على جميع الأجهزة.
                     </p>
                   </div>
 
@@ -1033,7 +1086,7 @@ export default function IntegrationSettingsModal({
                       className="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 border border-slate-700 cursor-pointer disabled:opacity-50"
                     >
                       <RefreshCw className={`w-3.5 h-3.5 ${isLoadingTranslations ? "animate-spin text-amber-400" : "text-slate-300"}`} />
-                      <span>تحديث الأسئلة</span>
+                      <span>تحديث الأسئلة من الشيت</span>
                     </button>
 
                     <button
@@ -1216,11 +1269,14 @@ export default function IntegrationSettingsModal({
                           </div>
                         </div>
 
-                        {/* 1. Base Arabic Display */}
+                        {/* 1. Base Arabic Display - Fixed & Protected */}
                         <div className="p-3.5 bg-slate-900/90 border border-amber-500/20 rounded-xl space-y-1.5 text-right">
                           <div className="flex items-center justify-between">
                             <span className="text-[11px] font-bold text-amber-400 flex items-center gap-1.5">
-                              <span>🇸🇦 السؤال الأساسي (من شيت RegistrationQuestions):</span>
+                              <span>🇸🇦 نص السؤال العربي (من ورقة RegistrationQuestions):</span>
+                            </span>
+                            <span className="text-[10px] bg-slate-800/90 text-amber-300/90 border border-amber-500/30 px-2 py-0.5 rounded-full font-sans font-bold">
+                              ثابت ومحمي
                             </span>
                           </div>
                           <p className="text-sm font-bold text-slate-100 font-serif leading-snug">{q.question}</p>

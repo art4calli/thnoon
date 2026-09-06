@@ -1879,6 +1879,20 @@ async function handleGetFormQuestions(req: express.Request, res: express.Respons
 app.get("/api/form-questions", handleGetFormQuestions);
 app.get("/api/registration-questions", handleGetFormQuestions);
 
+// POST /api/form-questions - Saves configured form questions array
+app.post("/api/form-questions", (req, res) => {
+  try {
+    const { questions } = req.body;
+    if (Array.isArray(questions) && questions.length > 0) {
+      saveCachedFormQuestions(questions);
+      return res.json({ success: true, message: "تم حفظ أسئلة وترجمات الاستمارة بنجاح", count: questions.length });
+    }
+    return res.status(400).json({ success: false, message: "بيانات الأسئلة غير صالحة" });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error?.message || "خطأ أثناء حفظ الأسئلة" });
+  }
+});
+
 // GET /api/form-translations - Retrieve all saved translations
 app.get("/api/form-translations", (req, res) => {
   const translations = loadFormTranslations();
