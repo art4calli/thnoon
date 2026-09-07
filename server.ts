@@ -3906,25 +3906,6 @@ app.post("/api/register", async (req, res) => {
       console.warn("Could not save registration locally:", saveErr);
     }
 
-    // Send Telegram Notification to Admin if configured and enabled
-    let telegramResult: any = null;
-    try {
-      const activeTelegramConfig = loadTelegramConfig();
-      const mergedTelegramConfig = {
-        ...activeTelegramConfig,
-        ...(req.body.telegramConfig || {})
-      };
-      if (mergedTelegramConfig.enabled && mergedTelegramConfig.botToken && mergedTelegramConfig.chatId) {
-        console.log(`[API /api/register] Triggering Telegram notification for registration ${registrationId}...`);
-        telegramResult = await sendTelegramAdminNotification(mergedTelegramConfig, payload, currentSpreadsheetId);
-        console.log(`[API /api/register] Telegram notification result:`, telegramResult);
-      } else {
-        console.log(`[API /api/register] Telegram notification skipped. Enabled=${mergedTelegramConfig.enabled}, hasToken=${Boolean(mergedTelegramConfig.botToken)}, hasChatId=${Boolean(mergedTelegramConfig.chatId)}`);
-      }
-    } catch (telErr: any) {
-      console.warn("[API /api/register] Could not trigger telegram admin notification:", telErr.message);
-    }
-
     // Forward to Google Apps Script if URL exists
     if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
       try {
@@ -3952,6 +3933,25 @@ app.post("/api/register", async (req, res) => {
       } catch (gasErr: any) {
         console.warn("Could not forward registration to Google Apps Script:", gasErr.message);
       }
+    }
+
+    // Local Fallback: Only send Telegram Notification directly from local server if Google Apps Script was unreachable
+    let telegramResult: any = null;
+    try {
+      const activeTelegramConfig = loadTelegramConfig();
+      const mergedTelegramConfig = {
+        ...activeTelegramConfig,
+        ...(req.body.telegramConfig || {})
+      };
+      if (mergedTelegramConfig.enabled && mergedTelegramConfig.botToken && mergedTelegramConfig.chatId) {
+        console.log(`[API /api/register] Local fallback: Triggering Telegram notification for registration ${registrationId}...`);
+        telegramResult = await sendTelegramAdminNotification(mergedTelegramConfig, payload, currentSpreadsheetId);
+        console.log(`[API /api/register] Telegram notification result:`, telegramResult);
+      } else {
+        console.log(`[API /api/register] Telegram notification skipped. Enabled=${mergedTelegramConfig.enabled}, hasToken=${Boolean(mergedTelegramConfig.botToken)}, hasChatId=${Boolean(mergedTelegramConfig.chatId)}`);
+      }
+    } catch (telErr: any) {
+      console.warn("[API /api/register] Could not trigger telegram admin notification:", telErr.message);
     }
 
     return res.json({
