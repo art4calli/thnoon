@@ -150,15 +150,16 @@ async function translateWithAppsScript(
     if (!scriptUrl) return null;
 
     const payload = {
+      action: "translateTexts",
       items: items.map((it) => ({
         id: it.id,
         text: cleanText(it.ar),
       })),
     };
 
-    const res: any = await executeAppsScriptPost("translateTexts", payload, scriptUrl);
-    if (res && res.success && (res.results || res.data?.results)) {
-      return res.results || res.data?.results;
+    const res = await executeAppsScriptPost(payload, scriptUrl);
+    if (res && res.success && res.results) {
+      return res.results;
     }
   } catch (err) {
     // GAS translation not configured or timed out

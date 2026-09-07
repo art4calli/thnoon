@@ -332,7 +332,7 @@ app.post("/api/upload-drive", async (req, res) => {
 });
 
 // Fallback high-quality data in case Google Sheet is not accessible
-const FALLBACK_DATA: Record<string, any> = {
+const FALLBACK_DATA = {
   profile: {
     logoUrl: "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?auto=format&fit=crop&q=80&w=300",
     title: "مؤسسة يوسف ذنون للخط العربي",
@@ -756,7 +756,7 @@ app.get("/api/data", async (req, res) => {
     }
 
     let socialLinks = { ...FALLBACK_DATA.socialLinks };
-    let contactInfo: any = { ...FALLBACK_DATA.contactInfo };
+    let contactInfo = { ...FALLBACK_DATA.contactInfo };
     const contactCards: any[] = [];
 
     // Check if contactRows contains the new structured keywords in Column A of any row

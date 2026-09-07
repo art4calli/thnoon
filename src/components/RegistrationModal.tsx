@@ -1019,7 +1019,7 @@ export default function RegistrationModal({
         .map((q) => {
           const key = String(q.id || q.question);
           const rawAns = answers[key] !== undefined ? answers[key] : (answers[q.question] || "");
-          const driveUrl = (filePreviews[key] as any)?.driveFileUrl || uploadedFileInfo[key]?.driveFileUrl || (filePreviews[q.question] as any)?.driveFileUrl || uploadedFileInfo[q.question]?.driveFileUrl;
+          const driveUrl = filePreviews[key]?.driveFileUrl || uploadedFileInfo[key]?.driveFileUrl || filePreviews[q.question]?.driveFileUrl || uploadedFileInfo[q.question]?.driveFileUrl;
           let finalAns = rawAns;
           if (driveUrl && typeof finalAns === "string" && finalAns.startsWith("data:")) {
             finalAns = driveUrl;
@@ -1605,7 +1605,7 @@ export default function RegistrationModal({
                               {/* Hidden standard file input */}
                               <input
                                 type="file"
-                                ref={(el) => { fileInputRefs.current[fieldKey] = el; }}
+                                ref={(el) => (fileInputRefs.current[fieldKey] = el)}
                                 accept="image/*,.pdf,.doc,.docx,.txt"
                                 className="hidden"
                                 onChange={(e) => {
@@ -1617,7 +1617,7 @@ export default function RegistrationModal({
                               {/* Hidden direct camera capture input */}
                               <input
                                 type="file"
-                                ref={(el) => { cameraInputRefs.current[fieldKey] = el; }}
+                                ref={(el) => (cameraInputRefs.current[fieldKey] = el)}
                                 accept="image/*"
                                 capture="environment"
                                 className="hidden"

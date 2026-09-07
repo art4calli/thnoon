@@ -223,8 +223,6 @@ export interface EmailLanguageTemplate {
   header: string;
   body: string;
   footerNote: string;
-  greeting?: string;
-  footer?: string;
 }
 
 export interface SubscriberEmailConfig {

@@ -403,7 +403,7 @@ export async function submitRegistrationBridge(
     telegramConfig = await fetchTelegramConfigBridge();
   }
 
-  const enrichedPayload: any = {
+  const enrichedPayload = {
     ...regPayload,
     scriptUrl: targetScriptUrl,
     emailConfig: emailConfig || undefined,
@@ -709,7 +709,7 @@ export async function fetchFormQuestionsBridge(
           type: fieldType,
           options: opts.length > 0 ? opts : undefined,
           required: qRequired,
-          imageUrl: qImage ? formatImageUrl(qImage) : undefined,
+          imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
           externalLink: (qLink && qLink !== "-") ? qLink : undefined
         });
       }
