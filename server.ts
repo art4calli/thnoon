@@ -429,6 +429,31 @@ async function getSheetValues(sheetName: string, headers: number = 0): Promise<a
   }
 }
 
+// Fetch sheet headers and rows together from Google Visualization API
+async function getSheetTableWithHeaders(sheetName: string): Promise<{ headers: string[], rows: any[][] }> {
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${currentSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}`;
+    const response = await fetch(url);
+    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+    const text = await response.text();
+    
+    const jsonStart = text.indexOf("{");
+    const jsonEnd = text.lastIndexOf("}");
+    if (jsonStart === -1 || jsonEnd === -1) {
+      throw new Error("Invalid JSON wrap from Google Sheets");
+    }
+    const jsonStr = text.substring(jsonStart, jsonEnd + 1);
+    const data = JSON.parse(jsonStr);
+    const cols = data.table?.cols || [];
+    const headers = cols.map((c: any) => (c?.label || "").toString().trim());
+    const rows = parseSheetTable(data.table);
+    return { headers, rows };
+  } catch (error) {
+    console.error(`Error fetching sheet with headers [${sheetName}]:`, error);
+    return { headers: [], rows: [] };
+  }
+}
+
 function isActualMediaUrl(val: any): boolean {
   if (!val || typeof val !== "string") return false;
   const s = val.trim().replace(/^['"]|['"]$/g, "");
@@ -2332,8 +2357,8 @@ function loadSubscriberEmailConfig() {
   }
   return {
     enabled: true,
-    emailColumn: "E",
-    deliveryStatusColumn: "Z",
+    emailColumn: "G",
+    deliveryStatusColumn: "P",
     dataFields: [
       { id: "1", label: "رقم التسجيل", labelEn: "Registration ID", labelTh: "หมายเลขลงทะเบียน", columnLetter: "B" },
       { id: "2", label: "اسم المشترك", labelEn: "Participant Name", labelTh: "ชื่อผู้สมัคร", columnLetter: "C" },
@@ -2342,7 +2367,7 @@ function loadSubscriberEmailConfig() {
       { id: "5", label: "رابط الدخول لصفحة الاشتراك", labelEn: "Login / Courses Portal", labelTh: "ลิงก์เข้าสู่ระบบบทเรียน", columnLetter: "LOGIN_URL" }
     ],
     qrCodeColumns: "B",
-    qrDriveUrlColumn: "Y",
+    qrDriveUrlColumn: "O",
     includeQrInEmail: true,
     messages: {
       ar: {
@@ -3088,6 +3113,46 @@ app.get("/api/registration-answers", async (req, res) => {
   try {
     const targetScriptUrl = (req.query.scriptUrl as string)?.trim() || currentScriptUrl;
     
+    // Helper to sanitize headers and records: eliminates empty trailing/phantom columns and duplicate columns
+    function sanitizeHeadersAndRecords(rawHeaders: string[], rawRecords: any[]) {
+      if (!Array.isArray(rawHeaders) || rawHeaders.length === 0) {
+        return { headers: rawHeaders || [], records: rawRecords || [] };
+      }
+      const seen = new Set<string>();
+      const validIndices: number[] = [];
+      const cleanHeaders: string[] = [];
+
+      for (let i = 0; i < rawHeaders.length; i++) {
+        const h = (rawHeaders[i] || "").toString().trim();
+        if (!h || h.startsWith("Column_")) continue;
+        if (seen.has(h)) continue; // skip duplicates
+        seen.add(h);
+        validIndices.push(i);
+        cleanHeaders.push(h);
+      }
+
+      const cleanRecords = (rawRecords || []).map((rec: any) => {
+        const newRowData: Record<string, string> = {};
+        const newRawRow: string[] = [];
+        validIndices.forEach((origIdx, cleanIdx) => {
+          const h = cleanHeaders[cleanIdx];
+          const val = (rec.rawRow && rec.rawRow[origIdx] !== undefined)
+            ? rec.rawRow[origIdx]
+            : (rec.data && rec.data[rawHeaders[origIdx]] !== undefined ? rec.data[rawHeaders[origIdx]] : "");
+          const cleanVal = val !== undefined && val !== null ? val.toString().trim() : "";
+          newRowData[h] = cleanVal;
+          newRawRow.push(cleanVal);
+        });
+        return {
+          ...rec,
+          data: newRowData,
+          rawRow: newRawRow
+        };
+      });
+
+      return { headers: cleanHeaders, records: cleanRecords };
+    }
+
     // 1. Try fetching from Google Apps Script Web App first
     if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
       try {
@@ -3099,11 +3164,12 @@ app.get("/api/registration-answers", async (req, res) => {
         if (gasRes.ok) {
           const data: any = await gasRes.json().catch(() => null);
           if (data && data.success && Array.isArray(data.records)) {
+            const sanitized = sanitizeHeadersAndRecords(data.headers || [], data.records || []);
             return res.json({
               success: true,
-              headers: data.headers || [],
-              records: data.records || [],
-              total: data.total || data.records.length,
+              headers: sanitized.headers,
+              records: sanitized.records,
+              total: sanitized.records.length,
               source: "apps_script"
             });
           }
@@ -3114,22 +3180,23 @@ app.get("/api/registration-answers", async (req, res) => {
     }
 
     // 2. Fallback: Fetch directly from Google Sheet via Google Visualization API
-    const sheetRows = await getSheetValues("RegistrationAnswers")
-      .catch(() => getSheetValues("طلبات التسجيل"))
-      .catch(() => getSheetValues("إجابات التسجيل"))
-      .catch(() => []);
+    const sheetData = await getSheetTableWithHeaders("RegistrationAnswers")
+      .catch(() => getSheetTableWithHeaders("طلبات التسجيل"))
+      .catch(() => getSheetTableWithHeaders("إجابات التسجيل"))
+      .catch(() => ({ headers: [], rows: [] }));
 
-    if (!sheetRows || sheetRows.length < 2) {
+    const headers: string[] = sheetData.headers || [];
+    const sheetRows: any[][] = sheetData.rows || [];
+
+    if (sheetRows.length === 0) {
       return res.json({
         success: true,
-        headers: sheetRows && sheetRows.length > 0 ? sheetRows[0] : [],
+        headers: headers,
         records: [],
         total: 0,
         source: "sheet_gviz_empty"
       });
     }
-
-    const headers: string[] = sheetRows[0].map((h: any) => (h || "").toString().trim());
     
     // Identify key column indexes
     let regIdColIdx = -1;
@@ -3156,7 +3223,7 @@ app.get("/api/registration-answers", async (req, res) => {
     if (nameArColIdx === -1 && headers.length > 3) nameArColIdx = 3;
 
     const records: any[] = [];
-    for (let r = 1; r < sheetRows.length; r++) {
+    for (let r = 0; r < sheetRows.length; r++) {
       const row = sheetRows[r];
       if (!row || row.every((c: any) => !c || c.toString().trim() === "")) continue;
 
@@ -3175,7 +3242,7 @@ app.get("/api/registration-answers", async (req, res) => {
       }
 
       records.push({
-        rowIndex: r + 1,
+        rowIndex: r + 2, // row 1 in sheet is the headers row
         registrationId: regId,
         name: rName,
         nameArabic: rNameAr,
@@ -3185,11 +3252,13 @@ app.get("/api/registration-answers", async (req, res) => {
       });
     }
 
+    const sanitized = sanitizeHeadersAndRecords(headers, records);
+
     return res.json({
       success: true,
-      headers,
-      records,
-      total: records.length,
+      headers: sanitized.headers,
+      records: sanitized.records,
+      total: sanitized.records.length,
       source: "sheet_gviz"
     });
   } catch (error: any) {

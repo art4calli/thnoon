@@ -559,22 +559,15 @@ function submitRegistration(data) {
       if (!normA || !normB) return false;
       if (normA === normB) return true;
       
-      // فئة البريد الإلكتروني
-      var isEmailA = normA.indexOf("ايميل") !== -1 || normA.indexOf("بريد") !== -1 || normA.indexOf("email") !== -1 || normA.indexOf("mail") !== -1 || normA.indexOf("อีเมล") !== -1;
-      var isEmailB = normB.indexOf("ايميل") !== -1 || normB.indexOf("بريد") !== -1 || normB.indexOf("email") !== -1 || normB.indexOf("mail") !== -1 || normB.indexOf("อีเมล") !== -1;
-      if (isEmailA && isEmailB) return true;
+      // استثناء الأسئلة التي تخص أشخاصاً آخرين (مثل الأستاذ، المعلم، الوالد، الصديق) من المطابقة مع اسم المشترك
+      var hasOtherA = normA.indexOf("استاذ") !== -1 || normA.indexOf("معلم") !== -1 || normA.indexOf("شيخ") !== -1 || normA.indexOf("صديق") !== -1 || normA.indexOf("والد") !== -1;
+      var hasOtherB = normB.indexOf("استاذ") !== -1 || normB.indexOf("معلم") !== -1 || normB.indexOf("شيخ") !== -1 || normB.indexOf("صديق") !== -1 || normB.indexOf("والد") !== -1;
+      if (hasOtherA || hasOtherB) {
+        if (hasOtherA && hasOtherB && normA === normB) return true;
+        return false;
+      }
 
-      // فئة المرفقات والصور والملفات
-      var isFileA = normA.indexOf("صوره") !== -1 || normA.indexOf("ملف") !== -1 || normA.indexOf("مرفق") !== -1 || normA.indexOf("رفع") !== -1 || normA.indexOf("file") !== -1 || normA.indexOf("photo") !== -1 || normA.indexOf("image") !== -1 || normA.indexOf("upload") !== -1 || normA.indexOf("drive") !== -1 || normA.indexOf("รูป") !== -1;
-      var isFileB = normB.indexOf("صوره") !== -1 || normB.indexOf("ملف") !== -1 || normB.indexOf("مرفق") !== -1 || normB.indexOf("رفع") !== -1 || normB.indexOf("file") !== -1 || normB.indexOf("photo") !== -1 || normB.indexOf("image") !== -1 || normB.indexOf("upload") !== -1 || normB.indexOf("drive") !== -1 || normB.indexOf("รูป") !== -1;
-      if (isFileA && isFileB) return true;
-
-      // فئة الهاتف والواتساب
-      var isPhoneA = normA.indexOf("هاتف") !== -1 || normA.indexOf("جوال") !== -1 || normA.indexOf("واتساب") !== -1 || normA.indexOf("phone") !== -1 || normA.indexOf("mobile") !== -1 || normA.indexOf("tel") !== -1 || normA.indexOf("โทร") !== -1;
-      var isPhoneB = normB.indexOf("هاتف") !== -1 || normB.indexOf("جوال") !== -1 || normB.indexOf("واتساب") !== -1 || normB.indexOf("phone") !== -1 || normB.indexOf("mobile") !== -1 || normB.indexOf("tel") !== -1 || normB.indexOf("โทร") !== -1;
-      if (isPhoneA && isPhoneB) return true;
-
-      // فئة الاسم الكامل
+      // فئة الاسم الكامل (اسم المشترك فقط)
       var isNameA = normA === "الاسم" || normA === "الاسمكامل" || normA === "اسمالمشترك" || normA === "name" || normA === "fullname" || normA === "ชื่อ";
       var isNameB = normB === "الاسم" || normB === "الاسمكامل" || normB === "اسمالمشترك" || normB === "name" || normB === "fullname" || normB === "ชื่อ";
       if (isNameA && isNameB) return true;
@@ -584,9 +577,33 @@ function submitRegistration(data) {
       var isArNameB = normB.indexOf("اسمبالعربي") !== -1 || normB.indexOf("arabicname") !== -1;
       if (isArNameA && isArNameB) return true;
 
+      // فئة البريد الإلكتروني
+      var isEmailA = normA.indexOf("ايميل") !== -1 || normA.indexOf("بريد") !== -1 || normA.indexOf("email") !== -1 || normA.indexOf("mail") !== -1 || normA.indexOf("อีเมล") !== -1;
+      var isEmailB = normB.indexOf("ايميل") !== -1 || normB.indexOf("بريد") !== -1 || normB.indexOf("email") !== -1 || normB.indexOf("mail") !== -1 || normB.indexOf("อีเมล") !== -1;
+      if (isEmailA && isEmailB) return true;
+
+      // فئة QR Code
+      var isQrA = normA.indexOf("qr") !== -1 || normA.indexOf("باركود") !== -1 || normA.indexOf("استجابه") !== -1;
+      var isQrB = normB.indexOf("qr") !== -1 || normB.indexOf("باركود") !== -1 || normB.indexOf("استجابه") !== -1;
+      if (isQrA && isQrB) return true;
+
+      // فئة رفع الملفات والمرفقات (استثناء أزرار PDF وأعمدة الـ QR)
+      var isOpenPdfA = normA.indexOf("افتح") !== -1 || normA.indexOf("open") !== -1;
+      var isOpenPdfB = normB.indexOf("افتح") !== -1 || normB.indexOf("open") !== -1;
+      if (!isQrA && !isQrB && !isOpenPdfA && !isOpenPdfB) {
+        var isUploadA = normA.indexOf("رفع") !== -1 || normA.indexOf("ارفاق") !== -1 || normA.indexOf("upload") !== -1 || normA.indexOf("attachment") !== -1 || normA === "ملف" || normA === "صورة";
+        var isUploadB = normB.indexOf("رفع") !== -1 || normB.indexOf("ارفاق") !== -1 || normB.indexOf("upload") !== -1 || normB.indexOf("attachment") !== -1 || normB === "ملف" || normB === "صورة";
+        if (isUploadA && isUploadB) return true;
+      }
+
+      // فئة الهاتف والواتساب
+      var isPhoneA = normA.indexOf("هاتف") !== -1 || normA.indexOf("جوال") !== -1 || normA.indexOf("واتساب") !== -1 || normA.indexOf("phone") !== -1 || normA.indexOf("mobile") !== -1 || normA.indexOf("tel") !== -1 || normA.indexOf("โทร") !== -1;
+      var isPhoneB = normB.indexOf("هاتف") !== -1 || normB.indexOf("جوال") !== -1 || normB.indexOf("واتساب") !== -1 || normB.indexOf("phone") !== -1 || normB.indexOf("mobile") !== -1 || normB.indexOf("tel") !== -1 || normB.indexOf("โทร") !== -1;
+      if (isPhoneA && isPhoneB) return true;
+
       // فئة العمر
-      var isAgeA = normA.indexOf("عمر") !== -1 || normA.indexOf("سن") !== -1 || normA.indexOf("age") !== -1 || normA.indexOf("อายุ") !== -1;
-      var isAgeB = normB.indexOf("عمر") !== -1 || normB.indexOf("سن") !== -1 || normB.indexOf("age") !== -1 || normB.indexOf("อายุ") !== -1;
+      var isAgeA = normA === "عمر" || normA === "العمر" || normA === "سن" || normA === "السن" || normA === "age" || normA === "อายุ";
+      var isAgeB = normB === "عمر" || normB === "العمر" || normB === "سن" || normB === "السن" || normB === "age" || normB === "อายุ";
       if (isAgeA && isAgeB) return true;
 
       // فئة ID Line
@@ -609,14 +626,9 @@ function submitRegistration(data) {
       var isIdB = normB.indexOf("تسجيل") !== -1 || normB.indexOf("قيد") !== -1 || normB.indexOf("regid") !== -1;
       if (isIdA && isIdB && normA.indexOf("line") === -1 && normB.indexOf("line") === -1) return true;
 
-      // فئة QR Code
-      var isQrA = normA.indexOf("qr") !== -1 || normA.indexOf("باركود") !== -1 || normA.indexOf("استجابه") !== -1;
-      var isQrB = normB.indexOf("qr") !== -1 || normB.indexOf("باركود") !== -1 || normB.indexOf("استجابه") !== -1;
-      if (isQrA && isQrB) return true;
-
       // فئة حالة وتأكيد الإرسال
-      var isStatusA = normA.indexOf("ارسال") !== -1 || normA.indexOf("حاله") !== -1 || normA.indexOf("status") !== -1 || normA.indexOf("تاكيد") !== -1;
-      var isStatusB = normB.indexOf("ارسال") !== -1 || normB.indexOf("حاله") !== -1 || normB.indexOf("status") !== -1 || normB.indexOf("تاكيد") !== -1;
+      var isStatusA = (normA.indexOf("ارسال") !== -1 || normA.indexOf("status") !== -1) && (normA.indexOf("ايميل") !== -1 || normA.indexOf("حاله") !== -1 || normA.indexOf("تاكيد") !== -1);
+      var isStatusB = (normB.indexOf("ارسال") !== -1 || normB.indexOf("status") !== -1) && (normB.indexOf("ايميل") !== -1 || normB.indexOf("حاله") !== -1 || normB.indexOf("تاكيد") !== -1);
       if (isStatusA && isStatusB) return true;
 
       return false;

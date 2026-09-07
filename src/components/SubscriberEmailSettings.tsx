@@ -51,8 +51,8 @@ interface SubscriberEmailSettingsProps {
 
 const DEFAULT_CONFIG: SubscriberEmailConfig = {
   enabled: true,
-  emailColumn: "E",
-  deliveryStatusColumn: "Z",
+  emailColumn: "G",
+  deliveryStatusColumn: "P",
   dataFields: [
     { id: "1", label: "رقم التسجيل", labelEn: "Registration ID", labelTh: "หมายเลขลงทะเบียน", columnLetter: "B" },
     { id: "2", label: "اسم المشترك", labelEn: "Participant Name", labelTh: "ชื่อผู้สมัคร", columnLetter: "C" },
@@ -61,7 +61,7 @@ const DEFAULT_CONFIG: SubscriberEmailConfig = {
     { id: "5", label: "رابط الدخول لصفحة الاشتراك", labelEn: "Login / Courses Portal", labelTh: "ลิงก์เข้าสู่ระบบบทเรียน", columnLetter: "LOGIN_URL" }
   ],
   qrCodeColumns: "B",
-  qrDriveUrlColumn: "Y",
+  qrDriveUrlColumn: "O",
   includeQrInEmail: true,
   messages: {
     ar: {
@@ -550,13 +550,13 @@ export default function SubscriberEmailSettings({ currentDriveFolderId, currentS
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-slate-200 flex items-center justify-between">
               <span>حرف عامود الإيميل للمشترك:</span>
-              <span className="text-[10px] text-amber-400 font-mono">افتراضي: E</span>
+              <span className="text-[10px] text-amber-400 font-mono">افتراضي: G</span>
             </label>
             <input
               type="text"
               value={config.emailColumn}
               onChange={(e) => setConfig(prev => ({ ...prev, emailColumn: e.target.value.toUpperCase().trim() }))}
-              placeholder="E"
+              placeholder="G"
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl text-sm font-mono text-amber-200 text-center uppercase focus:outline-none transition-colors"
             />
             <p className="text-[11px] text-slate-400">
@@ -568,13 +568,13 @@ export default function SubscriberEmailSettings({ currentDriveFolderId, currentS
           <div className="space-y-1.5">
             <label className="block text-xs font-semibold text-slate-200 flex items-center justify-between">
               <span>حرف عامود تأكيد حالة الإرسال:</span>
-              <span className="text-[10px] text-amber-400 font-mono">افتراضي: Z</span>
+              <span className="text-[10px] text-amber-400 font-mono">افتراضي: P</span>
             </label>
             <input
               type="text"
               value={config.deliveryStatusColumn}
               onChange={(e) => setConfig(prev => ({ ...prev, deliveryStatusColumn: e.target.value.toUpperCase().trim() }))}
-              placeholder="Z"
+              placeholder="P"
               className="w-full px-3.5 py-2.5 bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl text-sm font-mono text-amber-200 text-center uppercase focus:outline-none transition-colors"
             />
             <p className="text-[11px] text-slate-400">
@@ -833,13 +833,13 @@ export default function SubscriberEmailSettings({ currentDriveFolderId, currentS
             <div className="space-y-1.5 pt-2 border-t border-slate-800/80">
               <label className="block text-xs font-semibold text-slate-200 flex items-center justify-between">
                 <span>عامود تسجيل رابط صورة الـ QR في Google Drive:</span>
-                <span className="text-[10px] text-amber-400 font-mono">افتراضي: Y</span>
+                <span className="text-[10px] text-amber-400 font-mono">افتراضي: O</span>
               </label>
               <input
                 type="text"
                 value={config.qrDriveUrlColumn}
                 onChange={(e) => setConfig(prev => ({ ...prev, qrDriveUrlColumn: e.target.value.toUpperCase().trim() }))}
-                placeholder="Y"
+                placeholder="O"
                 className="w-full px-3.5 py-2 bg-slate-950 border border-slate-700 focus:border-amber-500 rounded-xl text-sm font-mono text-amber-200 text-center uppercase focus:outline-none transition-colors"
               />
               <p className="text-[11px] text-slate-400">

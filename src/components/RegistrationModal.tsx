@@ -774,8 +774,14 @@ export default function RegistrationModal({
     loadConfiguredQuestions();
   };
 
-  const handleInputChange = (fieldKey: string, value: string) => {
-    setAnswers((prev) => ({ ...prev, [fieldKey]: value }));
+  const handleInputChange = (fieldKey: string, value: string, questionText?: string) => {
+    setAnswers((prev) => {
+      const next = { ...prev, [fieldKey]: value };
+      if (questionText) {
+        next[questionText] = value;
+      }
+      return next;
+    });
     // Clear error for this field when user types
     if (errors[fieldKey]) {
       setErrors((prev) => {
@@ -1026,34 +1032,88 @@ export default function RegistrationModal({
           };
         });
 
-      // Find specific primary fields if they exist
-      let nameVal = answers["الاسم"] || answers["اسم المشترك"] || answers["الاسم الكامل"] || answers["1"] || "";
-      let nameArVal = answers["الاسم بالعربي"] || answers["2"] || "";
-      let ageVal = answers["العمر"] || answers["3"] || "";
-      let phoneVal = answers["رقم الهاتف"] || answers["الهاتف"] || answers["الواتساب"] || answers["4"] || "";
-      let emailVal = answers["ايميل"] || answers["البريد الإلكتروني"] || answers["البريد"] || answers["5"] || "";
-      let lineIdVal = answers["ID Line"] || answers["لاين"] || answers["6"] || "";
-      let facebookVal = answers["فيس بوك"] || answers["Facebook"] || answers["7"] || "";
+      // Find specific primary fields with strict priority
+      let nameVal = answers["الاسم"] || answers["اسم المشترك"] || answers["الاسم الكامل"] || "";
+      let nameArVal = answers["الاسم بالعربي"] || answers["الاسم باللغة العربية"] || "";
+      let ageVal = answers["العمر"] || answers["السن"] || "";
+      let phoneVal = answers["رقم الهاتف"] || answers["الهاتف"] || answers["الواتساب"] || answers["الجوال"] || "";
+      let emailVal = answers["ايميل"] || answers["إيميل"] || answers["البريد الإلكتروني"] || answers["البريد الالكتروني"] || answers["البريد"] || "";
+      let lineIdVal = answers["ID Line"] || answers["Line ID"] || answers["لاين"] || answers["معرف لاين"] || "";
+      let facebookVal = answers["فيس بوك"] || answers["فيسبوك"] || answers["Facebook"] || "";
 
-      // Fallback search across formatted answers
-      formattedAnswers.forEach((fa) => {
-        const qNorm = (fa.question || "").toLowerCase().trim();
-        const aVal = typeof fa.answer === "string" ? fa.answer.trim() : "";
-        if (!aVal) return;
-        if (!nameVal && (qNorm.includes("اسم") || qNorm.includes("الاسم") || qNorm.includes("name"))) {
-          nameVal = aVal;
+      // Precise semantic search across formatted answers
+      for (const fa of formattedAnswers) {
+        const qRaw = (fa.question || "").trim();
+        const qNorm = qRaw.toLowerCase().replace(/[\s_\-\?\؟\:\.]/g, "");
+        const normType = (fa.type || "").toLowerCase().trim();
+        const aVal = typeof fa.answer === "string" ? fa.answer.trim() : (fa.answer ? String(fa.answer).trim() : "");
+        if (!aVal) continue;
+
+        // Subscriber Name - MUST NOT match questions about teacher, instructor, parent, etc.
+        if (!nameVal) {
+          const isOtherPerson = qNorm.includes("استاذ") || qNorm.includes("معلم") || qNorm.includes("شيخ") || qNorm.includes("صديق") || qNorm.includes("والد");
+          const isSubscriberName = qNorm === "الاسم" || qNorm === "اسمالمشترك" || qNorm === "الاسمكامل" || qNorm === "الاسمالكامل" || qNorm === "name" || qNorm === "fullname" || qNorm === "subscribername";
+          if (isSubscriberName && !isOtherPerson) {
+            nameVal = aVal;
+          }
         }
-        if (!phoneVal && (qNorm.includes("هاتف") || qNorm.includes("واتساب") || qNorm.includes("جوال") || qNorm.includes("phone"))) {
-          phoneVal = aVal;
+
+        // Arabic Name
+        if (!nameArVal) {
+          if (qNorm === "الاسمبالعربي" || qNorm === "اسمعربي" || qNorm === "arabicname" || qNorm.includes("باللغةالعربية") || qNorm.includes("بالعربيه")) {
+            nameArVal = aVal;
+          }
         }
-        if (!emailVal && (qNorm.includes("ايميل") || qNorm.includes("بريد") || qNorm.includes("email"))) {
-          emailVal = aVal;
+
+        // Age
+        if (!ageVal) {
+          if (qNorm === "العمر" || qNorm === "السن" || qNorm === "age" || (normType === "number" && qNorm.includes("عمر"))) {
+            ageVal = aVal;
+          }
         }
-      });
+
+        // Phone
+        if (!phoneVal) {
+          if (normType === "phone" || normType === "رقم هاتف" || normType === "هاتف" || qNorm === "رقمالهاتف" || qNorm === "الهاتف" || qNorm === "الواتساب" || qNorm === "الجوال" || qNorm === "phone") {
+            phoneVal = aVal;
+          }
+        }
+
+        // Email
+        if (!emailVal) {
+          if (normType === "email" || normType === "ايميل" || normType === "بريد" || qNorm === "ايميل" || qNorm === "البريدالالكتروني" || qNorm === "البريدالإلكتروني" || qNorm === "email" || (aVal.includes("@") && aVal.includes("."))) {
+            emailVal = aVal;
+          }
+        }
+
+        // Line ID
+        if (!lineIdVal) {
+          if (qNorm === "idline" || qNorm === "lineid" || qNorm === "لاين" || qNorm === "معرفلاين") {
+            lineIdVal = aVal;
+          }
+        }
+
+        // Facebook
+        if (!facebookVal) {
+          if (qNorm === "فيسبوك" || qNorm === "فيس" || qNorm === "facebook") {
+            facebookVal = aVal;
+          }
+        }
+      }
+
+      // Safe fallback for subscriber name: if still not found, check the first text input
+      if (!nameVal && formattedAnswers.length > 0) {
+        const first = formattedAnswers.find((fa) => {
+          const qNorm = (fa.question || "").toLowerCase();
+          return !qNorm.includes("استاذ") && !qNorm.includes("معلم") && !qNorm.includes("ملف") && !qNorm.includes("صورة");
+        });
+        if (first && first.answer && typeof first.answer === "string") {
+          nameVal = first.answer.trim();
+        }
+      }
 
       if (!nameVal) {
-        const firstStr = Object.values(answers).find((v) => typeof v === "string" && v.trim() && !v.startsWith("http") && !v.startsWith("data:"));
-        nameVal = firstStr ? String(firstStr).trim() : "مشترك جديد";
+        nameVal = "مشترك جديد";
       }
       
       // Find attachment or file if present
@@ -1661,7 +1721,7 @@ export default function RegistrationModal({
                                   <button
                                     type="button"
                                     key={optIdx}
-                                    onClick={() => handleInputChange(fieldKey, opt)}
+                                    onClick={() => handleInputChange(fieldKey, opt, q.question)}
                                     className={`p-3 rounded-xl border text-sm font-sans font-bold flex items-center justify-between gap-2 transition-all cursor-pointer ${
                                       formLang === "ar" ? "text-right" : "text-left"
                                     } ${
@@ -1690,7 +1750,7 @@ export default function RegistrationModal({
                                 type="tel"
                                 dir="ltr"
                                 value={val}
-                                onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                                onChange={(e) => handleInputChange(fieldKey, e.target.value, q.question)}
                                 placeholder={t.placeholderPhone}
                                 className={`w-full bg-slate-900 border border-slate-800 focus:border-amber-500/60 rounded-xl py-3 text-sm text-slate-100 outline-none transition-colors font-mono ${
                                   formLang === "ar" ? "pr-11 pl-4 text-right" : "pl-11 pr-4 text-left"
@@ -1705,7 +1765,7 @@ export default function RegistrationModal({
                                 type="email"
                                 dir="ltr"
                                 value={val}
-                                onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                                onChange={(e) => handleInputChange(fieldKey, e.target.value, q.question)}
                                 placeholder={t.placeholderEmail}
                                 className={`w-full bg-slate-900 border border-slate-800 focus:border-amber-500/60 rounded-xl py-3 text-sm text-slate-100 outline-none transition-colors font-sans ${
                                   formLang === "ar" ? "pr-11 pl-4 text-right" : "pl-11 pr-4 text-left"
@@ -1719,7 +1779,7 @@ export default function RegistrationModal({
                               <input
                                 type="number"
                                 value={val}
-                                onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                                onChange={(e) => handleInputChange(fieldKey, e.target.value, q.question)}
                                 placeholder={t.placeholderNumber}
                                 className={`w-full bg-slate-900 border border-slate-800 focus:border-amber-500/60 rounded-xl py-3 text-sm text-slate-100 outline-none transition-colors font-sans ${
                                   formLang === "ar" ? "pr-11 pl-4 text-right" : "pl-11 pr-4 text-left"
@@ -1734,7 +1794,7 @@ export default function RegistrationModal({
                                 type="url"
                                 dir="ltr"
                                 value={val}
-                                onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                                onChange={(e) => handleInputChange(fieldKey, e.target.value, q.question)}
                                 placeholder={t.placeholderUrl}
                                 className={`w-full bg-slate-900 border border-slate-800 focus:border-amber-500/60 rounded-xl py-3 text-sm text-slate-100 outline-none transition-colors font-mono ${
                                   formLang === "ar" ? "pr-11 pl-4 text-right" : "pl-11 pr-4 text-left"
@@ -1748,7 +1808,7 @@ export default function RegistrationModal({
                               <input
                                 type="text"
                                 value={val}
-                                onChange={(e) => handleInputChange(fieldKey, e.target.value)}
+                                onChange={(e) => handleInputChange(fieldKey, e.target.value, q.question)}
                                 placeholder={t.placeholderAnswer}
                                 className={`w-full bg-slate-900 border border-slate-800 focus:border-amber-500/60 rounded-xl py-3 text-sm text-slate-100 outline-none transition-colors font-sans ${
                                   formLang === "ar" ? "pr-11 pl-4 text-right" : "pl-11 pr-4 text-left"

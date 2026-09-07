@@ -1,7 +1,7 @@
 {
   "enabled": true,
-  "emailColumn": "E",
-  "deliveryStatusColumn": "Z",
+  "emailColumn": "G",
+  "deliveryStatusColumn": "P",
   "dataFields": [
     {
       "id": "1",
@@ -40,7 +40,7 @@
     }
   ],
   "qrCodeColumns": "B",
-  "qrDriveUrlColumn": "Y",
+  "qrDriveUrlColumn": "O",
   "includeQrInEmail": true,
   "messages": {
     "ar": {
