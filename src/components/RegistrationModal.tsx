@@ -321,6 +321,8 @@ export default function RegistrationModal({
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
   const [successInfo, setSuccessInfo] = useState<{ id?: string; message?: string }>({});
+  const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
+  const [uploadStatusMessage, setUploadStatusMessage] = useState<string | null>(null);
   const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
   const [customButtonTitle, setCustomButtonTitle] = useState<string>("إرسال طلب التسجيل والاشتراك");
   const [translationsMap, setTranslationsMap] = useState<Record<string, any>>(() => {
@@ -975,13 +977,20 @@ export default function RegistrationModal({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setHasAttemptedSubmit(true);
+    setSubmitErrorMessage(null);
+    setUploadStatusMessage(null);
     if (!validateForm()) return;
 
     setIsSubmitting(true);
     try {
-      // Wait for any active background image upload (up to 1.5s) so Drive link is used if ready
+      // 1. Wait for any active background image/file upload to finish (up to 25s)
       if (Object.values(uploadingFiles).some(Boolean)) {
-        await new Promise((r) => setTimeout(r, 1200));
+        setUploadStatusMessage(formLang === 'ar' ? "جاري استكمال رفع المرفقات إلى Google Drive... يرجى الانتظار" : "Uploading attachments to Google Drive...");
+        let waitLoops = 0;
+        while (Object.values(uploadingFiles).some(Boolean) && waitLoops < 25) {
+          await new Promise((r) => setTimeout(r, 800));
+          waitLoops++;
+        }
       }
 
       // Build structured payload for backend and Google Sheets
@@ -1120,29 +1129,45 @@ export default function RegistrationModal({
         telegramConfig: cachedTelegramConfig || undefined
       };
 
+      setUploadStatusMessage(formLang === 'ar' ? "جاري حفظ البيانات في Google Sheets وإرسال إشعار تلغرام الفوري..." : "Saving registration and dispatching Telegram alert...");
+
       // Universal submission bridge: works on Node dev server AND on static hosts (Vercel/GitHub Pages)
       const submitResult = await submitRegistrationBridge(regPayload, activeScriptUrl);
       setIsSubmitting(false);
+      setUploadStatusMessage(null);
 
-      const finalId = submitResult.registrationId || unifiedRegId;
-      setIsSuccess(true);
-      setSuccessInfo({
-        id: finalId,
-        message: submitResult.message || `تم استلام وحفظ طلب تسجيلك بنجاح بالرقم المرجعي (${finalId}) ومزامنة البيانات!`
-      });
+      if (submitResult && submitResult.success) {
+        const finalId = submitResult.registrationId || unifiedRegId;
+        setIsSuccess(true);
+        setSuccessInfo({
+          id: finalId,
+          message: submitResult.message || `تم استلام وحفظ طلب تسجيلك بنجاح بالرقم المرجعي (${finalId}) ومزامنة البيانات وتلغرام!`
+        });
+      } else {
+        setSubmitErrorMessage(
+          submitResult?.message ||
+          (formLang === 'ar'
+            ? "تعذر تأكيد حفظ طلب التسجيل في جدول البيانات. يرجى التحقق من اتصال الإنترنت والضغط على إعادة المحاولة."
+            : "Failed to confirm registration in the database. Please check your connection and retry.")
+        );
+      }
     } catch (err: any) {
       console.error("Critical submission error:", err);
       setIsSubmitting(false);
-      setIsSuccess(true);
-      setSuccessInfo({
-        id: `REG-${new Date().getFullYear()}-${Math.floor(1000 + Math.random() * 9000)}`,
-        message: "تم إرسال طلب تسجيلك بنجاح وسيتواصل معك المشرف!"
-      });
+      setUploadStatusMessage(null);
+      setSubmitErrorMessage(
+        err?.message ||
+        (formLang === 'ar'
+          ? "حدث خطأ غير متوقع أثناء إرسال البيانات. بياناتك محفوظة في النموذج، يرجى الضغط على زر إعادة المحاولة."
+          : "An unexpected error occurred. Your entered data is preserved, please click retry.")
+      );
     }
   };
 
   const handleResetAndClose = () => {
     setIsSuccess(false);
+    setSubmitErrorMessage(null);
+    setUploadStatusMessage(null);
     setAnswers({});
     setErrors({});
     setHasAttemptedSubmit(false);
@@ -1793,6 +1818,21 @@ export default function RegistrationModal({
                       </motion.div>
                     )}
 
+                    {/* Error message banner on failed submission */}
+                    {submitErrorMessage && (
+                      <motion.div
+                        initial={{ opacity: 0, y: -8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 bg-red-950/90 border-2 border-red-500/60 rounded-2xl text-red-200 text-sm flex items-start gap-3 shadow-lg my-2"
+                      >
+                        <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5 text-red-400" />
+                        <div className="flex-1 space-y-1">
+                          <p className="font-bold text-red-300">{submitErrorMessage}</p>
+                          <p className="text-xs text-slate-300">بياناتك لم تفقد. يرجى الضغط على زر "إعادة محاولة الإرسال" أدناه.</p>
+                        </div>
+                      </motion.div>
+                    )}
+
                     <button
                       type="submit"
                       disabled={isSubmitting}
@@ -1800,10 +1840,18 @@ export default function RegistrationModal({
                     >
                       {isSubmitting ? (
                         <Loader2 className="w-5 h-5 animate-spin stroke-[2.5]" />
+                      ) : submitErrorMessage ? (
+                        <RefreshCw className="w-5 h-5 stroke-[2.5]" />
                       ) : (
                         <Send className="w-5 h-5 stroke-[2.5]" />
                       )}
-                      <span>{isSubmitting ? t.submittingBtn : (formLang === 'ar' ? customButtonTitle : t.submitBtn)}</span>
+                      <span>
+                        {isSubmitting
+                          ? t.submittingBtn
+                          : submitErrorMessage
+                          ? (formLang === 'ar' ? "إعادة محاولة الإرسال" : formLang === 'th' ? "ลองส่งอีกครั้ง" : "Retry Submission")
+                          : (formLang === 'ar' ? customButtonTitle : t.submitBtn)}
+                      </span>
                     </button>
                   </div>
                 </form>
@@ -1821,14 +1869,14 @@ export default function RegistrationModal({
                       <Loader2 className="w-8 h-8 animate-spin" />
                     </div>
                     <h3 className="font-serif font-bold text-xl text-amber-400">
-                      {formLang === 'ar' ? "جاري إرسال وحفظ طلب التسجيل..." : formLang === 'th' ? "กำลังบันทึกและส่งข้อมูล..." : "Submitting Registration..."}
+                      {formLang === 'ar' ? "جاري معالجة طلب التسجيل..." : formLang === 'th' ? "กำลังบันทึกและส่งข้อมูล..." : "Submitting Registration..."}
                     </h3>
                     <p className="text-slate-300 font-sans text-xs sm:text-sm leading-relaxed">
-                      {formLang === 'ar'
+                      {uploadStatusMessage || (formLang === 'ar'
                         ? "يرجى الانتظار لحظات ريثما يتم تسجيل بياناتك وإرسال الإشعارات وحفظ المرفقات في السحابة."
                         : formLang === 'th'
                         ? "กรุณารอสักครู่ ระบบกำลังบันทึกข้อมูลและส่งการแจ้งเตือน..."
-                        : "Please wait a moment while your registration is being recorded and notifications are sent."}
+                        : "Please wait a moment while your registration is being recorded and notifications are sent.")}
                     </p>
                   </motion.div>
                 </div>

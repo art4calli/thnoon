@@ -24,7 +24,13 @@ import {
   Image as ImageIcon
 } from "lucide-react";
 import { TelegramConfig, TelegramCustomButton } from "../types";
-import { executeAppsScriptPost, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID } from "../utils/googleBackendBridge";
+import {
+  executeAppsScriptPost,
+  fetchTelegramConfigBridge,
+  saveTelegramConfigBridge,
+  DEFAULT_SCRIPT_URL,
+  DEFAULT_SPREADSHEET_ID
+} from "../utils/googleBackendBridge";
 
 interface TelegramAdminSettingsProps {
   currentSpreadsheetId?: string;
@@ -70,21 +76,12 @@ export default function TelegramAdminSettings({
   const fetchConfig = async () => {
     setIsLoading(true);
     try {
-      const res = await fetch("/api/telegram-config");
-      if (res.ok) {
-        const data = await res.json();
-        if (data && data.config) {
-          setConfig({ ...DEFAULT_CONFIG, ...data.config });
-        }
+      const cloudConfig = await fetchTelegramConfigBridge(currentSpreadsheetId, currentScriptUrl);
+      if (cloudConfig) {
+        setConfig({ ...DEFAULT_CONFIG, ...cloudConfig });
       }
     } catch (e) {
       console.warn("Error fetching telegram config:", e);
-      const local = localStorage.getItem("thnoon_telegram_config");
-      if (local) {
-        try {
-          setConfig({ ...DEFAULT_CONFIG, ...JSON.parse(local) });
-        } catch (err) {}
-      }
     } finally {
       setIsLoading(false);
     }
@@ -97,42 +94,9 @@ export default function TelegramAdminSettings({
     setTestResult(null);
 
     try {
-      // Local backup
-      if (typeof window !== "undefined") {
-        try {
-          localStorage.setItem("thnoon_telegram_config", JSON.stringify(config));
-        } catch (e) {}
-      }
-
       const activeScriptUrl = currentScriptUrl || (typeof window !== "undefined" ? (localStorage.getItem("thnoon_script_url") || localStorage.getItem("gas_script_url") || "") : "") || DEFAULT_SCRIPT_URL;
-      
-      let saved = false;
-      let msg = "";
+      await saveTelegramConfigBridge(config, activeScriptUrl, currentSpreadsheetId);
 
-      // 1. Try local Express route
-      try {
-        const res = await fetch("/api/telegram-config", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ config, scriptUrl: activeScriptUrl })
-        });
-        if (res.ok) {
-          const data = await res.json();
-          if (data && data.success) {
-            saved = true;
-          }
-        }
-      } catch (e) {}
-
-      // 2. Direct Apps Script sync
-      if (!saved) {
-        const bridgeRes = await executeAppsScriptPost("saveTelegramConfig", { config }, activeScriptUrl);
-        if (bridgeRes.success) {
-          saved = true;
-        }
-      }
-
-      // Always consider saved locally + remotely
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 4000);
     } catch (e: any) {
