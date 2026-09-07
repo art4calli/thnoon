@@ -149,12 +149,14 @@ async function translateWithAppsScript(
     const scriptUrl = customScriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || DEFAULT_SCRIPT_URL;
     if (!scriptUrl) return null;
 
-    const itemsPayload = items.map((it) => ({
-      id: it.id,
-      text: cleanText(it.ar),
-    }));
+    const payload = {
+      items: items.map((it) => ({
+        id: it.id,
+        text: cleanText(it.ar),
+      })),
+    };
 
-    const res: any = await executeAppsScriptPost("translateTexts", { items: itemsPayload }, scriptUrl);
+    const res: any = await executeAppsScriptPost("translateTexts", payload, scriptUrl);
     if (res && res.success && (res.results || res.data?.results)) {
       return res.results || res.data?.results;
     }

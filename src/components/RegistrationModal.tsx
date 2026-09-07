@@ -1019,7 +1019,7 @@ export default function RegistrationModal({
         .map((q) => {
           const key = String(q.id || q.question);
           const rawAns = answers[key] !== undefined ? answers[key] : (answers[q.question] || "");
-          const driveUrl = (filePreviews as any)[key]?.driveFileUrl || uploadedFileInfo[key]?.driveFileUrl || (filePreviews as any)[q.question]?.driveFileUrl || uploadedFileInfo[q.question]?.driveFileUrl;
+          const driveUrl = (filePreviews[key] as any)?.driveFileUrl || uploadedFileInfo[key]?.driveFileUrl || (filePreviews[q.question] as any)?.driveFileUrl || uploadedFileInfo[q.question]?.driveFileUrl;
           let finalAns = rawAns;
           if (driveUrl && typeof finalAns === "string" && finalAns.startsWith("data:")) {
             finalAns = driveUrl;
