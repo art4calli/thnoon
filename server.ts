@@ -27,7 +27,7 @@ const configFile = path.join(dataDir, "config.json");
 const formTranslationsFile = path.join(dataDir, "form_translations.json");
 const siteTranslationsFile = path.join(dataDir, "site_translations.json");
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzg150YtJZ3uJ8g2WQ5KX94WUKqdZMG3F7m6rdUaoJDqMSzfyuONxWYgT9dL1P6bBx3aw/exec";
 let currentSpreadsheetId = process.env.SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 let currentScriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL || DEFAULT_SCRIPT_URL;
 let currentDriveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
@@ -332,7 +332,7 @@ app.post("/api/upload-drive", async (req, res) => {
 });
 
 // Fallback high-quality data in case Google Sheet is not accessible
-const FALLBACK_DATA = {
+const FALLBACK_DATA: any = {
   profile: {
     logoUrl: "https://images.unsplash.com/photo-1578301978693-85fa9c0320b9?auto=format&fit=crop&q=80&w=300",
     title: "مؤسسة يوسف ذنون للخط العربي",
@@ -755,8 +755,8 @@ app.get("/api/data", async (req, res) => {
       }
     }
 
-    let socialLinks = { ...FALLBACK_DATA.socialLinks };
-    let contactInfo = { ...FALLBACK_DATA.contactInfo };
+    let socialLinks: any = { ...FALLBACK_DATA.socialLinks };
+    let contactInfo: any = { ...FALLBACK_DATA.contactInfo };
     const contactCards: any[] = [];
 
     // Check if contactRows contains the new structured keywords in Column A of any row
@@ -1303,44 +1303,6 @@ app.post("/api/contact", async (req, res) => {
   });
 });
 
-// SUBMIT REGISTRATION ENDPOINT
-app.post("/api/register", async (req, res) => {
-  const regData = req.body;
-  const scriptUrl = currentScriptUrl;
-
-  if (scriptUrl && scriptUrl.trim().startsWith("http")) {
-    try {
-      console.log("Proxying registration to Google Apps Script:", scriptUrl);
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "submitRegistration",
-          ...regData
-        })
-      });
-      const data = await response.json();
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Failed to proxy registration to Apps Script:", err);
-    }
-  }
-
-  // Fallback registration response
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  const registrationId = "REG-" + new Date().getFullYear() + "-" + randomNum;
-  const displayName = regData.nameArabic || regData.nameThai || "مشترك جديد";
-  const qrContent = `رقم التسجيل: ${registrationId}\nالاسم: ${displayName}\nالبريد: ${regData.email || ""}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrContent)}`;
-
-  return res.json({
-    success: true,
-    registrationId,
-    qrCodeUrl,
-    subscriberName: displayName,
-    message: "تم حفظ طلب التسجيل بنجاح في قاعدة البيانات المحلية!"
-  });
-});
 
 // LOGIN AUTHENTICATION ENDPOINT
 app.post("/api/login", async (req, res) => {
@@ -3979,6 +3941,14 @@ app.post("/api/register", async (req, res) => {
         });
         const gasData = await gasRes.json().catch(() => null);
         console.log("GAS submitRegistration forward response:", gasData);
+        if (gasData && (gasData.success || gasData.registrationId)) {
+          return res.json({
+            ...gasData,
+            registrationId: gasData.registrationId || registrationId,
+            timestamp: formattedTimestamp,
+            message: gasData.message || `تم استلام طلب التسجيل بنجاح بالرقم المرجعي (${registrationId}) وسيتواصل معك المشرف لتفعيل الحساب.`
+          });
+        }
       } catch (gasErr: any) {
         console.warn("Could not forward registration to Google Apps Script:", gasErr.message);
       }

@@ -134,7 +134,28 @@ function doGet(e) {
 // 2. استقبال طلبات POST (تسجيل الدخول، إرسال الاستفسارات، وتعبئة نموذج التسجيل)
 function doPost(e) {
   try {
-    var postData = JSON.parse(e.postData.contents);
+    var postData = null;
+    if (e && e.parameter && e.parameter.data) {
+      try { postData = JSON.parse(e.parameter.data); } catch(pe) {}
+    }
+    if (!postData && e && e.parameter && e.parameter.payload) {
+      try { postData = JSON.parse(e.parameter.payload); } catch(pe) {}
+    }
+    if (!postData && e && e.postData && e.postData.contents) {
+      try {
+        var raw = String(e.postData.contents).trim();
+        while (raw.length > 0 && (raw.charAt(raw.length - 1) === "=" || raw.charCodeAt(raw.length - 1) === 10 || raw.charCodeAt(raw.length - 1) === 13)) {
+          raw = raw.substring(0, raw.length - 1).trim();
+        }
+        postData = JSON.parse(raw);
+      } catch(pe2) {
+        try { postData = JSON.parse(decodeURIComponent(raw)); } catch(pe3) {}
+      }
+    }
+    if (!postData) {
+      return ContentService.createTextOutput(JSON.stringify({ success: false, message: "بيانات الطلب غير صالحة أو فارغة" }))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
     var action = postData.action;
 
     // أ) تسجيل دخول المشترك

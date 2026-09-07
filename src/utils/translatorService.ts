@@ -149,17 +149,14 @@ async function translateWithAppsScript(
     const scriptUrl = customScriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : "") || DEFAULT_SCRIPT_URL;
     if (!scriptUrl) return null;
 
-    const payload = {
-      action: "translateTexts",
-      items: items.map((it) => ({
-        id: it.id,
-        text: cleanText(it.ar),
-      })),
-    };
+    const itemsPayload = items.map((it) => ({
+      id: it.id,
+      text: cleanText(it.ar),
+    }));
 
-    const res = await executeAppsScriptPost(payload, scriptUrl);
-    if (res && res.success && res.results) {
-      return res.results;
+    const res: any = await executeAppsScriptPost("translateTexts", { items: itemsPayload }, scriptUrl);
+    if (res && res.success && (res.results || res.data?.results)) {
+      return res.results || res.data?.results;
     }
   } catch (err) {
     // GAS translation not configured or timed out

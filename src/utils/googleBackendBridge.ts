@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, SettingsSubscriberRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx6aC4I8w5VmZT3cTYxhiSt1Ax2jk6fbh5WXxrxAShNjvnLg43TsIHYsyw6gXlZmsK5/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbzg150YtJZ3uJ8g2WQ5KX94WUKqdZMG3F7m6rdUaoJDqMSzfyuONxWYgT9dL1P6bBx3aw/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -98,18 +98,27 @@ export function submitViaHiddenIframe(
       iframe.style.pointerEvents = "none";
       document.body.appendChild(iframe);
 
+      const jsonStr = JSON.stringify({ action, ...payload, timestamp: payload.timestamp || new Date().toISOString() });
+
       const form = document.createElement("form");
       form.method = "POST";
       form.action = scriptUrl;
       form.target = iframeName;
-      form.enctype = "text/plain";
+      form.enctype = "application/x-www-form-urlencoded";
 
-      // The field name holds the complete JSON string
-      const input = document.createElement("input");
-      input.type = "hidden";
-      input.name = JSON.stringify({ action, ...payload, timestamp: payload.timestamp || new Date().toISOString() });
-      input.value = "";
-      form.appendChild(input);
+      // Field 1: "data"
+      const inputData = document.createElement("input");
+      inputData.type = "hidden";
+      inputData.name = "data";
+      inputData.value = jsonStr;
+      form.appendChild(inputData);
+
+      // Field 2: "payload"
+      const inputPayload = document.createElement("input");
+      inputPayload.type = "hidden";
+      inputPayload.name = "payload";
+      inputPayload.value = jsonStr;
+      form.appendChild(inputPayload);
 
       document.body.appendChild(form);
       form.submit();
@@ -148,7 +157,7 @@ export async function verifyRegistrationInSheet(
   while (Date.now() - startTime < timeoutMs) {
     // 1. Fast GVIZ check on top rows
     try {
-      const gvizUrl = `https://docs.google.com/spreadsheets/d/${activeSheetId}/gviz/tq?tqx=out:json&headers=1&sheet=RegistrationAnswers&tq=${encodeURIComponent("order by A desc limit 5")}`;
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/${activeSheetId}/gviz/tq?tqx=out:json&headers=1&sheet=RegistrationAnswers&tq=${encodeURIComponent("order by A desc limit 10")}`;
       const res = await fetch(gvizUrl);
       if (res.ok) {
         const text = await res.text();
@@ -158,9 +167,14 @@ export async function verifyRegistrationInSheet(
           const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
           const rows = json.table?.rows || [];
           for (const r of rows) {
-            const rowId = String(r?.c?.[1]?.v || "");
-            const rowName = String(r?.c?.[2]?.v || "").trim();
-            if ((safeId && rowId && (rowId === safeId || rowId.includes(safeId))) || (safeName && rowName && (rowName === safeName || rowName.includes(safeName)))) {
+            const rowId = String(r?.c?.[1]?.f || r?.c?.[1]?.v || "");
+            const rowName = String(r?.c?.[2]?.f || r?.c?.[2]?.v || "").trim();
+            const rowNameAr = String(r?.c?.[3]?.f || r?.c?.[3]?.v || "").trim();
+            if (
+              (safeId && rowId && (rowId === safeId || rowId.includes(safeId))) ||
+              (safeName && rowName && (rowName === safeName || rowName.includes(safeName))) ||
+              (safeName && rowNameAr && (rowNameAr === safeName || rowNameAr.includes(safeName)))
+            ) {
               return true;
             }
           }
@@ -175,7 +189,7 @@ export async function verifyRegistrationInSheet(
       if (gasRes.ok) {
         const gasJson = await gasRes.json();
         const records = gasJson.records || [];
-        const recent = records.slice(-5);
+        const recent = records.slice(-10);
         for (const rec of recent) {
           const recId = String(rec.registrationId || "");
           const recName = String(rec.name || "").trim();
@@ -403,7 +417,7 @@ export async function submitRegistrationBridge(
     telegramConfig = await fetchTelegramConfigBridge();
   }
 
-  const enrichedPayload = {
+  const enrichedPayload: any = {
     ...regPayload,
     scriptUrl: targetScriptUrl,
     emailConfig: emailConfig || undefined,
@@ -440,17 +454,19 @@ export async function submitRegistrationBridge(
   let directSuccess = false;
   let directData: any = null;
 
+  const gasBody = JSON.stringify({
+    action: "submitRegistration",
+    ...enrichedPayload,
+    timestamp: enrichedPayload.timestamp || new Date().toISOString()
+  });
+
   try {
     const response = await fetch(targetScriptUrl, {
       method: "POST",
       headers: {
         "Content-Type": "text/plain;charset=utf-8"
       },
-      body: JSON.stringify({
-        action: "submitRegistration",
-        ...enrichedPayload,
-        timestamp: enrichedPayload.timestamp || new Date().toISOString()
-      })
+      body: gasBody
     });
 
     if (response.ok) {
@@ -467,7 +483,7 @@ export async function submitRegistrationBridge(
       }
     }
   } catch (directErr) {
-    console.warn("Direct fetch POST failed (likely CORS redirect policy on mobile/other devices), checking sheet verification...", directErr);
+    console.warn("Direct fetch POST threw (expected on mobile when 302 redirect occurs across origins):", directErr);
   }
 
   if (directSuccess) {
@@ -481,7 +497,7 @@ export async function submitRegistrationBridge(
 
   // 4. Verify whether the initial POST already succeeded on Google's servers
   // (In many browsers, the POST succeeds in GAS but the 302 redirect causes a CORS error in fetch)
-  const isSavedInitially = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 3500);
+  const isSavedInitially = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 4000);
   if (isSavedInitially) {
     return {
       success: true,
@@ -491,11 +507,21 @@ export async function submitRegistrationBridge(
     };
   }
 
-  // 5. If not verified yet, trigger Strategy 2: Hidden Iframe Form Submit (100% immune to browser CORS / redirect blocks)
+  // 5. If not verified yet, trigger Strategy 2: no-cors fetch + Hidden Iframe Form Submit (100% immune to browser CORS / redirect blocks)
+  try {
+    // Fire no-cors fetch (clean body with no form urlencoding)
+    fetch(targetScriptUrl, {
+      method: "POST",
+      mode: "no-cors",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: gasBody
+    }).catch(() => {});
+  } catch (noCorsErr) {}
+
   try {
     await submitViaHiddenIframe("submitRegistration", enrichedPayload, targetScriptUrl);
     // Poll the Google Sheet to confirm receipt
-    const isSavedAfterIframe = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 6000);
+    const isSavedAfterIframe = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 7500);
     if (isSavedAfterIframe) {
       return {
         success: true,
@@ -709,7 +735,7 @@ export async function fetchFormQuestionsBridge(
           type: fieldType,
           options: opts.length > 0 ? opts : undefined,
           required: qRequired,
-          imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
+          imageUrl: qImage ? formatImageUrl(qImage) : undefined,
           externalLink: (qLink && qLink !== "-") ? qLink : undefined
         });
       }
