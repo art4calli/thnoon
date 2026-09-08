@@ -14,7 +14,7 @@
 import { RegistrationQuestion, RegistrationAnswerRecord, SettingsSubscriberRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbx6aC4I8w5VmZT3cTYxhiSt1Ax2jk6fbh5WXxrxAShNjvnLg43TsIHYsyw6gXlZmsK5/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxgdooTDplJSni4jsNkf08tEear5AC0s6nDD-Z7MlqtCsAuMqplCIkBXnVXXOpzFKlqaw/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -403,7 +403,7 @@ export async function submitRegistrationBridge(
     telegramConfig = await fetchTelegramConfigBridge();
   }
 
-  const enrichedPayload = {
+  const enrichedPayload: any = {
     ...regPayload,
     scriptUrl: targetScriptUrl,
     emailConfig: emailConfig || undefined,
@@ -709,7 +709,7 @@ export async function fetchFormQuestionsBridge(
           type: fieldType,
           options: opts.length > 0 ? opts : undefined,
           required: qRequired,
-          imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
+          imageUrl: qImage ? formatImageUrl(qImage) : undefined,
           externalLink: (qLink && qLink !== "-") ? qLink : undefined
         });
       }

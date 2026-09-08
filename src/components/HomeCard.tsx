@@ -1,10 +1,11 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, X, Play, ExternalLink } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SheetRow } from "../types";
 import { useLanguage } from "../context/LanguageContext";
 
 interface HomeCardProps {
+  key?: React.Key;
   card: SheetRow;
   onNavigate: (sectionId: string) => void;
 }

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { Lock, Shield, KeyRound, User, ArrowLeft, AlertCircle, Sparkles, Check, Copy, ExternalLink, X } from "lucide-react";
 
 interface AdminLoginModalProps {

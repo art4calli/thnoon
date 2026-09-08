@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { ChevronLeft, ChevronRight, Maximize2, X, Play } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 

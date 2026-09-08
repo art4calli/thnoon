@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -517,7 +517,7 @@ export default function RegistrationModal({
           return resolve(dataUrl);
         }
 
-        if (source instanceof File) {
+        if (source instanceof Blob) {
           const reader = new FileReader();
           reader.onload = (e) => {
             const img = new Image();

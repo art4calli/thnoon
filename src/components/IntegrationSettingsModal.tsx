@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { X, Copy, Check, Link2, Database, Code2, Sparkles, AlertCircle, CheckCircle2, ExternalLink, RefreshCw, Layers, Folder, Languages, Globe, Bot, Mail, Send, Users, Shield, KeyRound, LogOut, Lock, UserCheck } from "lucide-react";
 import { GAS_BACKEND_CODE } from "../data/appsScriptCode";
 import { RegistrationQuestion, FormTranslationsMap, QuestionTranslation } from "../types";

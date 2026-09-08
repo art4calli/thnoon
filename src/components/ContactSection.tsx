@@ -1,4 +1,4 @@
-import { useState } from "react";
+import React, { useState } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import { 
   MapPin, Phone, Mail, Clock, Send, Check, Facebook, Instagram, Youtube, Compass,
