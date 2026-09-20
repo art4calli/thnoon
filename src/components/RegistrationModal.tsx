@@ -37,6 +37,7 @@ import { RegistrationQuestion, QuestionTranslation } from "../types";
 import { DEFAULT_FORM_TRANSLATIONS } from "../data/defaultFormTranslations";
 import { getSavedFormQuestions, DEFAULT_CONFIGURED_QUESTIONS } from "../data/configuredFormQuestions";
 import { DEFAULT_SUBSCRIBER_EMAIL_CONFIG, DEFAULT_TELEGRAM_CONFIG } from "../data/defaultConfigs";
+import { useLanguage } from "../context/LanguageContext";
 import { formatImageUrl } from "../utils/imageUtils";
 import {
   submitRegistrationBridge,
@@ -429,6 +430,16 @@ export default function RegistrationModal({
     setMathError(null);
   };
 
+  const { translations } = useLanguage();
+  const [localSiblingMode, setLocalSiblingMode] = useState(false);
+  const effectiveSiblingMode = isSiblingMode || localSiblingMode;
+
+  const getTrans = (key: string, fallback: string): string => {
+    const item = translations?.find((x) => x.id === key);
+    if (!item) return fallback;
+    return (item as any)[formLang] || item.ar || fallback;
+  };
+
   const [existingStudentAlert, setExistingStudentAlert] = useState<{
     id: string;
     name: string;
@@ -466,21 +477,23 @@ export default function RegistrationModal({
         setExistingStudentAlert(null);
         setServerVerificationNotice({
           type: "success",
-          text: formLang === "en"
+          text: getTrans("reg_server_verify_deleted", formLang === "en"
             ? "Verification completed: Your previous record was deleted by administration from Google Sheets. The form is now unlocked for a new registration."
             : formLang === "th"
             ? "ตรวจสอบสำเร็จ: บันทึกเดิมของคุณถูกลบจาก Google Sheets โดยผู้ดูแลระบบแล้ว แบบฟอร์มเปิดให้ลงทะเบียนใหม่ได้แล้ว"
-            : "تم التحقق بنجاح من قاعدة البيانات الرسمية (Google Sheets): قامت الإدارة بحذف بياناتك السابقة. تم فتح الاستمارة ويمكنك الآن التسجيل من جديد كطالب جديد."
+            : "تم التحقق بنجاح من Google Sheets: قامت الإدارة بحذف بياناتك السابقة. تم فك القفل ويمكنك الآن التسجيل من جديد كطالب جديد.")
         });
       } else if (result.exists === true) {
         // Still exists in database
+        const studentInfo = result.name || existingStudentAlert.name || existingStudentAlert.id;
+        const foundTemplate = getTrans("reg_server_verify_found", formLang === "en"
+          ? `Verified with Google Sheets: Student ({id}) is still registered and active in the database. If you wish to register anew, please ask the admin to delete your entry first.`
+          : formLang === "th"
+          ? `ตรวจสอบกับ Google Sheets แล้ว: นักเรียน ({id}) ยังคงลงทะเบียนอยู่ในระบบ หากต้องการลงทะเบียนใหม่ โปรดติดต่อผู้ดูแลเพื่อลบข้อมูลก่อน`
+          : `تم التحقق من قاعدة البيانات الرسمية (Google Sheets): بيانات المشترك ({id}) ما زالت مسجلة ومعتمدة لدى الإدارة في الشيت. إذا كنت ترغب في التسجيل كطالب جديد، يرجى التواصل مع الإدارة لحذف قيدك أولاً ثم الضغط على هذا الزر مجدداً.`);
         setServerVerificationNotice({
           type: "info",
-          text: formLang === "en"
-            ? `Verified with Google Sheets: Student (${result.name || existingStudentAlert.name || existingStudentAlert.id}) is still registered and active in the database. If you wish to register anew, please ask the admin to delete your entry first.`
-            : formLang === "th"
-            ? `ตรวจสอบกับ Google Sheets แล้ว: นักเรียน (${result.name || existingStudentAlert.name || existingStudentAlert.id}) ยังคงลงทะเบียนอยู่ในระบบ หากต้องการลงทะเบียนใหม่ โปรดติดต่อผู้ดูแลเพื่อลบข้อมูลก่อน`
-            : `تم التحقق من قاعدة البيانات الرسمية (Google Sheets): بيانات المشترك (${result.name || existingStudentAlert.name || existingStudentAlert.id}) ما زالت مسجلة ومعتمدة لدى الإدارة في الشيت (${result.foundIn || "قاعدة البيانات"}). إذا كنت ترغب في التسجيل كطالب جديد، يرجى التواصل مع الإدارة لحذف قيدك أولاً ثم الضغط على هذا الزر مجدداً.`
+          text: foundTemplate.replace("{id}", studentInfo)
         });
       } else {
         setServerVerificationNotice({
@@ -508,7 +521,7 @@ export default function RegistrationModal({
       setServerVerificationNotice(null);
 
       // In sibling mode: never block with existing student alert!
-      if (isSiblingMode) {
+      if (effectiveSiblingMode) {
         setExistingStudentAlert(null);
         setIsRepeatedDevice(false);
         setMathError(null);
@@ -752,6 +765,7 @@ export default function RegistrationModal({
         }
 
         if (source instanceof File) {
+          const fileToRead: Blob = source;
           const reader = new FileReader();
           reader.onload = (e) => {
             const img = new Image();
@@ -776,7 +790,7 @@ export default function RegistrationModal({
             img.src = e.target?.result as string;
           };
           reader.onerror = () => resolve("");
-          reader.readAsDataURL(source);
+          reader.readAsDataURL(fileToRead);
           return;
         }
 
@@ -1440,7 +1454,7 @@ export default function RegistrationModal({
         cachedTelegramConfig = DEFAULT_TELEGRAM_CONFIG;
       }
 
-      const regPayload = {
+      const regPayload: any = {
         registrationId: unifiedRegId,
         topicId: 1,
         topic: 1,
@@ -1457,7 +1471,11 @@ export default function RegistrationModal({
         scriptUrl: activeScriptUrl,
         timestamp: formattedTimestamp,
         emailConfig: cachedEmailConfig,
-        telegramConfig: cachedTelegramConfig
+        telegramConfig: cachedTelegramConfig,
+        isSibling: effectiveSiblingMode,
+        registrationType: effectiveSiblingMode ? "مشترك إضافي (عائلة / أخ)" : "مشترك أساسي",
+        siblingParentId: primarySubscriber?.id || existingStudentAlert?.id || undefined,
+        siblingParentName: primarySubscriber?.name || existingStudentAlert?.name || undefined
       };
 
       // If attachment is a data: URL, ensure it uploads to Google Drive or format cleanly
@@ -1489,6 +1507,16 @@ export default function RegistrationModal({
         }
         return item;
       });
+
+      // Distinguish added family/sibling subscriber directly in Google Sheets records
+      if (effectiveSiblingMode) {
+        const parentRef = primarySubscriber?.name || primarySubscriber?.id || existingStudentAlert?.name || existingStudentAlert?.id || "";
+        safeFormattedAnswers.unshift({
+          question: "نوع القيد والاشتراك",
+          answer: `مشترك إضافي (عائلي / أخ) - تابع للمشترك الأساسي: ${parentRef}`
+        });
+      }
+
       regPayload.answers = safeFormattedAnswers;
 
       setUploadStatusMessage(formLang === 'ar' ? "جاري حفظ البيانات في Google Sheets وإرسال إشعار تلغرام الفوري..." : "Saving registration and dispatching Telegram alert...");
@@ -1926,22 +1954,23 @@ export default function RegistrationModal({
                       type="button"
                       onClick={() => {
                         // Activate smart sibling registration right from the success view!
-                        const prevId = successInfo.id;
-                        const prevName = successInfo.name;
+                        const prevId = successInfo.id || "";
+                        const prevName = successInfo.name || "";
                         setExistingStudentAlert({ id: prevId, name: prevName });
-                        setAllowSiblingRegistration(true);
+                        setLocalSiblingMode(true);
                         setAnswers({});
-                        setUploadedFiles({});
+                        setFilePreviews({});
+                        setUploadedFileInfo({});
                         setErrors({});
                         setIsSuccess(false);
                         setSuccessInfo({ id: "", name: "", email: "", phone: "", message: "" });
                         setSubmitErrorMessage(null);
                       }}
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer border border-emerald-400/30"
-                      title={t.siblingSuccessBtn || "تسجيل طالب آخر من نفس العائلة برقم قيد جديد"}
+                      title={getTrans("reg_sibling_form_title", t.siblingSuccessBtn || "تسجيل طالب آخر من نفس العائلة برقم قيد جديد")}
                     >
                       <UserPlus className="w-4 h-4 text-emerald-200" />
-                      <span>{t.siblingSuccessBtn || "تسجيل طالب آخر من العائلة (تسجيل الإخوان 👨‍👩‍👧‍👦)"}</span>
+                      <span>{getTrans("reg_sibling_form_title", t.siblingSuccessBtn || "تسجيل طالب آخر من العائلة (تسجيل الإخوان 👨‍👩‍👧‍👦)")}</span>
                     </button>
 
                     <button
@@ -1990,7 +2019,7 @@ export default function RegistrationModal({
                     </button>
                   )}
                 </div>
-              ) : existingStudentAlert && !isSiblingMode ? (
+              ) : existingStudentAlert && !effectiveSiblingMode ? (
                 /* LOCKED SCREEN: ALREADY REGISTERED USER */
                 <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/95 border border-amber-500/40 text-white space-y-6 shadow-2xl text-center">
                   <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
@@ -2000,15 +2029,15 @@ export default function RegistrationModal({
                   <div className="space-y-2">
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>{t.alreadyRegisteredBadge || "حساب معتمد ومسجل مسبقاً"}</span>
+                      <span>{getTrans("reg_already_registered_badge", t.alreadyRegisteredBadge || "حساب معتمد ومسجل مسبقاً")}</span>
                     </div>
                     <h3 className="text-lg sm:text-xl font-serif font-bold text-slate-100">
-                      {(t.alreadyRegisteredTitle || "أنت مسجل لدينا مسبقاً برقم قيد ({id}) {name}")
+                      {getTrans("reg_already_registered_title", t.alreadyRegisteredTitle || "أنت مسجل لدينا مسبقاً برقم قيد ({id}) {name}")
                         .replace("{id}", existingStudentAlert.id)
                         .replace("{name}", existingStudentAlert.name ? `(${existingStudentAlert.name})` : "")}
                     </h3>
                     <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
-                      {t.alreadyRegisteredDesc || "لا داعي لإعادة تعبئة الاستمارة مرة أخرى، فقيدك مسجل ونشط في قاعدة البيانات الرسمية. يمكنك الدخول مباشرة إلى صفحتك الخاصة لمتابعة الدروس والشهادات والمحتوى الحصري."}
+                      {getTrans("reg_already_registered_desc", t.alreadyRegisteredDesc || "لا داعي لإعادة تعبئة الاستمارة مرة أخرى، فقيدك مسجل ونشط في قاعدة البيانات الرسمية. يمكنك الدخول مباشرة إلى صفحتك الخاصة لمتابعة الدروس والشهادات والمحتوى الحصري.")}
                     </p>
                   </div>
 
@@ -2027,7 +2056,7 @@ export default function RegistrationModal({
                       className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
                     >
                       <LogIn className="w-4 h-4" />
-                      <span>{t.alreadyRegisteredGoToPortal || "الانتقال إلى صفحتي الخاصة في بوابة المشتركين"}</span>
+                      <span>{getTrans("reg_already_registered_portal_btn", t.alreadyRegisteredGoToPortal || "الانتقال إلى صفحتي الخاصة في بوابة المشتركين")}</span>
                     </button>
                   </div>
 
@@ -2035,10 +2064,10 @@ export default function RegistrationModal({
                   <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 text-right space-y-2 max-w-lg mx-auto">
                     <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
                       <HelpCircle className="w-4 h-4 shrink-0" />
-                      <span>هل ترغب في تعديل بياناتك أو التسجيل من جديد من الصفر؟</span>
+                      <span>{getTrans("reg_already_registered_reset_title", "هل ترغب في تعديل بياناتك أو التسجيل من جديد من الصفر؟")}</span>
                     </div>
                     <p className="text-xs text-slate-400 leading-relaxed">
-                      للحفاظ على خصوصية الحسابات ومنع التكرار، إذا كنت ترغب في التسجيل من الصفر أو تعديل بياناتك، يرجى التواصل مع الإدارة ليقوم المشرف بحذف قيدك من النظام، ثم الضغط على زر التحقق أدناه لتحديث الحالة فوراً.
+                      {getTrans("reg_already_registered_reset_desc", "للحفاظ على خصوصية الحسابات ومنع التكرار، إذا كنت ترغب في التسجيل من الصفر أو تعديل بياناتك، يرجى التواصل مع الإدارة ليقوم المشرف بحذف قيدك من النظام، ثم الضغط على زر التحقق أدناه لتحديث الحالة فوراً.")}
                     </p>
                     <div className="pt-2 flex items-center gap-2">
                       <a
@@ -2047,7 +2076,7 @@ export default function RegistrationModal({
                         className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold transition-colors"
                       >
                         <Phone className="w-3.5 h-3.5 text-amber-400" />
-                        <span>التواصل مع الإدارة عبر وسائل الاتصال</span>
+                        <span>{getTrans("reg_already_registered_contact_btn", "التواصل مع الإدارة عبر وسائل الاتصال")}</span>
                       </a>
                     </div>
                   </div>
@@ -2055,11 +2084,11 @@ export default function RegistrationModal({
                   {/* Server Verification Section (Smart Sibling / Deletion Check) */}
                   <div className="pt-3 border-t border-slate-800 max-w-lg mx-auto space-y-3">
                     <div className="text-xs text-slate-300 font-sans leading-relaxed">
-                      {formLang === "en"
+                      {getTrans("reg_server_verify_prompt", formLang === "en"
                         ? "Did the admin delete your record from Google Sheets? Click below to check and unlock the form for a new registration:"
                         : formLang === "th"
                         ? "ผู้ดูแลระบบได้ลบข้อมูลของคุณออกจาก Google Sheets แล้วใช่หรือไม่? คลิกปุ่มด้านล่างเพื่อตรวจสอบและปลดล็อกแบบฟอร์มเพื่อลงทะเบียนใหม่:"
-                        : "هل قامت الإدارة بحذف بياناتك من الشيت وترغب في التسجيل كطالب جديد؟ اضغط على الزر أدناه لمراجعة السيرفر وإلغاء القفل فوراً:"}
+                        : "هل قامت الإدارة بحذف بياناتك من الشيت وترغب في التسجيل كطالب جديد؟ اضغط على الزر أدناه لمراجعة السيرفر وإلغاء القفل فوراً:")}
                     </div>
                     <button
                       type="button"
@@ -2070,8 +2099,8 @@ export default function RegistrationModal({
                       <RotateCw className={`w-4 h-4 ${isVerifyingAccountOnServer ? "animate-spin" : ""}`} />
                       <span>
                         {isVerifyingAccountOnServer
-                          ? (formLang === "en" ? "Checking Google Sheets..." : formLang === "th" ? "กำลังตรวจสอบกับ Google Sheets..." : "جارٍ مراجعة الشيت وقاعدة البيانات...")
-                          : (formLang === "en" ? "Refresh Form & Verify with Sheets 🔄" : formLang === "th" ? "รีเฟรชฟอร์มและตรวจสอบกับชีต 🔄" : "تحديث الفورم والتحقق من الشيت 🔄")}
+                          ? getTrans("reg_server_verify_checking", formLang === "en" ? "Checking Google Sheets..." : formLang === "th" ? "กำลังตรวจสอบกับ Google Sheets..." : "جارٍ مراجعة الشيت وقاعدة البيانات...")
+                          : getTrans("reg_server_verify_btn", formLang === "en" ? "Refresh Form & Verify with Sheets 🔄" : formLang === "th" ? "รีเฟรชฟอร์มและตรวจสอบกับชีต 🔄" : "تحديث الفورم والتحقق من الشيت 🔄")}
                       </span>
                     </button>
 
@@ -2094,7 +2123,7 @@ export default function RegistrationModal({
                 /* DYNAMIC QUESTIONS FORM */
                 <form onSubmit={handleSubmit} className="space-y-6">
                   {/* شريط وضع تسجيل الإخوان والعائلة عند التفعيل من بوابة المشترك */}
-                  {isSiblingMode && (
+                  {effectiveSiblingMode && (
                     <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-l from-amber-950/70 via-slate-900 to-slate-900 border border-amber-500/40 shadow-lg text-white space-y-1.5">
                       <div className="flex items-center gap-2.5">
                         <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
@@ -2102,14 +2131,15 @@ export default function RegistrationModal({
                         </div>
                         <div>
                           <div className="font-bold text-xs sm:text-sm text-amber-300">
-                            {t.siblingFormTitle || "تسجيل طالب آخر من العائلة (تسجيل الإخوان 👨‍👩‍👧‍👦)"}
+                            {getTrans("reg_sibling_form_title", t.siblingFormTitle || "تسجيل طالب آخر من العائلة (تسجيل الإخوان 👨‍👩‍👧‍👦)")}
                           </div>
                           <p className="text-[11px] text-slate-300">
-                            {formLang === "en"
-                              ? `You are now registering a new independent student linked under primary subscriber (${primarySubscriber?.name || primarySubscriber?.id || "Subscriber"}). A unique student ID will be generated.`
+                            {getTrans("reg_sibling_form_subtitle", formLang === "en"
+                              ? `You are now registering a new independent student linked under primary subscriber ({primaryName}). A unique student ID will be generated.`
                               : formLang === "th"
-                              ? `คุณกำลังลงทะเบียนนักเรียนใหม่ที่เป็นคนในครอบครัวเดียวกันกับ (${primarySubscriber?.name || primarySubscriber?.id || "สมาชิก"}) โดยจะได้รับรหัสประจำตัวเฉพาะแยกต่างหาก`
-                              : `يتم الآن تسجيل طالب جديد مستقل من نفس العائلة تحت حساب المشترك الأساسي (${primarySubscriber?.name || primarySubscriber?.id || "المشترك"}). سيتم منحه رقم قيد خاص به كطالب مستقل.`}
+                              ? `คุณกำลังลงทะเบียนนักเรียนใหม่ที่เป็นคนในครอบครัวเดียวกันกับ ({primaryName}) โดยจะได้รับรหัสประจำตัวเฉพาะแยกต่างหาก`
+                              : `يتم الآن تسجيل طالب جديد مستقل من نفس العائلة تحت حساب المشترك الأساسي ({primaryName}). سيتم منحه رقم قيد خاص به كطالب مستقل.`)
+                              .replace("{primaryName}", primarySubscriber?.name || primarySubscriber?.id || existingStudentAlert?.name || existingStudentAlert?.id || "المشترك")}
                           </p>
                         </div>
                       </div>

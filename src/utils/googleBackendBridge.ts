@@ -416,7 +416,7 @@ export async function submitRegistrationBridge(
     telegramConfig = DEFAULT_TELEGRAM_CONFIG;
   }
 
-  const enrichedPayload = {
+  const enrichedPayload: any = {
     ...regPayload,
     scriptUrl: targetScriptUrl,
     emailConfig: emailConfig,
@@ -740,7 +740,7 @@ export async function fetchFormQuestionsBridge(
           type: fieldType,
           options: opts.length > 0 ? opts : undefined,
           required: qRequired,
-          imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
+          imageUrl: qImage ? formatImageUrl(qImage) : undefined,
           externalLink: (qLink && qLink !== "-") ? qLink : undefined
         });
       }
@@ -2781,7 +2781,7 @@ export function parseTelegramUrls(rawUrl?: string, registrationId?: string): Tel
 export function openTelegramSmartLink(
   targetUrlOrRegId?: string,
   explicitRegId?: string,
-  event?: React.MouseEvent
+  event?: any
 ): void {
   if (event) {
     try {
