@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   User,
@@ -25,6 +25,9 @@ interface SubscriberPortalProps {
   onLogin: (username: string, password: string) => Promise<{ success: boolean; message?: string }>;
   onLogout: () => void;
   onOpenRegistration?: () => void;
+  initialUsername?: string;
+  initialPassword?: string;
+  autoFillNotice?: string;
 }
 
 export default function SubscriberPortal({
@@ -32,15 +35,31 @@ export default function SubscriberPortal({
   onClose,
   subscriber,
   onLogin,
-  onOpenRegistration
+  onOpenRegistration,
+  initialUsername,
+  initialPassword,
+  autoFillNotice
 }: SubscriberPortalProps) {
   const { t, dir, currentLang, setLanguage } = useLanguage();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const [username, setUsername] = useState(initialUsername || "");
+  const [password, setPassword] = useState(initialPassword || "");
   const [error, setError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [isQrScannerOpen, setIsQrScannerOpen] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+
+  // Sync initial credentials when modal opens or credentials change
+  useEffect(() => {
+    if (isOpen) {
+      if (initialUsername !== undefined) {
+        setUsername(initialUsername);
+      }
+      if (initialPassword !== undefined) {
+        setPassword(initialPassword);
+      }
+      setError("");
+    }
+  }, [isOpen, initialUsername, initialPassword]);
 
   const handleCopyPortalLink = () => {
     try {
@@ -115,14 +134,80 @@ export default function SubscriberPortal({
               initial={{ scale: 0.95, y: 20, opacity: 0 }}
               animate={{ scale: 1, y: 0, opacity: 1 }}
               exit={{ scale: 0.95, y: 20, opacity: 0 }}
-              className={`relative w-full max-w-md bg-slate-900 border-2 border-amber-500/30 rounded-3xl p-6 sm:p-8 shadow-2xl z-10 overflow-hidden ${
+              className={`relative w-full max-w-md bg-slate-900 border-2 border-amber-500/30 rounded-2xl sm:rounded-3xl p-4 sm:p-8 shadow-2xl z-10 max-h-[calc(100dvh-1.5rem)] overflow-y-auto ${
                 dir === "rtl" ? "text-right" : "text-left"
               }`}
             >
               <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600"></div>
 
-              {/* Top Controls: Share & Close */}
-              <div className={`absolute top-4 ${dir === "rtl" ? "left-4" : "right-4"} flex items-center gap-1.5 z-20`}>
+              {/* Mobile Top Controls Bar: Portal Link + Language Flags + Close (3 Controls in 1 Row) */}
+              <div className="sm:hidden flex items-center justify-between gap-2 mb-3.5 z-20">
+                {/* زر رابط البوابة - أيقونة فقط في الجوال */}
+                <button
+                  type="button"
+                  onClick={handleCopyPortalLink}
+                  title="نسخ رابط بوابة المشتركين المباشر لنشره"
+                  className="p-2 bg-slate-800/80 hover:bg-amber-500 hover:text-slate-950 text-amber-400 rounded-xl transition-all cursor-pointer flex items-center justify-center shrink-0 border border-slate-700/60 shadow-sm"
+                >
+                  {copiedLink ? (
+                    <Check className="w-4 h-4 text-emerald-400" />
+                  ) : (
+                    <Share2 className="w-4 h-4" />
+                  )}
+                </button>
+
+                {/* أزرار اللغة - علامات اللغة فقط بدون نصوص في الجوال */}
+                <div className="flex items-center gap-1 p-0.5 bg-slate-950/80 border border-slate-800 rounded-xl shadow-inner">
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("ar")}
+                    title="العربية"
+                    className={`px-2 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                      currentLang === "ar"
+                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <span className="text-sm">🇸🇦</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("en")}
+                    title="English"
+                    className={`px-2 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                      currentLang === "en"
+                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <span className="text-sm">🇬🇧</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setLanguage("th")}
+                    title="ภาษาไทย"
+                    className={`px-2 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                      currentLang === "th"
+                        ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                        : "text-slate-400 hover:text-slate-200"
+                    }`}
+                  >
+                    <span className="text-sm">🇹🇭</span>
+                  </button>
+                </div>
+
+                {/* زر الإغلاق في الجوال */}
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="p-2 bg-slate-800/80 hover:bg-red-500 hover:text-white text-slate-400 rounded-xl transition-colors cursor-pointer shrink-0 border border-slate-700/60 shadow-sm"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+
+              {/* Desktop Top Controls: Share & Close */}
+              <div className={`hidden sm:flex absolute top-4 ${dir === "rtl" ? "left-4" : "right-4"} items-center gap-1.5 z-20`}>
                 <button
                   type="button"
                   onClick={handleCopyPortalLink}
@@ -144,19 +229,20 @@ export default function SubscriberPortal({
               </div>
 
               {/* Title Header */}
-              <div className="text-center mt-2 mb-4">
-                <div className="w-12 h-12 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-2.5">
+              <div className="text-center mt-1 sm:mt-2 mb-3 sm:mb-4">
+                {/* الأيقونة العلوية فوق النص - مخفية في الجوال وظاهرة في الكمبيوتر */}
+                <div className="hidden sm:flex w-12 h-12 bg-amber-500/10 text-amber-400 rounded-2xl items-center justify-center mx-auto mb-2.5">
                   <User className="w-6 h-6" />
                 </div>
-                <h3 className="font-serif font-bold text-2xl text-amber-400">
+                <h3 className="font-serif font-bold text-xl sm:text-2xl text-amber-400">
                   {t("subscriber_login_title", "تسجيل دخول بوابة المشتركين")}
                 </h3>
-                <p className="text-slate-400 font-sans text-xs mt-1 leading-relaxed">
+                <p className="text-slate-400 font-sans text-[11px] sm:text-xs mt-1 leading-relaxed">
                   {t("subscriber_login_subtitle", "أدخل رقم التسجيل الخاص بك أو امسح رمز الاستجابة السريعة (QR Code) للوصول المباشر إلى موادك الخاصة")}
                 </p>
 
-                {/* Multilingual Selector Pills for Portal */}
-                <div className="mt-3 flex items-center justify-center gap-1.5 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl w-fit mx-auto shadow-inner">
+                {/* Multilingual Selector Pills for Portal (ظاهرة فقط في الشاشات الكبيرة) */}
+                <div className="hidden sm:flex mt-3 items-center justify-center gap-1.5 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl w-fit mx-auto shadow-inner">
                   <button
                     type="button"
                     onClick={() => setLanguage("ar")}
@@ -196,8 +282,8 @@ export default function SubscriberPortal({
                 </div>
               </div>
 
-              {/* QR Scanner Quick Action Button */}
-              <div className="mb-5">
+              {/* QR Scanner Quick Action Button (ظاهر في الشاشات الكبيرة فوق النموذج) */}
+              <div className="hidden sm:block mb-5">
                 <button
                   type="button"
                   onClick={() => setIsQrScannerOpen(true)}
@@ -224,6 +310,14 @@ export default function SubscriberPortal({
                   <div className="flex-grow border-t border-slate-800"></div>
                 </div>
               </div>
+
+              {/* Auto-fill notification if redirected from RegistrationModal */}
+              {autoFillNotice && (
+                <div className="bg-gradient-to-r from-amber-500/20 via-yellow-500/15 to-amber-600/20 border border-amber-500/40 text-amber-300 text-xs py-2.5 px-3 rounded-2xl flex items-center gap-2 mb-3 shadow-md">
+                  <Sparkles className="w-4 h-4 text-amber-400 shrink-0 animate-pulse" />
+                  <span className="font-sans font-medium leading-relaxed">{autoFillNotice}</span>
+                </div>
+              )}
 
               {/* Form elements */}
               <form onSubmit={handleSubmit} className="space-y-4">
@@ -272,22 +366,34 @@ export default function SubscriberPortal({
                   </div>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={isLoading}
-                  className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
-                >
-                  {isLoading ? (
-                    <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
-                  ) : (
-                    <LogIn className="w-4.5 h-4.5" />
-                  )}
-                  <span>
-                    {isLoading
-                      ? t("subscriber_login_verifying", "جاري التحقق وقراءة موضوع الطالب، يرجى الانتظار...")
-                      : t("subscriber_login_btn", "تسجيل الدخول الآن")}
-                  </span>
-                </button>
+                <div className="flex items-center gap-2">
+                  <button
+                    type="submit"
+                    disabled={isLoading}
+                    className="flex-1 bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 font-sans font-bold text-sm py-3 sm:py-3.5 rounded-xl shadow-lg transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75 disabled:cursor-not-allowed"
+                  >
+                    {isLoading ? (
+                      <div className="w-5 h-5 border-2 border-slate-950 border-t-transparent rounded-full animate-spin"></div>
+                    ) : (
+                      <LogIn className="w-4.5 h-4.5" />
+                    )}
+                    <span>
+                      {isLoading
+                        ? t("subscriber_login_verifying", "جاري التحقق وقراءة موضوع الطالب، يرجى الانتظار...")
+                        : t("subscriber_login_btn", "تسجيل الدخول الآن")}
+                    </span>
+                  </button>
+
+                  {/* في الجوال: زر مسح رمز QR بالكاميرا أيقونة فقط بجانب زر تسجيل الدخول في نفس الصف */}
+                  <button
+                    type="button"
+                    onClick={() => setIsQrScannerOpen(true)}
+                    title={t("subscriber_scan_qr_btn", "مسح رمز QR بالكاميرا")}
+                    className="sm:hidden h-[46px] w-[46px] bg-amber-500/15 hover:bg-amber-500/25 border border-amber-500/40 text-amber-300 rounded-xl flex items-center justify-center shrink-0 transition-all cursor-pointer shadow-md"
+                  >
+                    <Camera className="w-5 h-5 text-amber-400" />
+                  </button>
+                </div>
               </form>
 
               {/* Modal Loading Lock Overlay */}
@@ -313,8 +419,8 @@ export default function SubscriberPortal({
                     onClose();
                     if (onOpenRegistration) {
                       onOpenRegistration();
-                    } else {
-                      window.location.href = "#contact";
+                    } else if (typeof window !== "undefined") {
+                      window.dispatchEvent(new CustomEvent("open_registration"));
                     }
                   }}
                   className="w-full py-2.5 px-4 bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400 rounded-xl text-amber-300 font-sans font-bold text-xs flex items-center justify-center gap-2 transition-all cursor-pointer"

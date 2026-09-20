@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   LogOut,
@@ -18,12 +18,22 @@ import {
   Globe,
   AlertTriangle,
   RefreshCw,
-  Loader2
+  Loader2,
+  Send,
+  UserPlus
 } from "lucide-react";
 import { SubscriberState, SubscriberCard, SubscriberTopicContent, SocialLinks } from "../types";
 import { formatImageUrl } from "../utils/imageUtils";
-import { checkSubscriberAccountStatus, fetchSubscriberTopicContent } from "../utils/googleBackendBridge";
+import {
+  checkSubscriberAccountStatus,
+  fetchSubscriberTopicContent,
+  getSubscriberTelegramLink,
+  openTelegramSmartLink,
+  parseTelegramUrls
+} from "../utils/googleBackendBridge";
 import { useLanguage } from "../context/LanguageContext";
+import { translateBatchWithAI } from "../utils/translatorService";
+import RegistrationModal from "./RegistrationModal";
 
 interface SubscriberFullPageProps {
   subscriber: SubscriberState;
@@ -31,6 +41,8 @@ interface SubscriberFullPageProps {
   logoUrl?: string;
   institutionTitle?: string;
   socialLinks?: SocialLinks;
+  scriptUrl?: string;
+  spreadsheetId?: string;
 }
 
 // Media Carousel for Cards (Images with Lightbox or Embedded Video Player)
@@ -174,20 +186,189 @@ function CardMediaCarousel({ media }: { media: { url: string; type?: "image" | "
   );
 }
 
+// Telegram shortcode detector and parser
+const TELEGRAM_SHORTCODE_REGEX = /(\{\{(?:telegram(?:_[a-z]+)?|تفعيل_تلغرام|زر_تلغرام|انضمام_تلغرام|telegram_button)\}\}|\[(?:telegram(?:_[a-z]+)?|تفعيل_تلغرام|زر_تلغرام|انضمام_تلغرام|TELEGRAM_BUTTON)\])/gi;
+
+function isTelegramShortcode(url?: string): boolean {
+  if (!url) return false;
+  const clean = url.trim().toLowerCase();
+  return (
+    clean === "{{telegram}}" ||
+    clean === "{{telegram_link}}" ||
+    clean === "{{telegram_btn}}" ||
+    clean === "{{telegram_button}}" ||
+    clean === "{{telegram_activate}}" ||
+    clean === "[telegram]" ||
+    clean === "[telegram_join]" ||
+    clean === "[telegram_button]" ||
+    clean === "{{تفعيل_تلغرام}}" ||
+    clean === "[تفعيل_تلغرام]" ||
+    clean === "{{زر_تلغرام}}" ||
+    clean === "[زر_تلغرام]" ||
+    clean === "{{انضمام_تلغرام}}" ||
+    clean === "[انضمام_تلغرام]" ||
+    clean === "telegram"
+  );
+}
+
+function DynamicTextWithTelegramButton({
+  text,
+  studentTelegramLink,
+  currentLang
+}: {
+  text: string;
+  studentTelegramLink: string;
+  currentLang: string;
+}) {
+  if (!text) return null;
+  if (!text.match(TELEGRAM_SHORTCODE_REGEX)) {
+    return <span className="whitespace-pre-line">{text}</span>;
+  }
+
+  const parts = text.split(TELEGRAM_SHORTCODE_REGEX);
+  const parsedUrls = parseTelegramUrls(studentTelegramLink);
+  const btnLabel =
+    currentLang === "en"
+      ? "📲 Activate Account on Telegram"
+      : currentLang === "th"
+      ? "📲 เปิดใช้งานบัญชีใน Telegram ทันที"
+      : "📲 تفعيل الحساب في تلغرام مباشرة";
+
+  return (
+    <span className="whitespace-pre-line">
+      {parts.map((part, index) => {
+        if (part && part.match(TELEGRAM_SHORTCODE_REGEX)) {
+          return (
+            <span key={index} className="inline-block mx-1.5 my-2 align-middle">
+              <a
+                href={parsedUrls.appUrl}
+                onClick={(e) => openTelegramSmartLink(studentTelegramLink, undefined, e)}
+                className="inline-flex items-center justify-center gap-2.5 px-4 sm:px-5 py-2.5 bg-gradient-to-r from-sky-600 via-sky-500 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl shadow-lg shadow-sky-600/30 hover:shadow-sky-500/40 border border-sky-400/40 transition-all cursor-pointer no-underline hover:scale-[1.02] active:scale-[0.98]"
+                title="فتح تطبيق تلغرام مباشرة"
+              >
+                <Send className="w-4 h-4 text-sky-200 shrink-0" />
+                <span>{btnLabel}</span>
+                <ExternalLink className="w-3.5 h-3.5 opacity-80 shrink-0" />
+              </a>
+            </span>
+          );
+        }
+        return <span key={index}>{part}</span>;
+      })}
+    </span>
+  );
+}
+
 export default function SubscriberFullPage({
   subscriber,
   onLogout,
   logoUrl,
   institutionTitle,
   socialLinks,
+  scriptUrl,
+  spreadsheetId,
 }: SubscriberFullPageProps) {
-  const { t, dir } = useLanguage();
+  const { t, dir, currentLang, setLanguage } = useLanguage();
+  const [isSiblingModalOpen, setIsSiblingModalOpen] = useState(false);
+
+  // Multi-language text resolver for subscriber content
+  const getLocalizedText = (arText?: string, enText?: string, thText?: string) => {
+    if (currentLang === "en") {
+      if (enText && enText.trim()) return enText;
+      if (arText) {
+        const fromDict = t(arText, "");
+        if (fromDict && fromDict !== arText) return fromDict;
+      }
+    }
+    if (currentLang === "th") {
+      if (thText && thText.trim()) return thText;
+      if (arText) {
+        const fromDict = t(arText, "");
+        if (fromDict && fromDict !== arText) return fromDict;
+      }
+    }
+    if (!arText) return enText || thText || "";
+    return t(arText, arText);
+  };
+
   const [topicContent, setTopicContent] = useState<SubscriberTopicContent | null>(subscriber.content || null);
   const [isLoadingContent, setIsLoadingContent] = useState<boolean>(
     !subscriber.content || !subscriber.content.cards || subscriber.content.cards.length === 0
   );
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [blockedAlert, setBlockedAlert] = useState<string | null>(null);
+
+  // Auto on-the-fly multi-language translation for any missing cards/content when user views in EN or TH
+  useEffect(() => {
+    if (currentLang === "ar" || !topicContent || !topicContent.cards || topicContent.cards.length === 0) {
+      return;
+    }
+
+    const titleField = currentLang === "en" ? "titleEn" : "titleTh";
+    const descField = currentLang === "en" ? "descriptionEn" : "descriptionTh";
+
+    const hasHeaderTitle = Boolean(topicContent[titleField]);
+    const untranslatedCards = topicContent.cards.filter((c) => !c[titleField]);
+
+    // If translations are missing for this language, translate on-the-fly in background immediately
+    if (!hasHeaderTitle || untranslatedCards.length > 0) {
+      const itemsToTranslate: Array<{ id: string; ar: string }> = [];
+
+      if (topicContent.title && !topicContent[titleField]) {
+        itemsToTranslate.push({ id: "header_title", ar: topicContent.title });
+      }
+      if (topicContent.description && !topicContent[descField]) {
+        itemsToTranslate.push({ id: "header_desc", ar: topicContent.description });
+      }
+      if (topicContent.badge && !topicContent[currentLang === "en" ? "badgeEn" : "badgeTh"]) {
+        itemsToTranslate.push({ id: "header_badge", ar: topicContent.badge });
+      }
+
+      topicContent.cards.forEach((c, idx) => {
+        if (c.title && !c[titleField]) {
+          itemsToTranslate.push({ id: `card_${idx}_title`, ar: c.title });
+        }
+        if (c.description && !c[descField]) {
+          itemsToTranslate.push({ id: `card_${idx}_desc`, ar: c.description });
+        }
+      });
+
+      if (itemsToTranslate.length > 0) {
+        translateBatchWithAI(itemsToTranslate).then((res) => {
+          if (res && Object.keys(res).length > 0) {
+            setTopicContent((prev) => {
+              if (!prev) return prev;
+              const next: SubscriberTopicContent = { ...prev };
+              if (res["header_title"]) {
+                if (res["header_title"].en) next.titleEn = res["header_title"].en;
+                if (res["header_title"].th) next.titleTh = res["header_title"].th;
+              }
+              if (res["header_desc"]) {
+                if (res["header_desc"].en) next.descriptionEn = res["header_desc"].en;
+                if (res["header_desc"].th) next.descriptionTh = res["header_desc"].th;
+              }
+              if (res["header_badge"]) {
+                if (res["header_badge"].en) next.badgeEn = res["header_badge"].en;
+                if (res["header_badge"].th) next.badgeTh = res["header_badge"].th;
+              }
+              next.cards = (next.cards || []).map((cd, idx) => {
+                const trTitle = res[`card_${idx}_title`];
+                const trDesc = res[`card_${idx}_desc`];
+                return {
+                  ...cd,
+                  titleEn: trTitle?.en || cd.titleEn,
+                  titleTh: trTitle?.th || cd.titleTh,
+                  descriptionEn: trDesc?.en || cd.descriptionEn,
+                  descriptionTh: trDesc?.th || cd.descriptionTh
+                };
+              });
+              return next;
+            });
+          }
+        }).catch(() => {});
+      }
+    }
+  }, [currentLang, topicContent]);
 
   // Helper to load topic content directly from Google Sheets
   const reloadContent = useCallback(async (manual = false) => {
@@ -255,6 +436,36 @@ export default function SubscriberFullPage({
   const activeContent = topicContent || subscriber.content;
   const hasTopicCards = activeContent && activeContent.cards && activeContent.cards.length > 0;
 
+  // Extract subscriber registration ID reliably for direct Telegram activation link
+  const getSubscriberRegId = (): string => {
+    if (subscriber.registrationId && subscriber.registrationId.trim()) {
+      return subscriber.registrationId.trim();
+    }
+    try {
+      const raw = sessionStorage.getItem("subscriberLogin");
+      if (raw) {
+        const p = JSON.parse(raw);
+        if (p.registrationId) return String(p.registrationId).trim();
+        if (p.password) return String(p.password).trim();
+        if (p.username && /^\d+$/.test(p.username)) return String(p.username).trim();
+      }
+    } catch (e) {}
+    try {
+      const saved = localStorage.getItem("thnoon_saved_subscriber");
+      if (saved) {
+        const p = JSON.parse(saved);
+        if (p.data?.registrationId) return String(p.data.registrationId).trim();
+        if (p.data?.password) return String(p.data.password).trim();
+        if (p.username && /^\d+$/.test(p.username)) return String(p.username).trim();
+      }
+    } catch (e) {}
+    if (subscriber.topicId) return String(subscriber.topicId).trim();
+    return "202686124";
+  };
+
+  const studentRegId = getSubscriberRegId();
+  const studentTelegramLink = getSubscriberTelegramLink(studentRegId);
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-amber-500 selection:text-slate-950" dir={dir}>
       
@@ -311,6 +522,37 @@ export default function SubscriberFullPage({
 
           {/* Subscriber Status, Refresh & Exit Button */}
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* 3-Language Selector Pill */}
+            <div className="flex items-center bg-slate-950 border border-slate-800 rounded-xl p-1 text-xs">
+              <button
+                onClick={() => setLanguage("ar")}
+                className={`px-2 py-0.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  currentLang === "ar" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+                title="العربية"
+              >
+                عربي
+              </button>
+              <button
+                onClick={() => setLanguage("en")}
+                className={`px-2 py-0.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  currentLang === "en" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+                title="English"
+              >
+                EN
+              </button>
+              <button
+                onClick={() => setLanguage("th")}
+                className={`px-2 py-0.5 rounded-lg font-bold transition-all cursor-pointer ${
+                  currentLang === "th" ? "bg-amber-500 text-slate-950 shadow-sm" : "text-slate-400 hover:text-white"
+                }`}
+                title="ภาษาไทย"
+              >
+                ไทย
+              </button>
+            </div>
+
             <div className="hidden sm:flex items-center gap-2 bg-slate-950 border border-slate-800 rounded-full px-4 py-1.5 text-xs">
               <CheckCircle className="w-4 h-4 text-emerald-400" />
               <span className="text-slate-200 font-bold">
@@ -327,6 +569,16 @@ export default function SubscriberFullPage({
             >
               <RefreshCw className={`w-3.5 h-3.5 ${isRefreshing ? "animate-spin" : ""}`} />
               <span className="hidden sm:inline">{t("subscriber_refresh_cards_btn", "تحديث البطاقات")}</span>
+            </button>
+
+            {/* Sibling / Family Registration Button (Icon only) */}
+            <button
+              onClick={() => setIsSiblingModalOpen(true)}
+              title={t("subscriber_add_sibling_tooltip", "تسجيل طالب آخر من العائلة (أخ / فرد من العائلة)")}
+              aria-label={t("subscriber_add_sibling_tooltip", "تسجيل طالب آخر من العائلة (أخ / فرد من العائلة)")}
+              className="inline-flex items-center justify-center bg-gradient-to-r from-amber-500/20 to-amber-600/20 hover:from-amber-500 hover:to-amber-600 text-amber-300 hover:text-slate-950 border border-amber-500/40 hover:border-amber-400 rounded-xl w-8 h-8 sm:w-9 sm:h-9 text-base sm:text-lg font-bold transition-all shadow-md cursor-pointer shrink-0"
+            >
+              <span>➕</span>
             </button>
 
             {/* Prominent Exit Button */}
@@ -394,23 +646,27 @@ export default function SubscriberFullPage({
               <div className="space-y-3 max-w-4xl">
                 {/* Column B: Main Topic Title */}
                 <h2 className="font-serif font-black text-2xl sm:text-3xl md:text-4xl text-amber-400 leading-tight">
-                  {activeContent?.title ? t(activeContent.title, activeContent.title) : t("subscriber_custom_content_title", "المحتوى الخاص والدروس المخصصة")}
+                  {getLocalizedText(activeContent?.title, activeContent?.titleEn, activeContent?.titleTh) || t("subscriber_custom_content_title", "المحتوى الخاص والدروس المخصصة")}
                 </h2>
 
                 {/* Column C: Topic Description & Header */}
                 {activeContent?.description && (
-                  <p className="text-slate-300 text-sm sm:text-base md:text-lg leading-relaxed whitespace-pre-line">
-                    {t(activeContent.description, activeContent.description)}
-                  </p>
+                  <div className="text-slate-300 text-sm sm:text-base md:text-lg leading-relaxed">
+                    <DynamicTextWithTelegramButton
+                      text={getLocalizedText(activeContent?.description, activeContent?.descriptionEn, activeContent?.descriptionTh)}
+                      studentTelegramLink={studentTelegramLink}
+                      currentLang={currentLang}
+                    />
+                  </div>
                 )}
               </div>
 
               {/* Column E: Topic Badge */}
-              {activeContent?.badge && (
+              {(activeContent?.badge || activeContent?.badgeEn || activeContent?.badgeTh) && (
                 <div className="shrink-0 pt-1">
                   <span className="inline-flex items-center gap-1.5 bg-amber-500/15 text-amber-300 text-xs sm:text-sm font-bold py-2 px-4 rounded-2xl border border-amber-500/30 shadow-md">
                     <Award className="w-4 h-4 text-amber-400 shrink-0" />
-                    <span>{t(activeContent.badge, activeContent.badge)}</span>
+                    <span>{getLocalizedText(activeContent?.badge, activeContent?.badgeEn, activeContent?.badgeTh)}</span>
                   </span>
                 </div>
               )}
@@ -427,15 +683,23 @@ export default function SubscriberFullPage({
                     {/* Card Title */}
                     <div className="mb-3">
                       <h4 className="font-serif font-bold text-amber-400 text-xl leading-snug">
-                        {t(card.title, card.title)}
+                        <DynamicTextWithTelegramButton
+                          text={getLocalizedText(card.title, card.titleEn, card.titleTh)}
+                          studentTelegramLink={studentTelegramLink}
+                          currentLang={currentLang}
+                        />
                       </h4>
                     </div>
 
                     {/* Description */}
                     {card.description && (
-                      <p className="text-slate-300 text-sm leading-relaxed mb-4 whitespace-pre-line">
-                        {t(card.description, card.description)}
-                      </p>
+                      <div className="text-slate-300 text-sm leading-relaxed mb-4">
+                        <DynamicTextWithTelegramButton
+                          text={getLocalizedText(card.description, card.descriptionEn, card.descriptionTh)}
+                          studentTelegramLink={studentTelegramLink}
+                          currentLang={currentLang}
+                        />
+                      </div>
                     )}
 
                     {/* Media Slideshow / Video */}
@@ -445,19 +709,66 @@ export default function SubscriberFullPage({
                   </div>
 
                   {/* Action Link Button */}
-                  {card.linkUrl && (
-                    <div className="mt-6 pt-4 border-t border-slate-800">
-                      <a
-                        href={card.linkUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 text-sm font-bold py-3 px-5 rounded-2xl text-center shadow-lg shadow-amber-500/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
-                      >
-                        <ExternalLink className="w-4.5 h-4.5" />
-                        <span>{card.buttonText ? t(card.buttonText, card.buttonText) : t("subscriber_open_link_btn", "فتح الرابط / المورد المرفق")}</span>
-                      </a>
-                    </div>
-                  )}
+                  {card.linkUrl && (() => {
+                    const isTg = isTelegramShortcode(card.linkUrl);
+                    let targetUrl = isTg ? studentTelegramLink : card.linkUrl;
+                    if (targetUrl) {
+                      targetUrl = targetUrl
+                        .replace(/XXXXXX/g, studentRegId)
+                        .replace(/\{id\}/g, studentRegId)
+                        .replace(/\{\{id\}\}/g, studentRegId)
+                        .replace(/\{\{registrationId\}\}/g, studentRegId);
+                    }
+                    const isTelegramDestination = isTg || (targetUrl && targetUrl.includes("t.me/"));
+
+                    if (isTelegramDestination) {
+                      const parsedUrls = parseTelegramUrls(targetUrl, studentRegId);
+                      return (
+                        <div className="mt-6 pt-4 border-t border-slate-800">
+                          <a
+                            href={parsedUrls.appUrl}
+                            onClick={(e) => openTelegramSmartLink(targetUrl, studentRegId, e)}
+                            className="w-full bg-gradient-to-r from-sky-600 via-sky-500 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white text-sm font-bold py-3 px-5 rounded-2xl text-center shadow-lg shadow-sky-600/30 hover:shadow-sky-500/40 border border-sky-400/30 transition-all flex items-center justify-center gap-2.5 cursor-pointer active:scale-[0.98]"
+                            title="فتح تطبيق تلغرام مباشرة"
+                          >
+                            <Send className="w-4.5 h-4.5 text-sky-200" />
+                            <span>
+                              {card.buttonText
+                                ? t(card.buttonText, card.buttonText)
+                                : currentLang === "en"
+                                ? "📲 Activate Account on Telegram"
+                                : currentLang === "th"
+                                ? "📲 เปิดใช้งานบัญชีใน Telegram ทันที"
+                                : "📲 تفعيل الحساب في تلغرام مباشرة"}
+                            </span>
+                            <ExternalLink className="w-4 h-4 opacity-80" />
+                          </a>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div className="mt-6 pt-4 border-t border-slate-800">
+                        <a
+                          href={targetUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-slate-950 text-sm font-bold py-3 px-5 rounded-2xl text-center shadow-lg shadow-amber-500/10 transition-all flex items-center justify-center gap-2 cursor-pointer"
+                        >
+                          <ExternalLink className="w-4.5 h-4.5" />
+                          <span>
+                            {card.buttonText
+                              ? t(card.buttonText, card.buttonText)
+                              : currentLang === "en"
+                              ? "Open Resource / Link"
+                              : currentLang === "th"
+                              ? "เปิดทรัพยากร / ลิงก์"
+                              : t("subscriber_open_link_btn", "فتح الرابط / المورد المرفق")}
+                          </span>
+                        </a>
+                      </div>
+                    );
+                  })()}
                 </div>
               ))}
             </div>
@@ -559,6 +870,21 @@ export default function SubscriberFullPage({
           </p>
         </div>
       </footer>
+
+      {/* Sibling / Family Registration Modal */}
+      {isSiblingModalOpen && (
+        <RegistrationModal
+          isOpen={isSiblingModalOpen}
+          onClose={() => setIsSiblingModalOpen(false)}
+          scriptUrl={scriptUrl}
+          spreadsheetId={spreadsheetId}
+          isSiblingMode={true}
+          primarySubscriber={{
+            id: subscriber.registrationId || subscriber.username || "",
+            name: subscriber.subscriberName || ""
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -13,6 +13,7 @@ import SubscriberFullPage from "./components/SubscriberFullPage";
 import IntegrationSettingsModal from "./components/IntegrationSettingsModal";
 import RegistrationModal from "./components/RegistrationModal";
 import AdminLoginModal from "./components/AdminLoginModal";
+import SubscribersMonitoringPortal from "./components/SubscribersMonitoringPortal";
 import { AppData, SubscriberState } from "./types";
 import { fetchAllAppDataDirect } from "./utils/sheetParser";
 import { loginSubscriberBridge, checkSubscriberAccountStatus, fetchFormQuestionsBridge, DEFAULT_SCRIPT_URL, DEFAULT_SPREADSHEET_ID, DEFAULT_DRIVE_FOLDER_ID } from "./utils/googleBackendBridge";
@@ -95,9 +96,15 @@ export default function App() {
   const [isAdminLoginOpen, setIsAdminLoginOpen] = useState(false);
 
   const [isLoginOpen, setIsLoginOpen] = useState(false);
+  const [subscriberInitialCreds, setSubscriberInitialCreds] = useState<{
+    username: string;
+    password?: string;
+    notice?: string;
+  } | null>(null);
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isDashboardOpen, setIsDashboardOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isMonitoringOpen, setIsMonitoringOpen] = useState(false);
   const [showScrollTop, setShowScrollTop] = useState(false);
 
   // Configuration state with robust persistence & fallback for Vercel/GitHub Pages
@@ -166,6 +173,26 @@ export default function App() {
         if (localSheet && localSheet.trim()) setCurrentSpreadsheetId(localSheet.trim());
         if (localFolder && localFolder.trim()) setCurrentDriveFolderId(localFolder.trim());
       }
+      // Also prefetch telegram config so mobile/tablet devices have instant config
+      try {
+        const telRes = await fetch("/api/telegram-config");
+        if (telRes.ok) {
+          const telData = await telRes.json();
+          if (telData && telData.config && telData.config.botToken) {
+            localStorage.setItem("thnoon_telegram_config", JSON.stringify(telData.config));
+          }
+        }
+      } catch (telE) {}
+      // Also prefetch subscriber email config so all devices have active attachments
+      try {
+        const emailConfRes = await fetch("/api/subscriber-email-config");
+        if (emailConfRes.ok) {
+          const emailConfData = await emailConfRes.json();
+          if (emailConfData && emailConfData.config && Array.isArray(emailConfData.config.attachments)) {
+            localStorage.setItem("thnoon_subscriber_email_config", JSON.stringify(emailConfData.config));
+          }
+        }
+      } catch (emE) {}
     };
     fetchConfig();
 
@@ -222,6 +249,8 @@ export default function App() {
                 isLoggedIn: true,
                 subscriberName: subData.subscriberName,
                 topicId: subData.topicId,
+                registrationId: subData.registrationId || subData.password || checkUser,
+                username: subData.username || checkUser,
                 content: subData.content,
                 links,
                 exitButtonText: subData.exitButtonText,
@@ -322,6 +351,24 @@ export default function App() {
             setIsAdminLoginOpen(true);
           }
         }
+
+        // 5. Standalone Subscribers & Registrations Monitoring Link
+        // (?monitoring=true | ?subscribers=manage | ?subscribers=admin | ?followup=true | #monitoring | #subscribers-admin | #followup)
+        const isMonitoringRequested =
+          searchParams.get("monitoring") === "true" ||
+          searchParams.get("monitoring") === "1" ||
+          searchParams.get("subscribers") === "manage" ||
+          searchParams.get("subscribers") === "admin" ||
+          searchParams.get("followup") === "true" ||
+          searchParams.get("page") === "monitoring" ||
+          searchParams.get("page") === "subscribers" ||
+          hash === "#monitoring" ||
+          hash === "#subscribers-admin" ||
+          hash === "#followup";
+
+        if (isMonitoringRequested) {
+          setIsMonitoringOpen(true);
+        }
       } catch (e) {
         console.warn("Error parsing URL direct routes:", e);
       }
@@ -331,7 +378,33 @@ export default function App() {
     window.addEventListener("hashchange", checkDirectRoutes);
     window.addEventListener("popstate", checkDirectRoutes);
 
+    // Global event listener for opening registration form without page refresh
+    const handleOpenRegistrationEvent = () => {
+      setIsRegistrationOpen(true);
+    };
+    window.addEventListener("open_registration", handleOpenRegistrationEvent);
+
+    // Global click interceptor for any anchor/button with register hash/param
+    const handleGlobalRegistrationClick = (e: MouseEvent) => {
+      const target = (e.target as HTMLElement)?.closest("a, button");
+      if (!target) return;
+      const href = target.getAttribute("href") || "";
+      const action = target.getAttribute("data-action") || "";
+      if (
+        href === "#register" ||
+        href === "#registration" ||
+        href.includes("register=true") ||
+        href.includes("form=register") ||
+        action === "open-registration"
+      ) {
+        e.preventDefault();
+        setIsRegistrationOpen(true);
+      }
+    };
+    document.addEventListener("click", handleGlobalRegistrationClick);
+
     // Keyboard shortcut for discrete Admin login: Ctrl + Shift + A or Alt + A
+    // and Monitoring Portal: Ctrl + Shift + M or Alt + M
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey && e.shiftKey && (e.key === "A" || e.key === "a")) || (e.altKey && (e.key === "a" || e.key === "A"))) {
         e.preventDefault();
@@ -345,12 +418,19 @@ export default function App() {
           setIsAdminLoginOpen(true);
         }
       }
+
+      if ((e.ctrlKey && e.shiftKey && (e.key === "M" || e.key === "m")) || (e.altKey && (e.key === "m" || e.key === "M"))) {
+        e.preventDefault();
+        setIsMonitoringOpen(true);
+      }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => {
       window.removeEventListener("keydown", handleKeyDown);
       window.removeEventListener("hashchange", checkDirectRoutes);
       window.removeEventListener("popstate", checkDirectRoutes);
+      window.removeEventListener("open_registration", handleOpenRegistrationEvent);
+      document.removeEventListener("click", handleGlobalRegistrationClick);
     };
   }, [setLanguage]);
 
@@ -472,6 +552,8 @@ export default function App() {
             isLoggedIn: true,
             subscriberName: parsed.subscriberName,
             topicId: parsed.topicId,
+            registrationId: parsed.registrationId || parsed.password || parsed.username,
+            username: parsed.username,
             content: parsed.content,
             links,
             exitButtonText: parsed.exitButtonText,
@@ -568,6 +650,8 @@ export default function App() {
           isLoggedIn: true,
           subscriberName: data.subscriberName,
           topicId: data.topicId,
+          registrationId: data.registrationId || data.password || usernameInput,
+          username: data.username || usernameInput,
           content: data.content,
           links,
           exitButtonText: data.exitButtonText,
@@ -594,6 +678,18 @@ export default function App() {
     localStorage.removeItem("thnoon_saved_subscriber");
     setSubscriber({ isLoggedIn: false, links: [] });
     setIsDashboardOpen(false);
+  };
+
+  const handleOpenSubscriberPortalFromRegistration = (data: { registrationId: string; name?: string }) => {
+    setIsRegistrationOpen(false);
+    setSubscriberInitialCreds({
+      username: data.registrationId || data.name || "",
+      password: data.registrationId || "",
+      notice: data.name
+        ? `أهلاً بك يا ${data.name}! تم تعبئة رقمك المرجعي (${data.registrationId}) تلقائياً لتسهيل وسرعة دخولك.`
+        : `تم تعبئة رقمك المرجعي (#${data.registrationId}) تلقائياً. انقر على زر الدخول للوصول لبوابتك.`
+    });
+    setIsLoginOpen(true);
   };
 
   const scrollToTop = () => {
@@ -658,6 +754,8 @@ export default function App() {
         logoUrl={profile.logoUrl}
         institutionTitle={profile.title}
         socialLinks={socialLinks}
+        scriptUrl={currentScriptUrl}
+        spreadsheetId={currentSpreadsheetId}
       />
     );
   }
@@ -677,6 +775,7 @@ export default function App() {
         onLogout={handleLogout}
         onOpenDashboard={() => setIsDashboardOpen(true)}
         onOpenSettings={() => setIsSettingsOpen(true)}
+        onOpenMonitoring={() => setIsMonitoringOpen(true)}
         isAdmin={isAdminLoggedIn}
         onAdminLogout={handleAdminLogout}
         customTexts={appData?.customTexts}
@@ -877,8 +976,8 @@ export default function App() {
             <p className="text-slate-600 font-sans text-[10px]">
               {t("navbar_brand_title", appData?.customTexts?.navbarTitle || "مؤسسة يوسف ذنون")} {t("navbar_brand_subtitle", appData?.customTexts?.navbarSubtitle || "للخط العربي والآثار الإسلامية")}
             </p>
-            {/* Discrete Admin Link trigger */}
-            <div className="pt-2 flex justify-center md:justify-start">
+            {/* Discrete Admin Link trigger & Monitoring Portal */}
+            <div className="pt-2 flex justify-center md:justify-start items-center gap-4">
               <button
                 onClick={() => {
                   if (isAdminLoggedIn) {
@@ -892,6 +991,15 @@ export default function App() {
               >
                 <Lock className="w-3 h-3 text-slate-600 hover:text-amber-500" />
                 <span>{isAdminLoggedIn ? t("admin_connected", "لوحة المشرف (متصل)") : t("admin_login_btn", "دخول المشرف")}</span>
+              </button>
+
+              <button
+                onClick={() => setIsMonitoringOpen(true)}
+                className="text-slate-700 hover:text-emerald-500/80 transition-colors text-[10px] flex items-center gap-1 opacity-70 hover:opacity-100 font-mono"
+                title="لوحة متابعة وسجل المشتركين المستقلة"
+              >
+                <Users className="w-3 h-3 text-slate-600 hover:text-emerald-500" />
+                <span>متابعة المشتركين</span>
               </button>
             </div>
           </div>
@@ -914,12 +1022,30 @@ export default function App() {
         currentDriveFolderId={currentDriveFolderId}
         onSaveConfig={handleSaveConfig}
         onAdminLogout={handleAdminLogout}
+        onOpenMonitoring={() => setIsMonitoringOpen(true)}
+      />
+
+      {/* Standalone Subscribers & Registrations Monitoring Portal */}
+      <SubscribersMonitoringPortal
+        isOpen={isMonitoringOpen}
+        onClose={() => setIsMonitoringOpen(false)}
+        currentScriptUrl={currentScriptUrl}
+        currentSpreadsheetId={currentSpreadsheetId}
+        isAdminLoggedIn={isAdminLoggedIn}
+        onAdminLoginSuccess={() => {
+          setIsAdminLoggedIn(true);
+        }}
+        onAdminLogout={handleAdminLogout}
+        onOpenFullSettings={() => setIsSettingsOpen(true)}
       />
 
       {/* 5. Subscriber Login Modal */}
       <SubscriberPortal
         isOpen={isLoginOpen}
-        onClose={() => setIsLoginOpen(false)}
+        onClose={() => {
+          setIsLoginOpen(false);
+          setSubscriberInitialCreds(null);
+        }}
         subscriber={subscriber}
         onLogin={handleLogin}
         onLogout={handleLogout}
@@ -927,6 +1053,9 @@ export default function App() {
           setIsLoginOpen(false);
           setIsRegistrationOpen(true);
         }}
+        initialUsername={subscriberInitialCreds?.username}
+        initialPassword={subscriberInitialCreds?.password}
+        autoFillNotice={subscriberInitialCreds?.notice}
       />
 
       {/* 6. Dynamic Registration Modal (RegistrationQuestions Sheet) */}
@@ -936,6 +1065,7 @@ export default function App() {
         scriptUrl={currentScriptUrl}
         spreadsheetId={currentSpreadsheetId}
         driveFolderId={currentDriveFolderId}
+        onOpenSubscriberPortal={handleOpenSubscriberPortalFromRegistration}
       />
 
       {/* 7. Blocked / Suspended Account Notification Modal */}

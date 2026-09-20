@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "motion/react";
 import {
   X,
@@ -26,18 +26,29 @@ import {
   Trash2,
   Folder,
   Languages,
-  Globe
+  Globe,
+  LogIn,
+  Copy,
+  UserPlus,
+  ShieldCheck,
+  HelpCircle
 } from "lucide-react";
 import { RegistrationQuestion, QuestionTranslation } from "../types";
 import { DEFAULT_FORM_TRANSLATIONS } from "../data/defaultFormTranslations";
 import { getSavedFormQuestions, DEFAULT_CONFIGURED_QUESTIONS } from "../data/configuredFormQuestions";
+import { DEFAULT_SUBSCRIBER_EMAIL_CONFIG, DEFAULT_TELEGRAM_CONFIG } from "../data/defaultConfigs";
 import { formatImageUrl } from "../utils/imageUtils";
 import {
   submitRegistrationBridge,
   uploadFileToDriveBridge,
   fetchFormQuestionsBridge,
+  checkSubscriberAccountStatus,
+  checkStudentRecordExistsInGoogleSheets,
   DEFAULT_SCRIPT_URL,
-  DEFAULT_DRIVE_FOLDER_ID
+  DEFAULT_SPREADSHEET_ID,
+  DEFAULT_DRIVE_FOLDER_ID,
+  openTelegramSmartLink,
+  parseTelegramUrls
 } from "../utils/googleBackendBridge";
 
 export type FormLang = "ar" | "en" | "th";
@@ -75,6 +86,15 @@ export const FORM_UI_STRINGS = {
     successTitle: "تم استلام طلب التسجيل بنجاح!",
     successDesc: "تم حفظ بياناتك وإجاباتك بنجاح في النظام، وسيقوم المشرف بمراجعة الطلب والتواصل معك لتفعيل الحساب.",
     closeSuccessBtn: "إغلاق والعودة للموقع",
+    goToMyPortalBtn: "دخول لبوابتي الآن 🚀",
+    goToMyPortalSub: "تم تعبئة رقمك المرجعي تلقائياً لتسريع دخولك الفوري",
+    emailNoticeTitle: "تم إرسال نسخة من بيانات التسجيل إلى بريدك الإلكتروني",
+    emailNoticeDesc: "تأكد من مراجعة صندوق الوارد أو مجلد الرسائل غير المرغوب فيها (Spam) للاحتفاظ برقمك المرجعي وتفاصيل حسابك.",
+    mathChallengeTitle: "التحقق الأمني الذكي (Math Challenge)",
+    mathChallengeDesc: "تم رصد تسجيل سابق من هذا الجهاز مؤخراً. لتأكيد الإرسال ومنع التكرار والعبث، يرجى كتابة ناتج العملية البسيطة التالية:",
+    mathChallengePlaceholder: "اكتب الناتج هنا...",
+    mathChallengeError: "ناتج العملية الحسابية غير صحيح، يرجى إعادة المحاولة",
+    mathChallengeRequired: "يرجى حل سؤال التحقق الحسابي للمتابعة",
     cameraPreviewTitle: "معاينة الصورة الملتقطة",
     cameraLiveTitle: "تصوير مباشر بالكاميرا",
     cameraPreviewSub: "تأكد من وضوح الصورة قبل الاعتماد",
@@ -84,7 +104,21 @@ export const FORM_UI_STRINGS = {
     cameraShutter: "التقاط الصورة",
     cameraPickFile: "ملف من الجهاز",
     cameraSwitch: "تبديل الكاميرا",
-    zoomImage: "تكبير الصورة"
+    zoomImage: "تكبير الصورة",
+    siblingSuccessBtn: "تسجيل طالب آخر من العائلة (تسجيل الإخوان 👨‍👩‍👧‍👦)",
+    alreadyRegisteredTitle: "أنت مسجل لدينا مسبقاً برقم قيد ({id}) {name}",
+    alreadyRegisteredDesc: "لا داعي لإعادة التسجيل مرة أخرى، حسابك مسجل ومتاح لك الانتقال المباشر لصفحتك الخاصة.",
+    alreadyRegisteredGoToPortal: "الانتقال إلى صفحتي الخاصة",
+    alreadyRegisteredRegisterSibling: "تسجيل لطالب آخر (أخ / فرد من العائلة)",
+    alreadyRegisteredResetDevice: "تسجيل جديد من الصفر / مسح البصمة السابقة",
+    siblingActiveTitle: "وضع تسجيل الإخوان والعائلة نشط 👨‍👩‍👧‍👦",
+    siblingActiveDesc: "يتم تسجيل طالب جديد مستقل تماماً من نفس الجهاز العائلي وسيتم منحه رقم قيد خاص به.",
+    siblingReturnToAccount: "الرجوع لحساب ({name})",
+    siblingOptionalPrompt: "هل تسجل لأخ أو فرد آخر من نفس العائلة؟ يمكنك تفعيل التسجيل العائلي بسهولة.",
+    siblingEnableBtn: "تفعيل تسجيل الإخوان",
+    siblingResetDonePrompt: "تمت إعادة ضبط ذاكرة التسجيل بنجاح، يمكنك الآن التسجيل كطالب جديد من البداية.",
+    siblingFormTitle: "تسجيل مشترك إضافي (أخ / فرد من العائلة) 👨‍👩‍👧‍👦",
+    siblingFormSubtitle: "يتم الآن تسجيل طالب جديد مستقل من نفس العائلة تحت حساب المشترك الأساسي."
   },
   en: {
     title: "Student & Subscriber Registration Form",
@@ -118,6 +152,15 @@ export const FORM_UI_STRINGS = {
     successTitle: "Registration Submitted Successfully!",
     successDesc: "Your registration information has been recorded. Our administrator will review your application shortly.",
     closeSuccessBtn: "Close & Return to Home",
+    goToMyPortalBtn: "Enter My Portal Now 🚀",
+    goToMyPortalSub: "Your Registration ID has been pre-filled for fast access",
+    emailNoticeTitle: "Confirmation Sent to Your Email",
+    emailNoticeDesc: "A copy of your registration details and ID has been sent to your email. Please check your inbox or spam folder.",
+    mathChallengeTitle: "Quick Security Check (Math Challenge)",
+    mathChallengeDesc: "A previous registration was detected on this device. Please solve this simple equation to confirm:",
+    mathChallengePlaceholder: "Enter answer...",
+    mathChallengeError: "Incorrect answer, please try again",
+    mathChallengeRequired: "Please answer the security math question to proceed",
     cameraPreviewTitle: "Captured Photo Preview",
     cameraLiveTitle: "Direct Camera Capture",
     cameraPreviewSub: "Please make sure the photo is clear before confirming",
@@ -127,7 +170,21 @@ export const FORM_UI_STRINGS = {
     cameraShutter: "Capture Photo",
     cameraPickFile: "Choose from Device",
     cameraSwitch: "Switch Camera",
-    zoomImage: "Zoom Image"
+    zoomImage: "Zoom Image",
+    siblingSuccessBtn: "Register Another Family Member (Sibling Registration 👨‍👩‍👧‍👦)",
+    alreadyRegisteredTitle: "You are already registered with ID ({id}) {name}",
+    alreadyRegisteredDesc: "No need to re-register. Your account is active and you can go directly to your portal.",
+    alreadyRegisteredGoToPortal: "Go to My Student Portal",
+    alreadyRegisteredRegisterSibling: "Register Another Student (Sibling / Family Member)",
+    alreadyRegisteredResetDevice: "New Clean Registration / Reset Saved Device",
+    siblingActiveTitle: "Sibling & Family Registration Mode Active 👨‍👩‍👧‍👦",
+    siblingActiveDesc: "Registering a new independent student from this shared family device with a unique Registration ID.",
+    siblingReturnToAccount: "Return to account ({name})",
+    siblingOptionalPrompt: "Registering for a brother, sister, or another family member? You can enable family registration easily.",
+    siblingEnableBtn: "Enable Sibling Registration",
+    siblingResetDonePrompt: "Registration memory reset successfully. You can now register as a fresh student.",
+    siblingFormTitle: "Register Sibling / Family Member 👨‍👩‍👧‍👦",
+    siblingFormSubtitle: "You are registering a new independent student under the primary subscriber account."
   },
   th: {
     title: "แบบฟอร์มลงทะเบียนสมาชิกและนักเรียน",
@@ -161,6 +218,15 @@ export const FORM_UI_STRINGS = {
     successTitle: "ส่งใบสมัครลงทะเบียนสำเร็จแล้ว!",
     successDesc: "บันทึกข้อมูลและคำตอบของคุณในระบบเรียบร้อยแล้ว ผู้ดูแลระบบจะตรวจสอบและติดต่อกลับเพื่อเปิดใช้งานบัญชี",
     closeSuccessBtn: "ปิดหน้าต่างและกลับสู่หน้าหลัก",
+    goToMyPortalBtn: "เข้าสู่พอร์ทัลของฉันตอนนี้ 🚀",
+    goToMyPortalSub: "กรอกรหัสการสมัครของคุณไว้ให้เรียบร้อยแล้วเพื่อความสะดวกรวดเร็ว",
+    emailNoticeTitle: "ส่งสำเนาไปยังอีเมลของคุณเรียบร้อยแล้ว",
+    emailNoticeDesc: "สำเนารายละเอียดการสมัครและรหัสของคุณได้ถูกส่งไปยังอีเมลของคุณแล้ว กรุณาตรวจสอบกล่องจดหมายหรือโฟลเดอร์สแปม",
+    mathChallengeTitle: "การตรวจสอบความปลอดภัย (Math Challenge)",
+    mathChallengeDesc: "ตรวจพบการลงทะเบียนก่อนหน้านี้บนอุปกรณ์นี้ กรุณาตอบโจทย์เลขง่ายๆ ด้านล่างเพื่อยืนยันและดำเนินการต่อ:",
+    mathChallengePlaceholder: "กรอกคำตอบ...",
+    mathChallengeError: "คำตอบไม่ถูกต้อง กรุณาลองใหม่อีกครั้ง",
+    mathChallengeRequired: "กรุณาตอบคำถามความปลอดภัยก่อนส่งข้อมูล",
     cameraPreviewTitle: "ตัวอย่างภาพที่ถ่าย",
     cameraLiveTitle: "ถ่ายภาพสดด้วยกล้อง",
     cameraPreviewSub: "กรุณาตรวจสอบความชัดเจนของภาพก่อนกดยืนยัน",
@@ -170,7 +236,21 @@ export const FORM_UI_STRINGS = {
     cameraShutter: "กดถ่ายภาพ",
     cameraPickFile: "เลือกไฟล์จากอุปกรณ์",
     cameraSwitch: "สลับกล้อง",
-    zoomImage: "ขยายรูปภาพ"
+    zoomImage: "ขยายรูปภาพ",
+    siblingSuccessBtn: "ลงทะเบียนสมาชิกครอบครัวคนอื่น (ลงทะเบียนพี่น้อง 👨‍👩‍👧‍👦)",
+    alreadyRegisteredTitle: "คุณได้ลงทะเบียนไว้แล้วด้วยรหัส ({id}) {name}",
+    alreadyRegisteredDesc: "ไม่จำเป็นต้องลงทะเบียนซ้ำ บัญชีของคุณพร้อมใช้งานและสามารถเข้าสู่หน้าพอร์ทัลได้ทันที",
+    alreadyRegisteredGoToPortal: "เข้าสู่หน้าพอร์ทัลของฉัน",
+    alreadyRegisteredRegisterSibling: "ลงทะเบียนให้นักเรียนคนอื่น (พี่น้อง / สมาชิกครอบครัว)",
+    alreadyRegisteredResetDevice: "ลงทะเบียนใหม่ตั้งแต่ต้น / ล้างประวัติอุปกรณ์นี้",
+    siblingActiveTitle: "เปิดใช้งานโหมดลงทะเบียนพี่น้องและครอบครัว 👨‍👩‍👧‍👦",
+    siblingActiveDesc: "กำลังลงทะเบียนนักเรียนใหม่แยกต่างหากจากอุปกรณ์ครอบครัวนี้ และจะได้รับรหัสการสมัครใหม่เฉพาะตัว",
+    siblingReturnToAccount: "กลับสู่บัญชี ({name})",
+    siblingOptionalPrompt: "ต้องการลงทะเบียนให้พี่น้องหรือสมาชิกคนอื่นในครอบครัวใช่หรือไม่? คุณสามารถเปิดใช้งานการลงทะเบียนครอบครัวได้ง่ายๆ",
+    siblingEnableBtn: "เปิดใช้งานลงทะเบียนพี่น้อง",
+    siblingResetDonePrompt: "รีเซ็ตหน่วยความจำการลงทะเบียนเรียบร้อยแล้ว คุณสามารถลงทะเบียนเป็นนักเรียนใหม่ได้ทันที",
+    siblingFormTitle: "ลงทะเบียนสมาชิกในครอบครัว / พี่น้อง 👨‍👩‍👧‍👦",
+    siblingFormSubtitle: "คุณกำลังลงทะเบียนนักเรียนใหม่ที่เป็นคนในครอบครัวเดียวกันภายใต้บัญชีสมาชิกหลัก"
   }
 };
 
@@ -292,6 +372,9 @@ interface RegistrationModalProps {
   scriptUrl?: string;
   spreadsheetId?: string;
   driveFolderId?: string;
+  onOpenSubscriberPortal?: (data: { registrationId: string; name?: string }) => void;
+  isSiblingMode?: boolean;
+  primarySubscriber?: { id: string; name: string } | null;
 }
 
 export default function RegistrationModal({
@@ -300,7 +383,10 @@ export default function RegistrationModal({
   questions: propQuestions,
   scriptUrl,
   spreadsheetId,
-  driveFolderId = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7"
+  driveFolderId = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7",
+  onOpenSubscriberPortal,
+  isSiblingMode = false,
+  primarySubscriber = null,
 }: RegistrationModalProps) {
   const [questions, setQuestions] = useState<RegistrationQuestion[]>(() => {
     if (propQuestions && propQuestions.length > 0) return propQuestions;
@@ -318,13 +404,161 @@ export default function RegistrationModal({
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [hasAttemptedSubmit, setHasAttemptedSubmit] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedRegId, setCopiedRegId] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSuccess, setIsSuccess] = useState(false);
-  const [successInfo, setSuccessInfo] = useState<{ id?: string; message?: string }>({});
+  const [successInfo, setSuccessInfo] = useState<{ id?: string; message?: string; name?: string; email?: string; phone?: string }>({});
   const [submitErrorMessage, setSubmitErrorMessage] = useState<string | null>(null);
   const [uploadStatusMessage, setUploadStatusMessage] = useState<string | null>(null);
   const [previewImageModal, setPreviewImageModal] = useState<string | null>(null);
   const [customButtonTitle, setCustomButtonTitle] = useState<string>("إرسال طلب التسجيل والاشتراك");
+
+  // Anti-Bot & Repeated Attempt Protection
+  const [isRepeatedDevice, setIsRepeatedDevice] = useState(false);
+  const [honeypotVal, setHoneypotVal] = useState("");
+  const formOpenedAtRef = useRef<number>(Date.now());
+  const [mathChallenge, setMathChallenge] = useState<{ num1: number; num2: number }>({ num1: 4, num2: 3 });
+  const [mathAnswer, setMathAnswer] = useState("");
+  const [mathError, setMathError] = useState<string | null>(null);
+
+  const generateNewMathChallenge = () => {
+    const n1 = Math.floor(Math.random() * 8) + 2; // 2..9
+    const n2 = Math.floor(Math.random() * 8) + 1; // 1..8
+    setMathChallenge({ num1: n1, num2: n2 });
+    setMathAnswer("");
+    setMathError(null);
+  };
+
+  const [existingStudentAlert, setExistingStudentAlert] = useState<{
+    id: string;
+    name: string;
+  } | null>(null);
+  const [isVerifyingAccountOnServer, setIsVerifyingAccountOnServer] = useState(false);
+  const [serverVerificationNotice, setServerVerificationNotice] = useState<{
+    type: "success" | "info" | "error";
+    text: string;
+  } | null>(null);
+
+  const handleVerifyAccountWithServer = async () => {
+    if (!existingStudentAlert?.id) return;
+    setIsVerifyingAccountOnServer(true);
+    setServerVerificationNotice(null);
+    try {
+      const activeScriptUrl = scriptUrl || (typeof window !== "undefined" ? localStorage.getItem("thnoon_script_url") : null) || DEFAULT_SCRIPT_URL;
+      const activeSpreadsheetId = spreadsheetId || (typeof window !== "undefined" ? localStorage.getItem("thnoon_spreadsheet_id") : null) || DEFAULT_SPREADSHEET_ID;
+
+      const result = await checkStudentRecordExistsInGoogleSheets(
+        existingStudentAlert.id,
+        existingStudentAlert.name,
+        activeSpreadsheetId,
+        activeScriptUrl
+      );
+
+      if (result.checked && result.exists === false) {
+        // Confirmed deleted from Google Sheets by Admin!
+        try {
+          localStorage.removeItem("thnoon_registered_student_id");
+          localStorage.removeItem("thnoon_registered_student_name");
+          localStorage.removeItem("thnoon_saved_subscriber");
+          localStorage.removeItem("thnoon_reg_attempts_count");
+          localStorage.removeItem("thnoon_last_reg_timestamp");
+        } catch (e) {}
+        setExistingStudentAlert(null);
+        setServerVerificationNotice({
+          type: "success",
+          text: formLang === "en"
+            ? "Verification completed: Your previous record was deleted by administration from Google Sheets. The form is now unlocked for a new registration."
+            : formLang === "th"
+            ? "ตรวจสอบสำเร็จ: บันทึกเดิมของคุณถูกลบจาก Google Sheets โดยผู้ดูแลระบบแล้ว แบบฟอร์มเปิดให้ลงทะเบียนใหม่ได้แล้ว"
+            : "تم التحقق بنجاح من قاعدة البيانات الرسمية (Google Sheets): قامت الإدارة بحذف بياناتك السابقة. تم فتح الاستمارة ويمكنك الآن التسجيل من جديد كطالب جديد."
+        });
+      } else if (result.exists === true) {
+        // Still exists in database
+        setServerVerificationNotice({
+          type: "info",
+          text: formLang === "en"
+            ? `Verified with Google Sheets: Student (${result.name || existingStudentAlert.name || existingStudentAlert.id}) is still registered and active in the database. If you wish to register anew, please ask the admin to delete your entry first.`
+            : formLang === "th"
+            ? `ตรวจสอบกับ Google Sheets แล้ว: นักเรียน (${result.name || existingStudentAlert.name || existingStudentAlert.id}) ยังคงลงทะเบียนอยู่ในระบบ หากต้องการลงทะเบียนใหม่ โปรดติดต่อผู้ดูแลเพื่อลบข้อมูลก่อน`
+            : `تم التحقق من قاعدة البيانات الرسمية (Google Sheets): بيانات المشترك (${result.name || existingStudentAlert.name || existingStudentAlert.id}) ما زالت مسجلة ومعتمدة لدى الإدارة في الشيت (${result.foundIn || "قاعدة البيانات"}). إذا كنت ترغب في التسجيل كطالب جديد، يرجى التواصل مع الإدارة لحذف قيدك أولاً ثم الضغط على هذا الزر مجدداً.`
+        });
+      } else {
+        setServerVerificationNotice({
+          type: "error",
+          text: formLang === "en"
+            ? "Could not verify with Google Sheets at this time. Please check your internet connection and retry."
+            : formLang === "th"
+            ? "ไม่สามารถตรวจสอบกับ Google Sheets ได้ในขณะนี้ โปรดตรวจสอบการเชื่อมต่ออินเทอร์เน็ตแล้วลองใหม่"
+            : "تعذر التحقق من قاعدة البيانات حالياً بسبب انقطاع الاتصال. يرجى التأكد من اتصال الإنترنت ثم إعادة المحاولة."
+        });
+      }
+    } catch (err) {
+      setServerVerificationNotice({
+        type: "error",
+        text: "تعذر التحقق من السيرفر حالياً. يرجى التأكد من اتصال الإنترنت ثم إعادة المحاولة."
+      });
+    } finally {
+      setIsVerifyingAccountOnServer(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      formOpenedAtRef.current = Date.now();
+      setServerVerificationNotice(null);
+
+      // In sibling mode: never block with existing student alert!
+      if (isSiblingMode) {
+        setExistingStudentAlert(null);
+        setIsRepeatedDevice(false);
+        setMathError(null);
+        setAnswers({});
+        setErrors({});
+        setIsSuccess(false);
+        setSuccessInfo({});
+        return;
+      }
+
+      try {
+        const attempts = parseInt(localStorage.getItem("thnoon_reg_attempts_count") || "0", 10);
+        const lastReg = parseInt(localStorage.getItem("thnoon_last_reg_timestamp") || "0", 10);
+        if (attempts >= 1 || lastReg > 0) {
+          setIsRepeatedDevice(true);
+          generateNewMathChallenge();
+        } else {
+          setIsRepeatedDevice(false);
+        }
+
+        // Smart Local Device Check (Smart Sibling / Memory Fingerprint)
+        let storedRegId = localStorage.getItem("thnoon_registered_student_id");
+        let storedRegName = localStorage.getItem("thnoon_registered_student_name") || "";
+        if (!storedRegId) {
+          try {
+            const savedSub = localStorage.getItem("thnoon_saved_subscriber");
+            if (savedSub) {
+              const parsed = JSON.parse(savedSub);
+              if (parsed?.username) {
+                storedRegId = parsed.username;
+                storedRegName = parsed?.data?.name || parsed.username;
+              }
+            }
+          } catch(e) {}
+        }
+
+        if (storedRegId) {
+          setExistingStudentAlert({
+            id: storedRegId,
+            name: storedRegName
+          });
+        } else {
+          setExistingStudentAlert(null);
+        }
+      } catch (e) {
+        setIsRepeatedDevice(false);
+        setExistingStudentAlert(null);
+      }
+    }
+  }, [isOpen, scriptUrl, isSiblingMode]);
   const [translationsMap, setTranslationsMap] = useState<Record<string, any>>(() => {
     let base = { ...DEFAULT_FORM_TRANSLATIONS };
     if (typeof window !== "undefined") {
@@ -517,7 +751,7 @@ export default function RegistrationModal({
           return resolve(dataUrl);
         }
 
-        if (source instanceof Blob) {
+        if (source instanceof File) {
           const reader = new FileReader();
           reader.onload = (e) => {
             const img = new Image();
@@ -802,7 +1036,7 @@ export default function RegistrationModal({
     try {
       let dataUrl = "";
       if (isImg) {
-        dataUrl = await compressImage(file, 1280, 1280, 0.78);
+        dataUrl = await compressImage(file, 960, 960, 0.68);
       }
       if (!dataUrl) {
         dataUrl = await new Promise<string>((res) => {
@@ -962,7 +1196,21 @@ export default function RegistrationModal({
     });
 
     setErrors(newErrors);
-    const isValid = Object.keys(newErrors).length === 0;
+    let isValid = Object.keys(newErrors).length === 0;
+
+    if (isRepeatedDevice) {
+      const expected = mathChallenge.num1 + mathChallenge.num2;
+      const parsedAns = parseInt((mathAnswer || "").trim(), 10);
+      if (!mathAnswer || !mathAnswer.trim()) {
+        setMathError(t.mathChallengeRequired || "يرجى حل سؤال التحقق الحسابي للمتابعة");
+        isValid = false;
+      } else if (isNaN(parsedAns) || parsedAns !== expected) {
+        setMathError(t.mathChallengeError || "ناتج العملية الحسابية غير صحيح، يرجى إعادة المحاولة");
+        isValid = false;
+      } else {
+        setMathError(null);
+      }
+    }
 
     if (!isValid) {
       // Find first error field and scroll smoothly to it
@@ -985,6 +1233,20 @@ export default function RegistrationModal({
     setHasAttemptedSubmit(true);
     setSubmitErrorMessage(null);
     setUploadStatusMessage(null);
+
+    // 0. Anti-Bot checks (Silent & Lightweight)
+    if (honeypotVal && honeypotVal.trim() !== "") {
+      console.warn("Honeypot anti-bot triggered");
+      setSubmitErrorMessage(formLang === 'ar' ? "تم حظر الإرسال بسبب نشاط آلي غير مصرح به (Bot Protection)." : "Submission blocked due to automated bot detection.");
+      return;
+    }
+
+    const timeSpentMs = Date.now() - formOpenedAtRef.current;
+    if (timeSpentMs < 1800) {
+      setSubmitErrorMessage(formLang === 'ar' ? "تم الإرسال بسرعة غير اعتيادية، يرجى الانتظار ثانية ثم المحاولة." : "Submitted too quickly. Please take a moment and try again.");
+      return;
+    }
+
     if (!validateForm()) return;
 
     setIsSubmitting(true);
@@ -1162,12 +1424,21 @@ export default function RegistrationModal({
         const stored = localStorage.getItem("thnoon_subscriber_email_config");
         if (stored) cachedEmailConfig = JSON.parse(stored);
       } catch (e) {}
+      if (!cachedEmailConfig || typeof cachedEmailConfig !== "object" || !cachedEmailConfig.messages) {
+        cachedEmailConfig = DEFAULT_SUBSCRIBER_EMAIL_CONFIG;
+      }
+      if (!cachedEmailConfig.attachments || !Array.isArray(cachedEmailConfig.attachments) || cachedEmailConfig.attachments.length === 0 || cachedEmailConfig.attachments.some((a: any) => a?.url?.includes("unsplash"))) {
+        cachedEmailConfig.attachments = DEFAULT_SUBSCRIBER_EMAIL_CONFIG.attachments;
+      }
 
       let cachedTelegramConfig: any = null;
       try {
         const storedTel = localStorage.getItem("thnoon_telegram_config");
         if (storedTel) cachedTelegramConfig = JSON.parse(storedTel);
       } catch (e) {}
+      if (!cachedTelegramConfig || !cachedTelegramConfig.botToken || !cachedTelegramConfig.chatId) {
+        cachedTelegramConfig = DEFAULT_TELEGRAM_CONFIG;
+      }
 
       const regPayload = {
         registrationId: unifiedRegId,
@@ -1185,9 +1456,40 @@ export default function RegistrationModal({
         formLang: formLang || "ar",
         scriptUrl: activeScriptUrl,
         timestamp: formattedTimestamp,
-        emailConfig: cachedEmailConfig || undefined,
-        telegramConfig: cachedTelegramConfig || undefined
+        emailConfig: cachedEmailConfig,
+        telegramConfig: cachedTelegramConfig
       };
+
+      // If attachment is a data: URL, ensure it uploads to Google Drive or format cleanly
+      if (attachmentVal && attachmentVal.startsWith("data:")) {
+        try {
+          const rawB64 = attachmentVal.split(",")[1] || "";
+          const mime = (attachmentVal.match(/data:([^;]+);/) || [])[1] || "image/jpeg";
+          const upRes = await uploadFileToDriveBridge(
+            rawB64,
+            `reg_${unifiedRegId}_upload.jpg`,
+            mime,
+            driveFolderId || DEFAULT_DRIVE_FOLDER_ID,
+            activeScriptUrl
+          );
+          if (upRes && upRes.success && upRes.fileUrl) {
+            attachmentVal = upRes.fileUrl;
+            regPayload.attachment = upRes.fileUrl;
+          }
+        } catch (e) {}
+      }
+
+      // Sanitize formattedAnswers so no giant base64 (> 25KB) string gets passed directly into Google Sheets cells
+      const safeFormattedAnswers = formattedAnswers.map((item) => {
+        if (item && typeof item.answer === "string" && item.answer.startsWith("data:") && item.answer.length > 25000) {
+          return {
+            ...item,
+            answer: attachmentVal && !attachmentVal.startsWith("data:") ? attachmentVal : "مرفق صورة تم رفعها"
+          };
+        }
+        return item;
+      });
+      regPayload.answers = safeFormattedAnswers;
 
       setUploadStatusMessage(formLang === 'ar' ? "جاري حفظ البيانات في Google Sheets وإرسال إشعار تلغرام الفوري..." : "Saving registration and dispatching Telegram alert...");
 
@@ -1201,8 +1503,22 @@ export default function RegistrationModal({
         setIsSuccess(true);
         setSuccessInfo({
           id: finalId,
+          name: nameVal,
+          email: emailVal,
+          phone: phoneVal,
           message: submitResult.message || `تم استلام وحفظ طلب تسجيلك بنجاح بالرقم المرجعي (${finalId}) ومزامنة البيانات وتلغرام!`
         });
+
+        // Record successful registration for anti-spam / repeat device protection
+        try {
+          if (!isSiblingMode) {
+            localStorage.setItem("thnoon_registered_student_id", finalId);
+            if (nameVal) localStorage.setItem("thnoon_registered_student_name", nameVal);
+          }
+          const currentCount = parseInt(localStorage.getItem("thnoon_reg_attempts_count") || "0", 10);
+          localStorage.setItem("thnoon_reg_attempts_count", String(currentCount + 1));
+          localStorage.setItem("thnoon_last_reg_timestamp", String(Date.now()));
+        } catch (e) {}
       } else {
         setSubmitErrorMessage(
           submitResult?.message ||
@@ -1222,6 +1538,18 @@ export default function RegistrationModal({
           : "An unexpected error occurred. Your entered data is preserved, please click retry.")
       );
     }
+  };
+
+  const resetDeviceMemory = () => {
+    try {
+      localStorage.removeItem("thnoon_registered_student_id");
+      localStorage.removeItem("thnoon_registered_student_name");
+      localStorage.removeItem("thnoon_reg_attempts_count");
+      localStorage.removeItem("thnoon_last_reg_timestamp");
+    } catch (e) {}
+    setExistingStudentAlert(null);
+    setIsRepeatedDevice(false);
+    setMathError(null);
   };
 
   const handleResetAndClose = () => {
@@ -1257,18 +1585,95 @@ export default function RegistrationModal({
             initial={{ scale: 0.95, y: 15, opacity: 0 }}
             animate={{ scale: 1, y: 0, opacity: 1 }}
             exit={{ scale: 0.95, y: 15, opacity: 0 }}
-            className={`relative w-full max-w-2xl bg-slate-900 border border-amber-500/30 rounded-2xl sm:rounded-3xl p-4 sm:p-7 shadow-2xl z-10 overflow-hidden flex flex-col h-[94dvh] sm:h-auto sm:max-h-[90vh] ${
+            className={`relative w-full max-w-2xl bg-slate-900 border border-amber-500/30 rounded-2xl sm:rounded-3xl p-3 sm:p-7 shadow-2xl z-10 overflow-hidden flex flex-col h-[95dvh] sm:h-auto sm:max-h-[90vh] ${
               formLang === "ar" ? "text-right" : "text-left"
             }`}
           >
             {/* Top Golden Ribbon */}
             <div className="absolute top-0 right-0 left-0 h-1.5 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-600" />
 
-            {/* Action Buttons: Copy Direct Link, Refresh, and Close */}
+            {/* Mobile Top Controls Bar: Form Link (Icon only) + Language Flags + Close (3 Controls in 1 Row) */}
+            <div className="sm:hidden flex items-center justify-between gap-2 mb-2 z-20">
+              {/* زر رابط الاستمارة المباشر - أيقونة فقط في الجوال + زر التحديث */}
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={handleCopyDirectLink}
+                  title={formLang === "ar" ? "نسخ رابط الاستمارة المباشر لنشره للمشتركين" : "Copy direct form link to share"}
+                  className="p-2 bg-amber-500/15 hover:bg-amber-500 text-amber-300 hover:text-slate-950 border border-amber-500/30 rounded-xl transition-all cursor-pointer shadow-sm flex items-center justify-center shrink-0"
+                >
+                  {copiedLink ? (
+                    <Check className="w-4 h-4 text-emerald-400 stroke-[3]" />
+                  ) : (
+                    <Share2 className="w-4 h-4" />
+                  )}
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchQuestions}
+                  disabled={isLoadingQuestions}
+                  title="تحديث ومزامنة الأسئلة"
+                  className="p-2 bg-slate-800/80 hover:bg-amber-500 hover:text-slate-950 text-slate-400 rounded-xl transition-colors cursor-pointer disabled:opacity-50 border border-slate-700/60 shadow-sm"
+                >
+                  <RotateCw className={`w-3.5 h-3.5 ${isLoadingQuestions ? "animate-spin text-amber-400" : ""}`} />
+                </button>
+              </div>
+
+              {/* أزرار اللغة - علامات اللغة فقط بدون نصوص في الجوال */}
+              <div className="flex items-center gap-1 p-0.5 bg-slate-950/80 border border-slate-800 rounded-xl shadow-inner">
+                <button
+                  type="button"
+                  onClick={() => setFormLang("ar")}
+                  title="العربية"
+                  className={`px-2 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                    formLang === "ar"
+                      ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span className="text-sm">🇸🇦</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormLang("en")}
+                  title="English"
+                  className={`px-2 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                    formLang === "en"
+                      ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span className="text-sm">🇬🇧</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setFormLang("th")}
+                  title="ภาษาไทย"
+                  className={`px-2 py-1 rounded-lg text-xs transition-all cursor-pointer ${
+                    formLang === "th"
+                      ? "bg-amber-500 text-slate-950 shadow-md font-black"
+                      : "text-slate-400 hover:text-slate-200"
+                  }`}
+                >
+                  <span className="text-sm">🇹🇭</span>
+                </button>
+              </div>
+
+              {/* زر الإغلاق في الجوال */}
+              <button
+                type="button"
+                onClick={onClose}
+                className="p-2 bg-slate-800/80 hover:bg-red-500 hover:text-white text-slate-400 rounded-xl transition-colors cursor-pointer border border-slate-700/60 shadow-sm shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Desktop Action Buttons: Copy Direct Link, Refresh, and Close */}
             <div
-              className={`absolute top-4 sm:top-5 ${
+              className={`hidden sm:flex absolute top-4 sm:top-5 ${
                 formLang === "ar" ? "left-4 sm:left-5" : "right-4 sm:right-5"
-              } flex items-center gap-1.5 sm:gap-2 z-20`}
+              } items-center gap-1.5 sm:gap-2 z-20`}
             >
               <button
                 type="button"
@@ -1305,19 +1710,20 @@ export default function RegistrationModal({
             </div>
 
             {/* Modal Header */}
-            <div className="text-center pt-2 pb-3.5 border-b border-slate-800 shrink-0">
-              <div className="w-10 h-10 sm:w-12 sm:h-12 bg-amber-500/10 text-amber-400 rounded-2xl flex items-center justify-center mx-auto mb-2 border border-amber-500/20 shadow-sm">
+            <div className="text-center pt-1 sm:pt-2 pb-2.5 sm:pb-3.5 border-b border-slate-800 shrink-0">
+              {/* الأيقونة العلوية فوق النص - مخفية في الجوال وظاهرة في الكمبيوتر */}
+              <div className="hidden sm:flex w-10 h-10 sm:w-12 sm:h-12 bg-amber-500/10 text-amber-400 rounded-2xl items-center justify-center mx-auto mb-2 border border-amber-500/20 shadow-sm">
                 <UserCheck className="w-5 h-5 sm:w-6 sm:h-6" />
               </div>
-              <h3 className="font-serif font-black text-xl sm:text-2xl md:text-3xl text-amber-400">
-                {t.title}
+              <h3 className="font-serif font-black text-lg sm:text-2xl md:text-3xl text-amber-400">
+                {isSiblingMode ? (t.siblingFormTitle || t.title) : t.title}
               </h3>
-              <p className="text-slate-400 font-sans text-xs sm:text-sm mt-1 leading-relaxed max-w-md mx-auto line-clamp-2 sm:line-clamp-none">
-                {t.subtitle}
+              <p className="hidden sm:block text-slate-400 font-sans text-xs sm:text-sm mt-1 leading-relaxed max-w-md mx-auto line-clamp-2 sm:line-clamp-none">
+                {isSiblingMode ? (t.siblingFormSubtitle || t.subtitle) : t.subtitle}
               </p>
 
-              {/* Language Switcher Tabs */}
-              <div className="mt-2.5 sm:mt-3 flex items-center justify-center gap-1.5 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl w-fit mx-auto shadow-inner">
+              {/* Language Switcher Tabs (Desktop only) */}
+              <div className="hidden sm:flex mt-2.5 sm:mt-3 items-center justify-center gap-1.5 p-1 bg-slate-950/80 border border-slate-800 rounded-2xl w-fit mx-auto shadow-inner">
                 <button
                   type="button"
                   onClick={() => setFormLang("ar")}
@@ -1357,7 +1763,7 @@ export default function RegistrationModal({
               </div>
 
               {isLoadingQuestions && (
-                <div className="mt-2 inline-flex items-center gap-1.5 text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full font-sans">
+                <div className="mt-1.5 sm:mt-2 inline-flex items-center gap-1.5 text-[11px] text-amber-400/90 bg-amber-500/10 border border-amber-500/20 px-2.5 py-0.5 rounded-full font-sans">
                   <Loader2 className="w-3 h-3 animate-spin" />
                   <span>{t.syncingQuestions}</span>
                 </div>
@@ -1367,27 +1773,181 @@ export default function RegistrationModal({
             {/* Body Form */}
             <div
               ref={modalBodyRef}
-              className="overflow-y-auto overscroll-contain pr-1 pl-1 sm:px-2 py-4 flex-1 min-h-0 space-y-4 sm:space-y-5 scrollbar-thin"
+              className="overflow-y-auto overscroll-contain pr-1 pl-1 sm:px-2 py-3 sm:py-4 flex-1 min-h-0 space-y-3 sm:space-y-5 scrollbar-thin"
             >
               {isSuccess ? (
                 /* SUCCESS VIEW */
-                <div className="text-center py-8 px-4 space-y-5">
-                  <div className="w-16 h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/30">
-                    <CheckCircle2 className="w-9 h-9" />
+                <div className="text-center py-4 px-2 sm:px-4 space-y-4">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 bg-emerald-500/10 text-emerald-400 rounded-full flex items-center justify-center mx-auto border border-emerald-500/30 shadow-lg">
+                    <CheckCircle2 className="w-8 h-8 sm:w-9 sm:h-9" />
                   </div>
-                  <div className="space-y-2">
-                    <h4 className="font-serif font-bold text-2xl text-slate-100">
+                  <div className="space-y-1.5">
+                    <h4 className="font-serif font-bold text-xl sm:text-2xl text-slate-100">
                       {t.successTitle}
                     </h4>
-                    <p className="text-slate-300 text-sm max-w-md mx-auto leading-relaxed">
+                    <p className="text-slate-300 text-xs sm:text-sm max-w-md mx-auto leading-relaxed">
                       {t.successDesc}
                     </p>
                   </div>
 
-                  <div className="pt-4">
+                  {/* بطاقة رقم التسجيل وبيانات المشترك المعتمدة مع زر النسخ */}
+                  <div className="bg-slate-950/90 border border-amber-500/40 rounded-2xl p-4 sm:p-5 text-center space-y-3 max-w-md mx-auto shadow-xl">
+                    <span className="text-xs font-semibold text-slate-400 block">
+                      {formLang === "en" ? "Official Registration ID" : formLang === "th" ? "รหัสการสมัครอย่างเป็นทางการ" : "رقم القيد والتسجيل المعتمد"}
+                    </span>
+                    <div className="flex items-center justify-center gap-2.5">
+                      <span className="font-mono text-2xl sm:text-3xl font-black text-amber-400 tracking-wider">
+                        {successInfo.id || "202686124"}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const idToCopy = successInfo.id || "202686124";
+                          navigator.clipboard.writeText(idToCopy);
+                          setCopiedRegId(true);
+                          setTimeout(() => setCopiedRegId(false), 2000);
+                        }}
+                        className="p-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white transition-colors cursor-pointer flex items-center gap-1 text-xs"
+                        title={copiedRegId ? "تم النسخ" : "نسخ الرقم"}
+                      >
+                        {copiedRegId ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+                        <span className="text-[11px] font-sans">{copiedRegId ? "تم النسخ" : "نسخ"}</span>
+                      </button>
+                    </div>
+                    {successInfo.name && (
+                      <div className="text-sm text-slate-200 pt-2 border-t border-slate-800/80 flex items-center justify-center gap-2">
+                        <span className="text-slate-400 font-sans">{formLang === "en" ? "Subscriber Name:" : formLang === "th" ? "ชื่อผู้สมัคร:" : "اسم المشترك:"}</span>
+                        <span className="font-bold text-slate-100">{successInfo.name}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* زر الدخول المباشر إلى بوابة المشترك مع التعبئة التلقائية للبيانات */}
+                  <div className="max-w-md mx-auto space-y-1.5">
                     <button
+                      type="button"
+                      onClick={() => {
+                        if (onOpenSubscriberPortal) {
+                          onOpenSubscriberPortal({
+                            registrationId: successInfo.id || "202686124",
+                            name: successInfo.name
+                          });
+                        } else {
+                          handleResetAndClose();
+                        }
+                      }}
+                      className="w-full bg-gradient-to-r from-amber-500 via-yellow-500 to-amber-600 hover:from-amber-400 hover:to-yellow-500 text-slate-950 font-sans font-black text-sm sm:text-base py-3.5 px-5 rounded-2xl shadow-xl hover:shadow-amber-500/25 transition-all flex items-center justify-center gap-2.5 cursor-pointer transform hover:scale-[1.01]"
+                    >
+                      <LogIn className="w-5 h-5 stroke-[2.5]" />
+                      <span>{t.goToMyPortalBtn}</span>
+                    </button>
+                    <p className="text-[11px] text-amber-400/85 font-sans text-center">
+                      {t.goToMyPortalSub}
+                    </p>
+                  </div>
+
+                  {/* تنبيه تأكيد إرسال النسخة إلى البريد الإلكتروني للمشترك */}
+                  <div className="bg-slate-950/80 border border-slate-800 rounded-2xl p-3.5 sm:p-4 text-center max-w-md mx-auto space-y-1.5 shadow-md">
+                    <div className="flex items-center justify-center gap-2 text-xs sm:text-sm font-bold text-amber-300">
+                      <Mail className="w-4 h-4 text-amber-400 shrink-0" />
+                      <span>{t.emailNoticeTitle}</span>
+                    </div>
+                    <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                      {t.emailNoticeDesc}
+                    </p>
+                    {successInfo.email && (
+                      <div className="inline-block mt-1 px-3 py-1 bg-slate-900 border border-slate-700/80 rounded-xl font-mono text-xs text-amber-300 font-semibold dir-ltr">
+                        {successInfo.email}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* المساحة الأنيقة المخصصة لربط وتفعيل حساب تلغرام */}
+                  {(() => {
+                    let activeEmailConfig: any = DEFAULT_SUBSCRIBER_EMAIL_CONFIG;
+                    if (typeof window !== "undefined") {
+                      try {
+                        const stored = localStorage.getItem("thnoon_subscriber_email_config");
+                        if (stored) activeEmailConfig = JSON.parse(stored);
+                      } catch (e) {}
+                    }
+                    const botTemplate = activeEmailConfig?.telegramBotLink || "https://t.me/nuon2026_bot?start=student_XXXXXX";
+                    const studentRegId = successInfo.id || "202686124";
+                    const studentTelegramLink = botTemplate.replace(/XXXXXX/g, studentRegId).replace(/{id}/g, studentRegId);
+                    const parsedUrls = parseTelegramUrls(studentTelegramLink, studentRegId);
+
+                    const defaultDescAr = "اضغط على الزر أدناه لتفعيل حسابك ومتابعة دوراتك واستلام الإشعارات المباشرة عبر تلغرام فوراً:";
+                    const defaultDescEn = "Tap the direct button below to link your account and receive real-time course updates via Telegram:";
+                    const defaultDescTh = "คลิกปุ่มด้านล่างเพื่อเปิดใช้งานบัญชีและรับการแจ้งเตือนบทเรียนผ่าน Telegram ทันที:";
+
+                    const currentLangMsgs = activeEmailConfig?.messages?.[formLang] || activeEmailConfig?.messages?.["ar"] || {};
+                    const telegramTitle = currentLangMsgs.telegramSectionTitle || (formLang === "en" ? "Connect & Activate Telegram Bot 📲" : (formLang === "th" ? "เชื่อมต่อและเปิดใช้งานบอท Telegram 📲" : "ربط وتفعيل حسابك في بوت تلغرام 📲"));
+                    let telegramDesc = currentLangMsgs.telegramSectionDesc || (formLang === "en" ? defaultDescEn : (formLang === "th" ? defaultDescTh : defaultDescAr));
+                    telegramDesc = telegramDesc
+                      .replace(/امسح رمز QR التالي بكاميرا هاتفك أو /g, "")
+                      .replace(/Scan the QR code below with your mobile camera or /gi, "")
+                      .replace(/สแกนรหัส QR ด้านล่างด้วยกล้องโทรศัพท์ของคุณ หรือ/g, "");
+
+                    const telegramBtnText = currentLangMsgs.telegramButtonText || (formLang === "en" ? "📲 Activate Account on Telegram" : (formLang === "th" ? "📲 เปิดใช้งานบัญชีใน Telegram ทันที" : "📲 تفعيل الحساب في تلغرام مباشرة"));
+
+                    return (
+                      <div className="bg-gradient-to-br from-sky-950/80 via-slate-950 to-slate-900 border border-sky-500/40 rounded-2xl p-4 sm:p-5 text-center space-y-3.5 max-w-md mx-auto shadow-xl">
+                        <div className="flex items-center justify-center gap-2 text-sky-400 font-bold text-sm sm:text-base">
+                          <Send className="w-4.5 h-4.5 text-sky-400" />
+                          <span>{telegramTitle}</span>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed max-w-sm mx-auto">
+                          {telegramDesc}
+                        </p>
+
+                        {/* Interactive Smart Deep Link Telegram Activation Button */}
+                        <div className="pt-1">
+                          <a
+                            href={parsedUrls.appUrl}
+                            onClick={(e) => openTelegramSmartLink(studentTelegramLink, studentRegId, e)}
+                            className="w-full inline-flex items-center justify-center gap-2.5 px-5 py-3 bg-gradient-to-r from-sky-600 via-sky-500 to-blue-600 hover:from-sky-500 hover:to-blue-500 text-white font-bold text-sm rounded-xl shadow-lg shadow-sky-600/30 hover:shadow-sky-500/40 transition-all cursor-pointer border border-sky-400/30 active:scale-[0.98]"
+                            title="فتح تطبيق تلغرام مباشرة"
+                          >
+                            <Send className="w-4.5 h-4.5 text-sky-200" />
+                            <span>{telegramBtnText}</span>
+                            <ExternalLink className="w-4 h-4 opacity-80" />
+                          </a>
+                          <div className="text-[11px] text-sky-300/70 mt-1.5 flex items-center justify-center gap-1">
+                            <span>🚀 يفتح تطبيق تلغرام مباشرة (أو صفحة الويب كبديل تلقائي)</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        // Activate smart sibling registration right from the success view!
+                        const prevId = successInfo.id;
+                        const prevName = successInfo.name;
+                        setExistingStudentAlert({ id: prevId, name: prevName });
+                        setAllowSiblingRegistration(true);
+                        setAnswers({});
+                        setUploadedFiles({});
+                        setErrors({});
+                        setIsSuccess(false);
+                        setSuccessInfo({ id: "", name: "", email: "", phone: "", message: "" });
+                        setSubmitErrorMessage(null);
+                      }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-2.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white font-bold text-xs rounded-xl shadow-md transition-all cursor-pointer border border-emerald-400/30"
+                      title={t.siblingSuccessBtn || "تسجيل طالب آخر من نفس العائلة برقم قيد جديد"}
+                    >
+                      <UserPlus className="w-4 h-4 text-emerald-200" />
+                      <span>{t.siblingSuccessBtn || "تسجيل طالب آخر من العائلة (تسجيل الإخوان 👨‍👩‍👧‍👦)"}</span>
+                    </button>
+
+                    <button
+                      type="button"
                       onClick={handleResetAndClose}
-                      className="bg-amber-500 hover:bg-amber-600 text-slate-950 font-bold text-sm px-8 py-3 rounded-xl shadow-lg transition-all cursor-pointer"
+                      className="w-full sm:w-auto bg-slate-800 hover:bg-slate-700 text-slate-200 hover:text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition-all cursor-pointer border border-slate-700"
                     >
                       {t.closeSuccessBtn}
                     </button>
@@ -1430,9 +1990,132 @@ export default function RegistrationModal({
                     </button>
                   )}
                 </div>
+              ) : existingStudentAlert && !isSiblingMode ? (
+                /* LOCKED SCREEN: ALREADY REGISTERED USER */
+                <div className="p-6 sm:p-8 rounded-3xl bg-slate-900/95 border border-amber-500/40 text-white space-y-6 shadow-2xl text-center">
+                  <div className="w-16 h-16 rounded-2xl bg-emerald-500/15 border border-emerald-500/40 text-emerald-400 flex items-center justify-center mx-auto shadow-lg shadow-emerald-500/10">
+                    <CheckCircle2 className="w-8 h-8" />
+                  </div>
+
+                  <div className="space-y-2">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-500/10 border border-emerald-500/30 text-emerald-400 text-xs font-bold">
+                      <ShieldCheck className="w-3.5 h-3.5" />
+                      <span>{t.alreadyRegisteredBadge || "حساب معتمد ومسجل مسبقاً"}</span>
+                    </div>
+                    <h3 className="text-lg sm:text-xl font-serif font-bold text-slate-100">
+                      {(t.alreadyRegisteredTitle || "أنت مسجل لدينا مسبقاً برقم قيد ({id}) {name}")
+                        .replace("{id}", existingStudentAlert.id)
+                        .replace("{name}", existingStudentAlert.name ? `(${existingStudentAlert.name})` : "")}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-slate-300 max-w-md mx-auto leading-relaxed">
+                      {t.alreadyRegisteredDesc || "لا داعي لإعادة تعبئة الاستمارة مرة أخرى، فقيدك مسجل ونشط في قاعدة البيانات الرسمية. يمكنك الدخول مباشرة إلى صفحتك الخاصة لمتابعة الدروس والشهادات والمحتوى الحصري."}
+                    </p>
+                  </div>
+
+                  {/* Direct portal button */}
+                  <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        if (onOpenSubscriberPortal) {
+                          onOpenSubscriberPortal({ registrationId: existingStudentAlert.id, name: existingStudentAlert.name });
+                        } else {
+                          window.location.href = `/?portal=true&reg_id=${encodeURIComponent(existingStudentAlert.id)}`;
+                        }
+                      }}
+                      className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-6 py-3.5 bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-500 hover:to-teal-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-emerald-600/20 transition-all cursor-pointer"
+                    >
+                      <LogIn className="w-4 h-4" />
+                      <span>{t.alreadyRegisteredGoToPortal || "الانتقال إلى صفحتي الخاصة في بوابة المشتركين"}</span>
+                    </button>
+                  </div>
+
+                  {/* Contact admin advice */}
+                  <div className="p-4 rounded-2xl bg-slate-950/70 border border-slate-800 text-right space-y-2 max-w-lg mx-auto">
+                    <div className="flex items-center gap-2 text-amber-400 font-bold text-xs">
+                      <HelpCircle className="w-4 h-4 shrink-0" />
+                      <span>هل ترغب في تعديل بياناتك أو التسجيل من جديد من الصفر؟</span>
+                    </div>
+                    <p className="text-xs text-slate-400 leading-relaxed">
+                      للحفاظ على خصوصية الحسابات ومنع التكرار، إذا كنت ترغب في التسجيل من الصفر أو تعديل بياناتك، يرجى التواصل مع الإدارة ليقوم المشرف بحذف قيدك من النظام، ثم الضغط على زر التحقق أدناه لتحديث الحالة فوراً.
+                    </p>
+                    <div className="pt-2 flex items-center gap-2">
+                      <a
+                        href="#contact"
+                        onClick={() => onClose()}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-semibold transition-colors"
+                      >
+                        <Phone className="w-3.5 h-3.5 text-amber-400" />
+                        <span>التواصل مع الإدارة عبر وسائل الاتصال</span>
+                      </a>
+                    </div>
+                  </div>
+
+                  {/* Server Verification Section (Smart Sibling / Deletion Check) */}
+                  <div className="pt-3 border-t border-slate-800 max-w-lg mx-auto space-y-3">
+                    <div className="text-xs text-slate-300 font-sans leading-relaxed">
+                      {formLang === "en"
+                        ? "Did the admin delete your record from Google Sheets? Click below to check and unlock the form for a new registration:"
+                        : formLang === "th"
+                        ? "ผู้ดูแลระบบได้ลบข้อมูลของคุณออกจาก Google Sheets แล้วใช่หรือไม่? คลิกปุ่มด้านล่างเพื่อตรวจสอบและปลดล็อกแบบฟอร์มเพื่อลงทะเบียนใหม่:"
+                        : "هل قامت الإدارة بحذف بياناتك من الشيت وترغب في التسجيل كطالب جديد؟ اضغط على الزر أدناه لمراجعة السيرفر وإلغاء القفل فوراً:"}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={handleVerifyAccountWithServer}
+                      disabled={isVerifyingAccountOnServer}
+                      className="inline-flex items-center justify-center gap-2 px-5 py-3 bg-gradient-to-r from-amber-500/20 to-amber-600/20 hover:from-amber-500 hover:to-amber-600 text-amber-300 hover:text-slate-950 border border-amber-500/50 hover:border-amber-400 rounded-2xl text-xs sm:text-sm font-bold shadow-lg transition-all cursor-pointer disabled:opacity-50"
+                    >
+                      <RotateCw className={`w-4 h-4 ${isVerifyingAccountOnServer ? "animate-spin" : ""}`} />
+                      <span>
+                        {isVerifyingAccountOnServer
+                          ? (formLang === "en" ? "Checking Google Sheets..." : formLang === "th" ? "กำลังตรวจสอบกับ Google Sheets..." : "جارٍ مراجعة الشيت وقاعدة البيانات...")
+                          : (formLang === "en" ? "Refresh Form & Verify with Sheets 🔄" : formLang === "th" ? "รีเฟรชฟอร์มและตรวจสอบกับชีต 🔄" : "تحديث الفورم والتحقق من الشيت 🔄")}
+                      </span>
+                    </button>
+
+                    {serverVerificationNotice && (
+                      <div
+                        className={`p-3.5 rounded-xl text-xs font-medium border text-right leading-relaxed ${
+                          serverVerificationNotice.type === "success"
+                            ? "bg-emerald-950/70 border-emerald-500/50 text-emerald-300"
+                            : serverVerificationNotice.type === "info"
+                            ? "bg-amber-950/70 border-amber-500/50 text-amber-300"
+                            : "bg-red-950/70 border-red-500/50 text-red-300"
+                        }`}
+                      >
+                        {serverVerificationNotice.text}
+                      </div>
+                    )}
+                  </div>
+                </div>
               ) : (
                 /* DYNAMIC QUESTIONS FORM */
                 <form onSubmit={handleSubmit} className="space-y-6">
+                  {/* شريط وضع تسجيل الإخوان والعائلة عند التفعيل من بوابة المشترك */}
+                  {isSiblingMode && (
+                    <div className="p-3.5 sm:p-4 rounded-2xl bg-gradient-to-l from-amber-950/70 via-slate-900 to-slate-900 border border-amber-500/40 shadow-lg text-white space-y-1.5">
+                      <div className="flex items-center gap-2.5">
+                        <div className="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 border border-amber-500/30 flex items-center justify-center shrink-0">
+                          <UserPlus className="w-4 h-4" />
+                        </div>
+                        <div>
+                          <div className="font-bold text-xs sm:text-sm text-amber-300">
+                            {t.siblingFormTitle || "تسجيل طالب آخر من العائلة (تسجيل الإخوان 👨‍👩‍👧‍👦)"}
+                          </div>
+                          <p className="text-[11px] text-slate-300">
+                            {formLang === "en"
+                              ? `You are now registering a new independent student linked under primary subscriber (${primarySubscriber?.name || primarySubscriber?.id || "Subscriber"}). A unique student ID will be generated.`
+                              : formLang === "th"
+                              ? `คุณกำลังลงทะเบียนนักเรียนใหม่ที่เป็นคนในครอบครัวเดียวกันกับ (${primarySubscriber?.name || primarySubscriber?.id || "สมาชิก"}) โดยจะได้รับรหัสประจำตัวเฉพาะแยกต่างหาก`
+                              : `يتم الآن تسجيل طالب جديد مستقل من نفس العائلة تحت حساب المشترك الأساسي (${primarySubscriber?.name || primarySubscriber?.id || "المشترك"}). سيتم منحه رقم قيد خاص به كطالب مستقل.`}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+
                   {questions.map((q, idx) => {
                     const fieldKey = String(q.id || q.question);
                     const val = answers[fieldKey] || "";
@@ -1875,6 +2558,71 @@ export default function RegistrationModal({
                               );
                             })}
                         </div>
+                      </motion.div>
+                    )}
+
+                    {/* Honeypot Invisible Field (Anti-Bot) */}
+                    <div className="opacity-0 absolute -z-50 pointer-events-none h-0 w-0 overflow-hidden" aria-hidden="true">
+                      <label htmlFor="reg_field_token_hp">Leave empty</label>
+                      <input
+                        id="reg_field_token_hp"
+                        type="text"
+                        tabIndex={-1}
+                        autoComplete="off"
+                        value={honeypotVal}
+                        onChange={(e) => setHoneypotVal(e.target.value)}
+                      />
+                    </div>
+
+                    {/* Math Challenge (Triggered only when previous registration is detected on this device) */}
+                    {isRepeatedDevice && (
+                      <motion.div
+                        initial={{ opacity: 0, y: 8 }}
+                        animate={{ opacity: 1, y: 0 }}
+                        className="p-4 bg-slate-950/90 border-2 border-amber-500/40 rounded-2xl space-y-2.5 shadow-lg my-3"
+                      >
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2 text-amber-400 font-bold text-xs sm:text-sm">
+                            <RotateCw className="w-4 h-4 text-amber-400 shrink-0" />
+                            <span>{t.mathChallengeTitle}</span>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={generateNewMathChallenge}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-amber-400 hover:bg-slate-800 transition-colors flex items-center gap-1 text-xs"
+                            title={formLang === 'ar' ? "تغيير المسألة" : "New Question"}
+                          >
+                            <RefreshCw className="w-3.5 h-3.5" />
+                            <span className="text-[11px] hidden sm:inline">{formLang === 'ar' ? "مسألة أخرى" : "Refresh"}</span>
+                          </button>
+                        </div>
+
+                        <p className="text-xs text-slate-300 leading-relaxed font-sans">
+                          {t.mathChallengeDesc}
+                        </p>
+
+                        <div className="flex items-center gap-3 pt-1">
+                          <div className="flex items-center justify-center px-4 py-2 bg-slate-900 border border-amber-500/50 rounded-xl font-mono text-base sm:text-lg font-black text-amber-400 tracking-wider shadow-inner">
+                            {mathChallenge.num1} + {mathChallenge.num2} = ?
+                          </div>
+                          <input
+                            type="number"
+                            value={mathAnswer}
+                            onChange={(e) => {
+                              setMathAnswer(e.target.value);
+                              setMathError(null);
+                            }}
+                            placeholder={t.mathChallengePlaceholder}
+                            className="flex-1 px-3.5 py-2 rounded-xl bg-slate-900 border border-slate-700 text-slate-100 font-sans text-sm focus:border-amber-500 focus:outline-none focus:ring-1 focus:ring-amber-500"
+                          />
+                        </div>
+
+                        {mathError && (
+                          <p className="text-xs text-red-400 font-bold font-sans flex items-center gap-1.5 pt-0.5">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            <span>{mathError}</span>
+                          </p>
+                        )}
                       </motion.div>
                     )}
 

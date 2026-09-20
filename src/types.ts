@@ -146,26 +146,42 @@ export interface AppData {
 }
 
 export interface SubscriberCard {
+  id?: string;
   title: string;
+  titleEn?: string;
+  titleTh?: string;
   description: string;
+  descriptionEn?: string;
+  descriptionTh?: string;
   media: { url: string; type?: "image" | "video" }[];
+  mediaUrl?: string;
   linkUrl?: string;
   buttonText?: string;
 }
 
 export interface SubscriberTopicContent {
   topicId: string;
+  rowIndex?: number;
   title: string;
+  titleEn?: string;
+  titleTh?: string;
   description: string;
+  descriptionEn?: string;
+  descriptionTh?: string;
   coverImage?: string;
   badge?: string;
+  badgeEn?: string;
+  badgeTh?: string;
   cards: SubscriberCard[];
+  updatedAt?: string;
 }
 
 export interface SubscriberState {
   isLoggedIn: boolean;
   subscriberName?: string;
   topicId?: string;
+  registrationId?: string;
+  username?: string;
   content?: SubscriberTopicContent;
   links: {
     text: string;
@@ -223,6 +239,9 @@ export interface EmailLanguageTemplate {
   header: string;
   body: string;
   footerNote: string;
+  telegramSectionTitle?: string;
+  telegramSectionDesc?: string;
+  telegramButtonText?: string;
 }
 
 export interface SubscriberEmailConfig {
@@ -233,6 +252,8 @@ export interface SubscriberEmailConfig {
   qrCodeColumns: string;            // الأعمدة أو البيانات التي سيتم توليد الـ QR Code منها (مثال: B أو A,B)
   qrDriveUrlColumn: string;         // عامود حفظ رابط صورة كيو آر كود في قوقل درايف (مثال: Y)
   includeQrInEmail: boolean;        // تضمين صورة QR كود في نص الإيميل
+  telegramBotLink?: string;          // رابط تفعيل بوت تلغرام (مثال: https://t.me/nuon2026_bot?start=student_XXXXXX)
+  includeTelegramQrInEmail?: boolean;// تضمين بطاقة ربط بوت تلغرام مع الـ QR والزر المباشر في الإيميل
   messages: {
     ar: EmailLanguageTemplate;
     en: EmailLanguageTemplate;
@@ -273,14 +294,20 @@ export interface RegistrationAnswerRecord {
   rawRow?: string[];           // القيم الخام للصف
 }
 
+export type SubscriberStageStatus = "معتمد" | "متقدم" | "قيد المراجعة" | "مؤرشف";
+
 export interface SettingsSubscriberRecord {
   rowIndex: number;            // رقم الصف في ورقة Settings (2, 3...)
-  name: string;                // العامود Z: اسم المشترك
+  name: string;                // العامود Z / B: اسم المشترك
   registrationId: string;      // العامود AA: رقم التسجيل
   topicId: string;             // العامود A: رقم الصفحة الخاصة
   status: string;              // العامود AB: مسموح / ممنوع للدخول
   isAllowed: boolean;          // حالة السماح بالدخول
   deviceCount: string;         // العامود AC: عدد الأجهزة
+  subscriberStatus?: SubscriberStageStatus | string; // العامود C: حالة المشترك (معتمد / متقدم / قيد المراجعة / مؤرشف)
+  isArchived?: boolean;        // هل المشترك مؤرشف
+  archiveTag?: string;         // اسم دفعة الأرشيف وتاريخها
   rawRow?: string[];           // القيم الخام للصف
 }
+
 

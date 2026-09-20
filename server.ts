@@ -27,7 +27,7 @@ const configFile = path.join(dataDir, "config.json");
 const formTranslationsFile = path.join(dataDir, "form_translations.json");
 const siteTranslationsFile = path.join(dataDir, "site_translations.json");
 
-const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxc-9cJ1Yh16hWRVAIGwZJCxQc4H8goaLUeB_4EuWtJi7tb6qhveCqbfTGkd3gQqHC7CQ/exec";
+const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxMnMVjY34c5eRH-57LmOdWR8aeqqu0ihhFARz_IK-ISJPi-xtzqeIZTEgl8XKjylObqw/exec";
 let currentSpreadsheetId = process.env.SPREADSHEET_ID || "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 let currentScriptUrl = process.env.GOOGLE_SCRIPT_URL || process.env.VITE_GOOGLE_SCRIPT_URL || DEFAULT_SCRIPT_URL;
 let currentDriveFolderId = process.env.GOOGLE_DRIVE_FOLDER_ID || "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
@@ -756,7 +756,7 @@ app.get("/api/data", async (req, res) => {
     }
 
     let socialLinks = { ...FALLBACK_DATA.socialLinks };
-    let contactInfo: any = { ...FALLBACK_DATA.contactInfo };
+    let contactInfo = { ...FALLBACK_DATA.contactInfo };
     const contactCards: any[] = [];
 
     // Check if contactRows contains the new structured keywords in Column A of any row
@@ -1174,7 +1174,7 @@ app.get("/api/data", async (req, res) => {
         loginButtonText, 
         loginButtonUrl,
         headerBgUrl: headerBgUrl || undefined,
-        features: features.length > 0 ? features : ((FALLBACK_DATA.profile as any).features || [])
+        features: features.length > 0 ? features : FALLBACK_DATA.profile.features
       },
       socialLinks,
       homeCards: homeCards.length > 0 ? homeCards : FALLBACK_DATA.homeCards,
@@ -1303,44 +1303,6 @@ app.post("/api/contact", async (req, res) => {
   });
 });
 
-// SUBMIT REGISTRATION ENDPOINT
-app.post("/api/register", async (req, res) => {
-  const regData = req.body;
-  const scriptUrl = currentScriptUrl;
-
-  if (scriptUrl && scriptUrl.trim().startsWith("http")) {
-    try {
-      console.log("Proxying registration to Google Apps Script:", scriptUrl);
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "submitRegistration",
-          ...regData
-        })
-      });
-      const data = await response.json();
-      return res.json(data);
-    } catch (err: any) {
-      console.error("Failed to proxy registration to Apps Script:", err);
-    }
-  }
-
-  // Fallback registration response
-  const randomNum = Math.floor(1000 + Math.random() * 9000);
-  const registrationId = "REG-" + new Date().getFullYear() + "-" + randomNum;
-  const displayName = regData.nameArabic || regData.nameThai || "مشترك جديد";
-  const qrContent = `رقم التسجيل: ${registrationId}\nالاسم: ${displayName}\nالبريد: ${regData.email || ""}`;
-  const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(qrContent)}`;
-
-  return res.json({
-    success: true,
-    registrationId,
-    qrCodeUrl,
-    subscriberName: displayName,
-    message: "تم حفظ طلب التسجيل بنجاح في قاعدة البيانات المحلية!"
-  });
-});
 
 // LOGIN AUTHENTICATION ENDPOINT
 app.post("/api/login", async (req, res) => {
@@ -1355,33 +1317,58 @@ app.post("/api/login", async (req, res) => {
   if (scriptUrl && scriptUrl.trim().startsWith("http")) {
     try {
       console.log("Proxying auth to Google Apps Script Web App:", scriptUrl);
-      const response = await fetch(scriptUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          action: "loginUser",
-          username,
-          password,
-          deviceId,
-          lat,
-          lng,
-          locationName,
-          deviceInfo
-        })
-      });
+      let responseText = "";
+      try {
+        const response = await fetch(scriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "loginUser",
+            username,
+            password,
+            deviceId,
+            lat,
+            lng,
+            locationName,
+            deviceInfo
+          })
+        });
+        responseText = await response.text();
+      } catch (postErr) {
+        console.warn("POST to Apps Script auth failed, trying GET fallback:", postErr);
+      }
+
+      // If POST was HTML/empty, try GET request
+      if (!responseText || responseText.trim().startsWith("<")) {
+        try {
+          const getParams = new URLSearchParams({
+            action: "loginUser",
+            username: String(username || ""),
+            password: String(password || ""),
+            deviceId: String(deviceId || ""),
+            lat: lat ? String(lat) : "",
+            lng: lng ? String(lng) : "",
+            locationName: String(locationName || ""),
+            deviceInfo: String(deviceInfo || ""),
+            _cb: String(Date.now())
+          });
+          const getUrl = `${scriptUrl}${scriptUrl.includes("?") ? "&" : "?"}${getParams.toString()}`;
+          const getRes = await fetch(getUrl);
+          responseText = await getRes.text();
+        } catch (getErr) {
+          console.error("GET fallback to Apps Script failed:", getErr);
+        }
+      }
       
-      const responseText = await response.text();
       console.log("Google Apps Script auth raw response:", responseText);
       
       try {
         const data = JSON.parse(responseText);
-        return res.json(data);
+        if (data && (data.success !== undefined || data.isBlocked || data.deviceLimitReached)) {
+          return res.json(data);
+        }
       } catch (parseErr) {
-        console.error("Failed to parse Auth Apps Script JSON response. Response was HTML or invalid:", responseText);
-        return res.json({
-          success: false,
-          message: "استجابة Apps Script غير صالحة. يرجى التحقق من نشر الـ Web App بصلاحية 'Anyone' وتحديث الكود."
-        });
+        console.warn("Could not parse Apps Script response as JSON, continuing to sheet fallback");
       }
     } catch (err) {
       console.error("Failed to proxy authentication to Google Apps Script:", err);
@@ -2369,24 +2356,35 @@ function loadSubscriberEmailConfig() {
     qrCodeColumns: "B",
     qrDriveUrlColumn: "O",
     includeQrInEmail: true,
+    telegramBotLink: "https://t.me/nuon2026_bot?start=student_XXXXXX",
+    includeTelegramQrInEmail: true,
     messages: {
       ar: {
         subject: "تأكيد تسجيلك في منصة مؤسسة يوسف ذنون - بيانات الدخول والاشتراك",
         header: "مرحباً بك في مؤسسة يوسف ذنون للخط العربي",
         body: "نشكرك على تسجيلك واهتمامك بتعلم وإتقان فنون الخط العربي الأصيل. فيما يلي تفاصيل وبيانات تسجيلك المعتمدة للدخول ومتابعة الدورات والمحتوى الحصري:",
-        footerNote: "يرجى الاحتفاظ برمز الاستجابة السريعة (QR Code) وبيانات التسجيل لاستخدامها عند مراجعة اشتراكك أو حضور الجلسات."
+        footerNote: "يرجى الاحتفاظ برمز الاستجابة السريعة (QR Code) وبيانات التسجيل لاستخدامها عند مراجعة اشتراكك أو حضور الجلسات.",
+        telegramSectionTitle: "ربط وتفعيل حسابك في بوت تلغرام 📲",
+        telegramSectionDesc: "امسح رمز QR التالي بكاميرا هاتفك أو اضغط على الزر أدناه لتفعيل حسابك ومتابعة دوراتك واستلام الإشعارات المباشرة عبر تلغرام فوراً:",
+        telegramButtonText: "📲 تفعيل الحساب في تلغرام مباشرة"
       },
       en: {
         subject: "Registration Confirmation - Yousuf Dhannoon Calligraphy Portal",
         header: "Welcome to Yousuf Dhannoon Calligraphy Institute",
         body: "Thank you for registering. Below are your verified registration details and access credentials to explore your courses and exclusive content:",
-        footerNote: "Please keep this QR Code and your registration ID handy for subscription verification and session access."
+        footerNote: "Please keep this QR Code and your registration ID handy for subscription verification and session access.",
+        telegramSectionTitle: "Connect & Activate Telegram Bot 📲",
+        telegramSectionDesc: "Scan the QR code below with your mobile camera or tap the direct button to link your account and receive real-time course updates via Telegram:",
+        telegramButtonText: "📲 Activate Account on Telegram"
       },
       th: {
         subject: "ยืนยันการลงทะเบียน - สถาบันศิลปะการเขียนตัวอักษรอาหรับ ยูซุฟ ซันนูน",
         header: "ยินดีต้อนรับสู่ สถาบันยูซุฟ ซันนูน สำหรับการเขียนอักษรอาหรับ",
         body: "ขอขอบคุณสำหรับการลงทะเบียน รายละเอียดข้อมูลการสมัครและข้อมูลสำหรับเข้าสู่ระบบบทเรียนของคุณมีดังนี้:",
-        footerNote: "กรุณาเก็บรหัส QR Code และหมายเลขลงทะเบียนนี้ไว้เพื่อใช้ในการยืนยันสิทธิ์และการเข้าเรียน"
+        footerNote: "กรุณาเก็บรหัส QR Code และหมายเลขลงทะเบียนนี้ไว้เพื่อใช้ในการยืนยันสิทธิ์และการเข้าเรียน",
+        telegramSectionTitle: "เชื่อมต่อและเปิดใช้งานบอท Telegram 📲",
+        telegramSectionDesc: "สแกนรหัส QR ด้านล่างด้วยกล้องโทรศัพท์ของคุณ หรือคลิกปุ่มด้านล่างเพื่อเปิดใช้งานบัญชีและรับการแจ้งเตือนบทเรียนผ่าน Telegram ทันที:",
+        telegramButtonText: "📲 เปิดใช้งานบัญชีใน Telegram ทันที"
       }
     },
     attachments: [
@@ -2944,6 +2942,9 @@ ${JSON.stringify({
   header: arTemplate.header || "",
   body: arTemplate.body || "",
   footerNote: arTemplate.footerNote || "",
+  telegramSectionTitle: arTemplate.telegramSectionTitle || "ربط وتفعيل حسابك في بوت تلغرام 📲",
+  telegramSectionDesc: arTemplate.telegramSectionDesc || "امسح رمز QR التالي بكاميرا هاتفك أو اضغط على الزر أدناه لتفعيل حسابك ومتابعة دوراتك واستلام الإشعارات المباشرة عبر تلغرام فوراً:",
+  telegramButtonText: arTemplate.telegramButtonText || "📲 تفعيل الحساب في تلغرام مباشرة",
   fields: dataFields ? dataFields.map((f: any) => ({ id: f.id, label: f.label })) : [],
   attachments: attachments ? attachments.map((a: any) => ({ id: a.id, title: a.title })) : []
 }, null, 2)}
@@ -2954,13 +2955,19 @@ Return ONLY valid JSON matching this exact structure:
     "subject": "...",
     "header": "...",
     "body": "...",
-    "footerNote": "..."
+    "footerNote": "...",
+    "telegramSectionTitle": "...",
+    "telegramSectionDesc": "...",
+    "telegramButtonText": "..."
   },
   "th": {
     "subject": "...",
     "header": "...",
     "body": "...",
-    "footerNote": "..."
+    "footerNote": "...",
+    "telegramSectionTitle": "...",
+    "telegramSectionDesc": "...",
+    "telegramButtonText": "..."
   },
   "fieldsEn": { "fieldId": "English Label" },
   "fieldsTh": { "fieldId": "Thai Label" },
@@ -2989,13 +2996,19 @@ Return ONLY valid JSON matching this exact structure:
           subject: "Registration Confirmation - Yousuf Dhannoon Calligraphy Portal",
           header: "Welcome to Yousuf Dhannoon Calligraphy Institute",
           body: arTemplate.body || "Thank you for registering. Below are your verified registration details and access credentials:",
-          footerNote: arTemplate.footerNote || "Please keep this QR Code and your registration ID handy for subscription verification."
+          footerNote: arTemplate.footerNote || "Please keep this QR Code and your registration ID handy for subscription verification.",
+          telegramSectionTitle: "Connect & Activate Telegram Bot 📲",
+          telegramSectionDesc: "Scan the QR code below with your mobile camera or tap the direct button to link your account and receive real-time course updates via Telegram:",
+          telegramButtonText: "📲 Activate Account on Telegram"
         },
         th: {
-          subject: "ยืนยันการลงทะเบียน - สถาบันศิลปะการเขียนตัวอักษรอาหรับ ยูซุฟ ซันنูน",
+          subject: "ยืนยันการลงทะเบียน - สถาบันศิลปะการเขียนตัวอักษรอาหรับ ยูซุฟ ซันนูน",
           header: "ยินดีต้อนรับสู่ สถาบันยูซุฟ ซันนูน สำหรับการเขียนอักษรอาหรับ",
           body: arTemplate.body || "ขอขอบคุณสำหรับการลงทะเบียน รายละเอียดข้อมูลการสมัครสำหรับเข้าสู่ระบบของคุณมีดังนี้:",
-          footerNote: arTemplate.footerNote || "กรุณาเก็บรหัส QR Code และหมายเลขลงทะเบียนนี้ไว้เพื่อใช้ในการยืนยันสิทธิ์"
+          footerNote: arTemplate.footerNote || "กรุณาเก็บรหัส QR Code และหมายเลขลงทะเบียนนี้ไว้เพื่อใช้ในการยืนยันสิทธิ์",
+          telegramSectionTitle: "เชื่อมต่อและเปิดใช้งานบอท Telegram 📲",
+          telegramSectionDesc: "สแกนรหัส QR ด้านล่างด้วยกล้องโทรศัพท์ของคุณ หรือคลิกปุ่มด้านล่างเพื่อเปิดใช้งานบัญชีและรับการแจ้งเตือนบทเรียนผ่าน Telegram ทันที:",
+          telegramButtonText: "📲 เปิดใช้งานบัญชีใน Telegram ทันที"
         }
       },
       method: "fallback"
@@ -3512,6 +3525,8 @@ app.get("/api/settings-subscribers", async (req, res) => {
 
       const topicId = row[0] !== undefined && row[0] !== null ? row[0].toString().trim() : "1";
       const nameB = row[1] !== undefined && row[1] !== null ? row[1].toString().trim() : "";
+      const subStatusRaw = row[2] !== undefined && row[2] !== null ? row[2].toString().trim() : "";
+      const archiveTag = row[3] !== undefined && row[3] !== null ? row[3].toString().trim() : "";
       const nameZ = row[25] !== undefined && row[25] !== null ? row[25].toString().trim() : "";
       const regId = row[26] !== undefined && row[26] !== null ? row[26].toString().trim() : "";
       const status = row[27] !== undefined && row[27] !== null ? row[27].toString().trim() : "مسموح";
@@ -3522,6 +3537,19 @@ app.get("/api/settings-subscribers", async (req, res) => {
 
       const isAllowed = !(status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا");
 
+      let finalSubStatus = subStatusRaw;
+      if (!finalSubStatus) {
+        if (topicId === "2" || topicId === "متقدم") {
+          finalSubStatus = "متقدم";
+        } else if (!isAllowed) {
+          finalSubStatus = "قيد المراجعة";
+        } else {
+          finalSubStatus = "معتمد";
+        }
+      }
+
+      const isArchived = (finalSubStatus === "مؤرشف" || finalSubStatus === "أرشيف" || finalSubStatus.includes("مؤرشف") || Boolean(archiveTag));
+
       records.push({
         rowIndex: r + 1,
         name: finalName,
@@ -3530,6 +3558,9 @@ app.get("/api/settings-subscribers", async (req, res) => {
         status: status || "مسموح",
         isAllowed,
         deviceCount: devCount || "1",
+        subscriberStatus: finalSubStatus,
+        isArchived,
+        archiveTag,
         rawRow: row.map((c: any) => (c !== null && c !== undefined ? c.toString().trim() : ""))
       });
     }
@@ -3549,7 +3580,7 @@ app.get("/api/settings-subscribers", async (req, res) => {
 // POST /api/settings-subscribers/update - Update a subscriber in Settings sheet
 app.post("/api/settings-subscribers/update", async (req, res) => {
   try {
-    const { rowIndex, registrationId, name, topicId, status, deviceCount, resetRegisteredDevices, scriptUrl } = req.body;
+    const { rowIndex, registrationId, name, topicId, status, deviceCount, subscriberStatus, archiveTag, resetRegisteredDevices, scriptUrl } = req.body;
     const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
 
     if (!targetScriptUrl) {
@@ -3564,7 +3595,7 @@ app.post("/api/settings-subscribers/update", async (req, res) => {
 
     // 1. First Attempt: GET request
     try {
-      const payloadObj = { name, topicId, status, deviceCount, resetRegisteredDevices };
+      const payloadObj = { name, topicId, status, deviceCount, subscriberStatus, archiveTag, resetRegisteredDevices };
       const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=updateSettingsSubscriber&rowIndex=${encodeURIComponent(rowIndex || "")}&registrationId=${encodeURIComponent(registrationId || "")}&data=${encodeURIComponent(JSON.stringify(payloadObj))}`;
       const getRes = await fetch(getUrl, {
         headers: { "Accept": "application/json" },
@@ -3597,8 +3628,10 @@ app.post("/api/settings-subscribers/update", async (req, res) => {
           topicId,
           status,
           deviceCount,
+          subscriberStatus,
+          archiveTag,
           resetRegisteredDevices,
-          updatedData: { name, topicId, status, deviceCount, resetRegisteredDevices }
+          updatedData: { name, topicId, status, deviceCount, subscriberStatus, archiveTag, resetRegisteredDevices }
         });
 
         const response = await fetch(targetScriptUrl, {
@@ -3750,7 +3783,7 @@ app.post("/api/settings-subscribers/delete", async (req, res) => {
 // POST /api/settings-subscribers/add - Add a new subscriber to Settings sheet
 app.post("/api/settings-subscribers/add", async (req, res) => {
   try {
-    const { name, registrationId, topicId, status, deviceCount, scriptUrl } = req.body;
+    const { name, registrationId, topicId, status, deviceCount, subscriberStatus, scriptUrl } = req.body;
     const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
 
     if (!targetScriptUrl) {
@@ -3766,7 +3799,8 @@ app.post("/api/settings-subscribers/add", async (req, res) => {
       registrationId,
       topicId: topicId || "1",
       status: status || "مسموح",
-      deviceCount: deviceCount || "1"
+      deviceCount: deviceCount || "1",
+      subscriberStatus: subscriberStatus || "معتمد"
     });
 
     const response = await fetch(targetScriptUrl, {
@@ -3801,6 +3835,93 @@ app.post("/api/settings-subscribers/add", async (req, res) => {
     });
   } catch (error: any) {
     console.error("Add settings subscriber error:", error);
+    return res.status(500).json({ success: false, message: error.message });
+  }
+});
+
+// POST /api/settings-subscribers/archive - Archive completed course and sort by status colors
+app.post("/api/settings-subscribers/archive", async (req, res) => {
+  try {
+    const { archiveSheetName, scriptUrl } = req.body;
+    const targetScriptUrl = scriptUrl?.trim() || currentScriptUrl;
+
+    if (!targetScriptUrl) {
+      return res.status(400).json({
+        success: false,
+        message: "رابط Google Apps Script غير مضبوط لتنفيذ أرشفة الدورة"
+      });
+    }
+
+    let resultData: any = null;
+    let requestError: any = null;
+
+    // 1. Try GET request first
+    try {
+      const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=archiveCompletedCourse&archiveSheetName=${encodeURIComponent(archiveSheetName || "")}`;
+      const getRes = await fetch(getUrl, {
+        headers: { "Accept": "application/json" },
+        signal: AbortSignal.timeout(15000)
+      });
+      const getText = await getRes.text().catch(() => "");
+      try {
+        const parsed = JSON.parse(getText);
+        if (parsed && (parsed.success || parsed.archiveSheetName)) {
+          resultData = parsed;
+        }
+      } catch (pErr) {
+        if (getText.includes('"success":true') || getText.includes('"success": true')) {
+          resultData = { success: true, message: "تمت أرشفة الدورة بنجاح" };
+        }
+      }
+    } catch (gErr: any) {
+      requestError = gErr;
+    }
+
+    // 2. Fallback POST
+    if (!resultData || !resultData.success) {
+      try {
+        const payload = JSON.stringify({
+          action: "archiveCompletedCourse",
+          archiveSheetName
+        });
+        const postRes = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: payload,
+          redirect: "follow",
+          signal: AbortSignal.timeout(15000)
+        });
+        const postText = await postRes.text().catch(() => "");
+        try {
+          const parsed = JSON.parse(postText);
+          if (parsed && (parsed.success || parsed.archiveSheetName)) {
+            resultData = parsed;
+          }
+        } catch (pErr) {
+          if (postText.includes('"success":true') || postText.includes('"success": true')) {
+            resultData = { success: true, message: "تمت أرشفة الدورة بنجاح" };
+          }
+        }
+      } catch (pErr: any) {
+        requestError = pErr;
+      }
+    }
+
+    if (resultData && resultData.success) {
+      return res.json({
+        success: true,
+        message: resultData.message || "تمت أرشفة الدورة وترتيب المشتركين حسب الألوان بنجاح",
+        archiveSheetName: resultData.archiveSheetName,
+        archivedCount: resultData.archivedCount
+      });
+    }
+
+    return res.json({
+      success: false,
+      message: resultData?.message || resultData?.error || requestError?.message || "تعذر إكمال عملية الأرشفة في الشيت"
+    });
+  } catch (error: any) {
+    console.error("Archive settings subscribers error:", error);
     return res.status(500).json({ success: false, message: error.message });
   }
 });
@@ -3843,6 +3964,13 @@ app.post("/api/register", async (req, res) => {
 
     // Load active subscriber email config and merge with any provided client config
     const activeEmailConfig = loadSubscriberEmailConfig();
+    let clientAttachments = registrationData.emailConfig && registrationData.emailConfig.attachments;
+    if (Array.isArray(clientAttachments) && clientAttachments.length > 0) {
+      if (clientAttachments.some((a: any) => a && a.url && a.url.includes("unsplash"))) {
+        clientAttachments = null;
+      }
+    }
+
     const mergedEmailConfig = {
       ...activeEmailConfig,
       ...(registrationData.emailConfig || {}),
@@ -3850,7 +3978,16 @@ app.post("/api/register", async (req, res) => {
         ...(activeEmailConfig.messages || {}),
         ...((registrationData.emailConfig && registrationData.emailConfig.messages) || {})
       },
-      driveFolderId: currentDriveFolderId
+      dataFields: (registrationData.emailConfig && Array.isArray(registrationData.emailConfig.dataFields) && registrationData.emailConfig.dataFields.length > 0)
+        ? registrationData.emailConfig.dataFields
+        : (activeEmailConfig.dataFields || []),
+      attachments: (clientAttachments && clientAttachments.length > 0)
+        ? clientAttachments
+        : (activeEmailConfig.attachments || []),
+      driveFolderId: currentDriveFolderId,
+      qrDriveUrlColumn: "O",
+      deliveryStatusColumn: "P",
+      emailColumn: "G"
     };
 
     // Check and upload any pending base64 images to Google Drive before saving to sheet
@@ -4049,6 +4186,213 @@ app.post("/api/test-subscriber-email", async (req, res) => {
       success: false,
       error: error.message || "فشل إرسال البريد التجريبي"
     });
+  }
+});
+
+// SUBSCRIBER TOPICS API (SubscriberContent Sheet Management)
+const SUBSCRIBER_TOPICS_CACHE_FILE = path.join(process.cwd(), "data", "subscriber_topics_cache.json");
+
+function loadLocalSubscriberTopicsCache(): any[] {
+  try {
+    if (fs.existsSync(SUBSCRIBER_TOPICS_CACHE_FILE)) {
+      const content = fs.readFileSync(SUBSCRIBER_TOPICS_CACHE_FILE, "utf-8");
+      const parsed = JSON.parse(content);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {
+    console.warn("Failed to read subscriber_topics_cache.json:", e);
+  }
+  return [];
+}
+
+function saveLocalSubscriberTopicsCache(topics: any[]) {
+  try {
+    const dataDir = path.join(process.cwd(), "data");
+    if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(SUBSCRIBER_TOPICS_CACHE_FILE, JSON.stringify(topics, null, 2), "utf-8");
+  } catch (e) {
+    console.error("Failed to save subscriber_topics_cache.json:", e);
+  }
+}
+
+// GET /api/subscriber-topics and /api/subscriber-content
+app.get(["/api/subscriber-topics", "/api/subscriber-content"], async (req, res) => {
+  try {
+    const targetScriptUrl = (req.query.scriptUrl as string)?.trim() || currentScriptUrl;
+
+    // 1. Try Apps Script if configured
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        const gasUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getSubscriberTopics`;
+        const gasRes = await fetch(gasUrl, {
+          headers: { "Accept": "application/json" },
+          signal: AbortSignal.timeout(6000)
+        });
+        if (gasRes.ok) {
+          const data: any = await gasRes.json().catch(() => null);
+          if (data && data.success && Array.isArray(data.topics) && data.topics.length > 0) {
+            saveLocalSubscriberTopicsCache(data.topics);
+            return res.json({ success: true, topics: data.topics, source: "apps_script" });
+          }
+        }
+      } catch (gasErr: any) {
+        console.warn("GAS fetch subscriber topics error:", gasErr.message);
+      }
+    }
+
+    // 2. Fetch from SubscriberContent sheet via GViz
+    try {
+      const sheetRows = await getSheetValues("SubscriberContent")
+        .catch(() => getSheetValues("محتوى المشتركين"))
+        .catch(() => []);
+
+      if (sheetRows && sheetRows.length > 1) {
+        const parsedTopics: any[] = [];
+        for (let r = 1; r < sheetRows.length; r++) {
+          const row = sheetRows[r];
+          if (!row || row.every((c: any) => !c || c.toString().trim() === "")) continue;
+
+          const topicId = (row[0] || `${r}`).toString().trim();
+          if (!topicId) continue;
+
+          const title = (row[1] || "").toString().trim();
+          const description = (row[2] || "").toString().trim();
+          const coverImage = (row[3] || "").toString().trim();
+          const badge = (row[4] || "").toString().trim();
+
+          const cards: any[] = [];
+          for (let c = 5; c < Math.min(row.length, 45); c += 4) {
+            const cardTitle = (row[c] || "").toString().trim();
+            const cardDesc = (row[c + 1] || "").toString().trim();
+            const cardMediaRaw = (row[c + 2] || "").toString().trim();
+            const cardLink = (row[c + 3] || "").toString().trim();
+
+            if (cardTitle || cardDesc || cardMediaRaw || cardLink) {
+              cards.push({
+                title: cardTitle || `بطاقة ${cards.length + 1}`,
+                description: cardDesc,
+                media: cardMediaRaw ? cardMediaRaw.split(/[\n,;]+/).map((s: string) => s.trim()).filter(Boolean) : [],
+                linkUrl: cardLink
+              });
+            }
+          }
+
+          parsedTopics.push({
+            topicId,
+            rowIndex: r + 1,
+            title,
+            description,
+            coverImage,
+            badge,
+            cards
+          });
+        }
+
+        if (parsedTopics.length > 0) {
+          saveLocalSubscriberTopicsCache(parsedTopics);
+          return res.json({ success: true, topics: parsedTopics, source: "gviz" });
+        }
+      }
+    } catch (gvizErr: any) {
+      console.warn("GViz subscriber topics error:", gvizErr.message);
+    }
+
+    // 3. Fallback to cached topics
+    const cached = loadLocalSubscriberTopicsCache();
+    return res.json({ success: true, topics: cached, source: "cache" });
+  } catch (err: any) {
+    console.error("GET /api/subscriber-topics error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/subscriber-topics/save and /api/subscriber-content/save
+app.post(["/api/subscriber-topics/save", "/api/subscriber-content/save"], async (req, res) => {
+  try {
+    const rawTopic = req.body.topic || req.body;
+    const topic = {
+      ...rawTopic,
+      topicId: String(rawTopic.topicId || req.body.topicId || "1").trim()
+    };
+    if (!topic || !topic.topicId) {
+      return res.status(400).json({ success: false, message: "بيانات الصفحة أو رقم الموضوع مفقود" });
+    }
+
+    // Update local cache
+    const currentCached = loadLocalSubscriberTopicsCache();
+    const existingIdx = currentCached.findIndex((t: any) => String(t.topicId) === String(topic.topicId));
+    if (existingIdx >= 0) {
+      currentCached[existingIdx] = { ...currentCached[existingIdx], ...topic };
+    } else {
+      currentCached.push(topic);
+    }
+    saveLocalSubscriberTopicsCache(currentCached);
+
+    // Proxy to GAS if scriptUrl is present
+    const targetScriptUrl = (req.body.scriptUrl as string)?.trim() || currentScriptUrl;
+    let gasResult: any = null;
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        const gasResponse = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "saveSubscriberContent", ...topic })
+        });
+        gasResult = await gasResponse.json().catch(() => null);
+      } catch (gasErr: any) {
+        console.warn("Error forwarding saveSubscriberContent to GAS:", gasErr.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: "تم حفظ وتحديث محتوى المشتركين بنجاح",
+      topic,
+      gasResult
+    });
+  } catch (err: any) {
+    console.error("POST /api/subscriber-topics/save error:", err);
+    return res.status(500).json({ success: false, message: err.message });
+  }
+});
+
+// POST /api/subscriber-topics/delete and /api/subscriber-content/delete
+app.post(["/api/subscriber-topics/delete", "/api/subscriber-content/delete"], async (req, res) => {
+  try {
+    const topicId = String(req.body.topicId || req.body.id || "").trim();
+    if (!topicId) {
+      return res.status(400).json({ success: false, message: "رقم الموضوع مفقود" });
+    }
+
+    // Remove from local cache
+    const currentCached = loadLocalSubscriberTopicsCache();
+    const filtered = currentCached.filter((t: any) => String(t.topicId) !== String(topicId));
+    saveLocalSubscriberTopicsCache(filtered);
+
+    // Proxy to GAS if scriptUrl is present
+    const targetScriptUrl = (req.body.scriptUrl as string)?.trim() || currentScriptUrl;
+    let gasResult: any = null;
+    if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+      try {
+        const gasResponse = await fetch(targetScriptUrl, {
+          method: "POST",
+          headers: { "Content-Type": "text/plain;charset=utf-8" },
+          body: JSON.stringify({ action: "deleteSubscriberContent", topicId, rowIndex: req.body.rowIndex })
+        });
+        gasResult = await gasResponse.json().catch(() => null);
+      } catch (gasErr: any) {
+        console.warn("Error forwarding deleteSubscriberContent to GAS:", gasErr.message);
+      }
+    }
+
+    return res.json({
+      success: true,
+      message: `تم حذف موضوع المحتوى رقم ${topicId} بنجاح`,
+      gasResult
+    });
+  } catch (err: any) {
+    console.error("POST /api/subscriber-topics/delete error:", err);
+    return res.status(500).json({ success: false, message: err.message });
   }
 });
 

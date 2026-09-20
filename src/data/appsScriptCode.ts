@@ -83,6 +83,9 @@ function doGet(e) {
         topicId: e.parameter.topicId || subUpdateData.topicId || "1",
         status: e.parameter.status || subUpdateData.status || "مسموح",
         deviceCount: e.parameter.deviceCount || subUpdateData.deviceCount || "1",
+        subscriberStatus: e.parameter.subscriberStatus || subUpdateData.subscriberStatus || "",
+        archiveTag: e.parameter.archiveTag || subUpdateData.archiveTag || "",
+        resetRegisteredDevices: e.parameter.resetRegisteredDevices || subUpdateData.resetRegisteredDevices || false,
         updatedData: subUpdateData
       });
       return ContentService.createTextOutput(JSON.stringify(updateSubGetRes))
@@ -96,6 +99,15 @@ function doGet(e) {
         registrationId: e.parameter.registrationId || ""
       });
       return ContentService.createTextOutput(JSON.stringify(deleteSubGetRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // أرشفة وترتيب بيانات الدورة المنتهية عبر GET
+    if (action === "archiveCompletedCourse") {
+      var archiveGetRes = archiveCompletedCourseInSheet({
+        archiveSheetName: e.parameter.archiveSheetName || ""
+      });
+      return ContentService.createTextOutput(JSON.stringify(archiveGetRes))
         .setMimeType(ContentService.MimeType.JSON);
     }
     
@@ -116,6 +128,23 @@ function doGet(e) {
     if (action === "getSiteTranslations" || action === "getTranslations") {
       var transData = getSiteTranslationsSheetData();
       return ContentService.createTextOutput(JSON.stringify(transData))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // جلب محتوى المشتركين عبر GET
+    if (action === "getSubscriberContent" || action === "getAllSubscriberContent") {
+      var getContentData = getSubscriberContentSheetData();
+      return ContentService.createTextOutput(JSON.stringify(getContentData))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // حذف صفحة محتوى مشترك عبر GET
+    if (action === "deleteSubscriberContent") {
+      var delContentGetRes = deleteSubscriberContentFromSheet({
+        topicId: e.parameter.topicId || "",
+        rowIndex: e.parameter.rowIndex || ""
+      });
+      return ContentService.createTextOutput(JSON.stringify(delContentGetRes))
         .setMimeType(ContentService.MimeType.JSON);
     }
   }
@@ -273,6 +302,13 @@ function doPost(e) {
         .setMimeType(ContentService.MimeType.JSON);
     }
 
+    // ص) أرشفة وترتيب بيانات الدورة المنتهية
+    else if (action === "archiveCompletedCourse" || action === "archiveCourse") {
+      var archivePostRes = archiveCompletedCourseInSheet(postData);
+      return ContentService.createTextOutput(JSON.stringify(archivePostRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
     // ع) ترجمة النصوص الذكية باستخدام LanguageApp
     else if (action === "translateTexts" || action === "translate") {
       var transRes = translateTextsWithLanguageApp(postData);
@@ -291,6 +327,27 @@ function doPost(e) {
     else if (action === "getSiteTranslations" || action === "getTranslations") {
       var getTransRes = getSiteTranslationsSheetData();
       return ContentService.createTextOutput(JSON.stringify(getTransRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ق) جلب محتوى وصفحات المشتركين من ورقة SubscriberContent
+    else if (action === "getSubscriberContent" || action === "getAllSubscriberContent") {
+      var getSubContentRes = getSubscriberContentSheetData();
+      return ContentService.createTextOutput(JSON.stringify(getSubContentRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ر) حفظ أو تحديث صفحة محتوى مشترك في ورقة SubscriberContent
+    else if (action === "saveSubscriberContent" || action === "updateSubscriberContent" || action === "addSubscriberContent") {
+      var saveSubContentRes = saveSubscriberContentToSheet(postData);
+      return ContentService.createTextOutput(JSON.stringify(saveSubContentRes))
+        .setMimeType(ContentService.MimeType.JSON);
+    }
+
+    // ش) حذف صفحة محتوى مشترك من ورقة SubscriberContent
+    else if (action === "deleteSubscriberContent") {
+      var delSubContentRes = deleteSubscriberContentFromSheet(postData);
+      return ContentService.createTextOutput(JSON.stringify(delSubContentRes))
         .setMimeType(ContentService.MimeType.JSON);
     }
 
@@ -801,36 +858,58 @@ function submitRegistration(data) {
       sheet.getRange(lastRow, 2).setHorizontalAlignment("center").setFontWeight("bold");
     }
 
-    // 9. التأكد من وجود أعمدة الـ QR Code وحالة الإرسال وتنسيقها
+    // 9. التأكد من وجود أعمدة الـ QR Code وحالة الإرسال وتنسيقها بدقة تامة ومنع تكرار الأعمدة
     var qrColIdx = 0;
     var statusColIdx = 0;
+    var duplicateHeadersToClean = [];
 
-    // البحث في الأعمدة الحالية أولاً
+    // فحص كافة الأعمدة الحالية في الصف الأول
     for (var chk = 0; chk < currentHeaders.length; chk++) {
-      var headTxt = currentHeaders[chk] || "";
-      if (!qrColIdx && (isSameFieldCategory(headTxt, "QR Code") || isSameFieldCategory(headTxt, "باركود"))) {
-        qrColIdx = chk + 1;
+      var headTxt = (currentHeaders[chk] || "").toString().trim().toLowerCase();
+      if (!headTxt) continue;
+      var colNum = chk + 1;
+
+      var isQr = (headTxt.indexOf("qr") !== -1 || headTxt.indexOf("باركود") !== -1 || headTxt.indexOf("استجابة") !== -1 || headTxt.indexOf("استجابه") !== -1);
+      var isStatus = (headTxt.indexOf("ارسال") !== -1 || headTxt.indexOf("status") !== -1 || headTxt.indexOf("حالة") !== -1 || headTxt.indexOf("حاله") !== -1);
+
+      if (isQr) {
+        if (!qrColIdx) {
+          qrColIdx = colNum;
+        } else if (colNum > 16) {
+          duplicateHeadersToClean.push(colNum);
+        }
       }
-      if (!statusColIdx && (isSameFieldCategory(headTxt, "تأكيد الإرسال") || isSameFieldCategory(headTxt, "حالة الإرسال") || isSameFieldCategory(headTxt, "تم الإرسال"))) {
-        statusColIdx = chk + 1;
+      if (isStatus) {
+        if (!statusColIdx) {
+          statusColIdx = colNum;
+        } else if (colNum > 16) {
+          duplicateHeadersToClean.push(colNum);
+        }
       }
     }
 
-    // إذا لم تكن موجودة، استخدام التكوين المحدد أو الأعمدة الافتراضية
+    // إذا لم تكن موجودة، استخدام الأعمدة الافتراضية القياسية O (15) و P (16)
     if (!qrColIdx) {
-      var qrColLetter = (data.emailConfig && data.emailConfig.qrDriveUrlColumn) ? data.emailConfig.qrDriveUrlColumn : "";
-      qrColIdx = qrColLetter ? colLetterToNumber(qrColLetter) : 0;
+      var qrColLetter = (data.emailConfig && data.emailConfig.qrDriveUrlColumn) ? data.emailConfig.qrDriveUrlColumn : "O";
+      qrColIdx = colLetterToNumber(qrColLetter) || 15;
     }
     if (!statusColIdx) {
-      var statusColLetter = (data.emailConfig && data.emailConfig.deliveryStatusColumn) ? data.emailConfig.deliveryStatusColumn : "";
-      statusColIdx = statusColLetter ? colLetterToNumber(statusColLetter) : 0;
+      var statusColLetter = (data.emailConfig && data.emailConfig.deliveryStatusColumn) ? data.emailConfig.deliveryStatusColumn : "P";
+      statusColIdx = colLetterToNumber(statusColLetter) || 16;
+    }
+
+    // تنظيف أي ترويسات مكررة تم إنشاؤها بالخطأ في أعمدة متأخرة (مثل Y و Z)
+    for (var dc = 0; dc < duplicateHeadersToClean.length; dc++) {
+      try {
+        var dupColIdx = duplicateHeadersToClean[dc];
+        if (dupColIdx > 16 && sheet.getMaxColumns() >= dupColIdx) {
+          sheet.getRange(1, dupColIdx).clearContent();
+        }
+      } catch (cleanDupErr) {}
     }
 
     try {
-      if (qrColIdx > 0) {
-        if (sheet.getMaxColumns() < qrColIdx) {
-          sheet.insertColumnsAfter(sheet.getMaxColumns(), qrColIdx - sheet.getMaxColumns() + 1);
-        }
+      if (qrColIdx > 0 && sheet.getMaxColumns() >= qrColIdx) {
         if (sheet.getRange(1, qrColIdx).getValue() === "") {
           sheet.getRange(1, qrColIdx)
                .setValue("رابط صورة QR Code (Google Drive)")
@@ -840,10 +919,7 @@ function submitRegistration(data) {
                .setHorizontalAlignment("center");
         }
       }
-      if (statusColIdx > 0) {
-        if (sheet.getMaxColumns() < statusColIdx) {
-          sheet.insertColumnsAfter(sheet.getMaxColumns(), statusColIdx - sheet.getMaxColumns() + 1);
-        }
+      if (statusColIdx > 0 && sheet.getMaxColumns() >= statusColIdx) {
         if (sheet.getRange(1, statusColIdx).getValue() === "") {
           sheet.getRange(1, statusColIdx)
                .setValue("حالة إرسال الإيميل (Email Status)")
@@ -857,27 +933,26 @@ function submitRegistration(data) {
       Logger.log("Header setup note: " + headErr.message);
     }
 
-    // 10. المزامنة التلقائية لبيانات المشترك في ورقة Settings (B + Z:AA)
+    // 10. المزامنة التلقائية لبيانات المشترك في ورقة Settings (A + B + Z:AC)
     try {
       var settingsSheet = ss.getSheetByName("Settings");
       if (settingsSheet) {
         var sLastRow = settingsSheet.getLastRow();
         var targetSettingsRow = -1;
         
-        // البحث عن صف المشترك إذا كان مسجلاً مسبقاً في Z أو AA
-        if (sLastRow >= 2) {
-          var zColData = settingsSheet.getRange(2, 26, sLastRow - 1, 2).getValues(); // Z:AA
-          for (var sIdx = 0; sIdx < zColData.length; sIdx++) {
-            var zVal = (zColData[sIdx][0] || "").toString().trim();
-            var aaVal = (zColData[sIdx][1] || "").toString().trim();
-            if ((displayName && zVal === displayName) || (registrationId && aaVal === registrationId)) {
+        // البحث عن صف المشترك حصراً برقم التسجيل في AA (العمود 27)
+        if (registrationId && sLastRow >= 2) {
+          var aaColData = settingsSheet.getRange(2, 27, sLastRow - 1, 1).getValues(); // AA
+          for (var sIdx = 0; sIdx < aaColData.length; sIdx++) {
+            var aaVal = (aaColData[sIdx][0] || "").toString().trim();
+            if (aaVal === registrationId.toString().trim()) {
               targetSettingsRow = sIdx + 2;
               break;
             }
           }
         }
         
-        // إذا لم يكن موجوداً، ننشئ صفاً جديداً في ورقة Settings
+        // إذا لم يكن موجوداً برقم التسجيل، يُضاف صف جديد دائماً في نهاية ورقة Settings
         if (targetSettingsRow === -1) {
           targetSettingsRow = Math.max(sLastRow + 1, 2);
           if (settingsSheet.getMaxRows() < targetSettingsRow) {
@@ -904,6 +979,27 @@ function submitRegistration(data) {
         settingsSheet.getRange(targetSettingsRow, 26).setValue(displayName);
         // 3. رقم التسجيل في العامود AA (العمود 27)
         settingsSheet.getRange(targetSettingsRow, 27).setValue(registrationId);
+
+        // حالة المشترك في العامود C (العمود 3): قيد المراجعة افتراضياً للتسجيل الجديد بانتظار الاعتماد
+        var curSubStatus = (settingsSheet.getRange(targetSettingsRow, 3).getValue() || "").toString().trim();
+        if (!curSubStatus) {
+          curSubStatus = "قيد المراجعة";
+          settingsSheet.getRange(targetSettingsRow, 3).setValue(curSubStatus);
+        }
+        try {
+          var syncBg = "#ffffff";
+          var syncFg = "#0f172a";
+          if (curSubStatus.indexOf("معتمد") !== -1 || curSubStatus.indexOf("نشط") !== -1) {
+            syncBg = "#d1fae5"; syncFg = "#065f46";
+          } else if (curSubStatus.indexOf("متقدم") !== -1) {
+            syncBg = "#dbeafe"; syncFg = "#1e40af";
+          } else if (curSubStatus.indexOf("مراجعة") !== -1) {
+            syncBg = "#fef3c7"; syncFg = "#92400e";
+          } else if (curSubStatus.indexOf("مؤرشف") !== -1) {
+            syncBg = "#f1f5f9"; syncFg = "#475569";
+          }
+          settingsSheet.getRange(targetSettingsRow, 1, 1, 4).setBackground(syncBg).setFontColor(syncFg);
+        } catch(eColor) {}
 
         // إذا كان العمود AB (حالة الاشتراك) فارغاً، نتركه أو نضعه مسموح افتراضياً
         var curStatus = settingsSheet.getRange(targetSettingsRow, 28).getValue();
@@ -1100,17 +1196,23 @@ function testSubscriberEmailService(postData) {
 function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeaders, customEmailConfig) {
   try {
     var emailConfig = customEmailConfig;
-    if (!emailConfig || Object.keys(emailConfig).length === 0) {
+    if (!emailConfig || Object.keys(emailConfig).length === 0 || !emailConfig.attachments || emailConfig.attachments.length === 0) {
       try {
         var savedEmailStr = PropertiesService.getScriptProperties().getProperty("SUBSCRIBER_EMAIL_CONFIG");
         if (savedEmailStr) {
-          emailConfig = JSON.parse(savedEmailStr);
+          var parsedSaved = JSON.parse(savedEmailStr);
+          if (parsedSaved && typeof parsedSaved === "object") {
+            emailConfig = Object.assign({}, parsedSaved, emailConfig || {});
+            if (!emailConfig.attachments || emailConfig.attachments.length === 0) {
+              emailConfig.attachments = parsedSaved.attachments;
+            }
+          }
         }
       } catch (e) {}
     }
     if (!emailConfig) emailConfig = {};
 
-    var emailColLetter = emailConfig.emailColumn || "E";
+    var emailColLetter = emailConfig.emailColumn || "G";
     var emailColIdx = colLetterToNumber(emailColLetter);
     
     // استخراج البريد الإلكتروني بذكاء من كافة الاحتمالات الممكنة
@@ -1264,6 +1366,9 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
     if (!qrColIdxToSave && emailConfig && emailConfig.qrDriveUrlColumn) {
       qrColIdxToSave = colLetterToNumber(emailConfig.qrDriveUrlColumn);
     }
+    if (!qrColIdxToSave) {
+      qrColIdxToSave = 15; // O
+    }
     
     if (sheet && rowIdx && qrColIdxToSave > 0) {
       try {
@@ -1278,10 +1383,11 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
     }
 
     // بناء جدول البيانات المرسلة
-    var dataFields = emailConfig.dataFields || [
+    var dataFields = (emailConfig.dataFields && emailConfig.dataFields.length > 0) ? emailConfig.dataFields : [
       { label: "رقم التسجيل", labelEn: "Registration ID", labelTh: "หมายเลขลงทะเบียน", columnLetter: "B" },
       { label: "اسم المشترك", labelEn: "Subscriber Name", labelTh: "ชื่อผู้สมัคร", columnLetter: "C" },
       { label: "تاريخ ووقت التسجيل", labelEn: "Registration Date", labelTh: "วันเวลาที่ลงทะเบียน", columnLetter: "A" },
+      { label: "رقم الهاتف / الواتساب", labelEn: "Phone / WhatsApp", labelTh: "เบอร์โทรศัพท์ / WhatsApp", columnLetter: "F" },
       { label: "رابط الدخول لصفحة الاشتراك", labelEn: "Subscriber Portal Link", labelTh: "ลิงก์เข้าสู่ระบบ", columnLetter: "LOGIN_URL" }
     ];
 
@@ -1316,7 +1422,43 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
     }
 
     // بناء المرفقات والروابط والملفات المرفقة فعلياً بالإيميل
-    var attachments = emailConfig.attachments || [];
+    var defaultVerifiedAttachments = [
+      {
+        id: "1",
+        title: "دليل المشترك ومنهاج الدورات (PDF)",
+        titleEn: "Subscriber Guide & Curriculum (PDF)",
+        titleTh: "คู่มือสมาชิกและหลักสูตร (PDF)",
+        url: "https://drive.google.com/file/d/1vukeCKi_3QS3nIOXCAUS1_-Q3oHRZ2uT/view?usp=drive_link",
+        type: "file_button"
+      },
+      {
+        id: "2",
+        title: "شعار وبطاقة عضوية المؤسسة",
+        titleEn: "Institute Badge & Emblem",
+        titleTh: "ตราสัญลักษณ์บัตรสมาชิก",
+        url: "https://drive.google.com/file/d/1A-BriZ8TuL5Ua1lHyrmssB6WjtWX9O1z/view?usp=drive_link",
+        type: "image"
+      },
+      {
+        id: "1788877999615",
+        title: "مرفق جديد",
+        titleEn: "New Attachment",
+        titleTh: "เอกสารแนบใหม่",
+        url: "https://drive.google.com/file/d/1AWN0tKboI0bxICu-8awV-q8nxU7hSy8z/view?usp=drive_link",
+        type: "image"
+      }
+    ];
+
+    var rawAtts = (emailConfig.attachments && emailConfig.attachments.length > 0) ? emailConfig.attachments : defaultVerifiedAttachments;
+    var attachments = [];
+    for (var attk = 0; attk < rawAtts.length; attk++) {
+      if (rawAtts[attk] && rawAtts[attk].url && rawAtts[attk].url.indexOf("unsplash") === -1) {
+        attachments.push(rawAtts[attk]);
+      }
+    }
+    if (attachments.length === 0) {
+      attachments = defaultVerifiedAttachments;
+    }
     var attachmentsHtml = "";
     var emailFileBlobs = [];
     var inlineImagesMap = {};
@@ -1364,6 +1506,28 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
           }
         } catch(dErr) {
           Logger.log("Drive getFileById note: " + dErr.message);
+          try {
+            var dlUrl = "https://drive.google.com/uc?export=download&id=" + driveId;
+            var fetched = UrlFetchApp.fetch(dlUrl, { muteHttpExceptions: true });
+            if (fetched.getResponseCode() === 200) {
+              var fetchedBlob = fetched.getBlob();
+              var mime = (fetchedBlob.getContentType() || "").toLowerCase();
+              var ext = mime.indexOf("png") !== -1 ? ".png" : (mime.indexOf("pdf") !== -1 ? ".pdf" : (mime.indexOf("jpeg") !== -1 || mime.indexOf("jpg") !== -1 ? ".jpg" : ""));
+              var cleanName = attTitle;
+              if (ext && cleanName.indexOf(ext) === -1 && cleanName.indexOf(".") === -1) {
+                cleanName += ext;
+              }
+              fetchedBlob.setName(cleanName);
+              if (isImg && mime.indexOf("image") !== -1) {
+                imgBlob = fetchedBlob;
+              } else {
+                fileBlob = fetchedBlob;
+                isImg = false;
+              }
+            }
+          } catch(dlErr) {
+            Logger.log("UrlFetchApp drive download note: " + dlErr.message);
+          }
         }
       }
 
@@ -1494,6 +1658,37 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
               '</div>'
             ) : '') +
 
+            // مساحة أنيقة مخصصة لربط حساب تلغرام تحت جدول البيانات مباشرة مع باركود وزر تفاعلي
+            ((emailConfig.includeTelegramQrInEmail !== false) ? (
+              (function() {
+                var botTpl = emailConfig.telegramBotLink || "https://t.me/nuon2026_bot?start=student_XXXXXX";
+                var studentTelLink = botTpl.replace(/XXXXXX/g, registrationId).replace(/{id}/g, registrationId);
+                var telQrImgUrl = "https://quickchart.io/qr?text=" + encodeURIComponent(studentTelLink) + "&size=220&margin=1";
+                var telTitle = langTemplate.telegramSectionTitle || (userLang === "en" ? "Connect & Activate Telegram Bot 📲" : (userLang === "th" ? "เชื่อมต่อและเปิดใช้งานบอท Telegram 📲" : "ربط وتفعيل حسابك في بوت تلغرام 📲"));
+                var telDesc = langTemplate.telegramSectionDesc || (userLang === "en" ? "Scan the QR code below with your mobile camera or tap the direct button to link your account and receive real-time course updates via Telegram:" : (userLang === "th" ? "สแกนรหัส QR ด้านล่างด้วยกล้องโทรศัพท์ของคุณ หรือคลิกปุ่มด้านล่างเพื่อเปิดใช้งานบัญชีและรับการแจ้งเตือนบทเรียนผ่าน Telegram ทันที:" : "امسح رمز QR التالي بكاميرا هاتفك أو اضغط على الزر أدناه لتفعيل حسابك ومتابعة دوراتك واستلام الإشعارات المباشرة عبر تلغرام فوراً:"));
+                var telBtn = langTemplate.telegramButtonText || (userLang === "en" ? "📲 Activate Account on Telegram" : (userLang === "th" ? "📲 เปิดใช้งานบัญชีใน Telegram ทันที" : "📲 تفعيل الحساب في تلغرام مباشرة"));
+
+                return '<div style="background:linear-gradient(145deg, #091e36 0%, #0f172a 100%);border:1px solid #0284c7;border-radius:14px;padding:22px 18px;text-align:center;margin-bottom:28px;box-shadow:0 6px 20px rgba(2,132,199,0.18);">' +
+                  '<div style="color:#38bdf8;font-size:16px;font-weight:bold;margin-bottom:8px;">' +
+                    telTitle +
+                  '</div>' +
+                  '<p style="color:#94a3b8;font-size:13px;line-height:1.6;margin:0 0 16px 0;max-width:480px;display:inline-block;">' +
+                    telDesc +
+                  '</p>' +
+                  '<div>' +
+                    '<div style="background:#ffffff;padding:12px;display:inline-block;border-radius:12px;box-shadow:0 4px 14px rgba(0,0,0,0.3);margin-bottom:16px;">' +
+                      '<img src="' + telQrImgUrl + '" alt="Telegram Activation QR" width="160" height="160" style="display:block;" />' +
+                    '</div>' +
+                  '</div>' +
+                  '<div>' +
+                    '<a href="' + studentTelLink + '" target="_blank" style="display:inline-block;background:#0284c7;color:#ffffff;text-decoration:none;font-size:14px;font-weight:bold;padding:12px 28px;border-radius:10px;box-shadow:0 4px 12px rgba(2,132,199,0.4);letter-spacing:0.3px;">' +
+                      telBtn +
+                    '</a>' +
+                  '</div>' +
+                '</div>';
+              })()
+            ) : '') +
+
             ((emailConfig.includeQrInEmail !== false) ? (
               '<div style="background:#1e293b;border:1px solid #475569;border-radius:14px;padding:20px;text-align:center;margin-bottom:28px;">' +
                 '<div style="color:#f59e0b;font-size:14px;font-weight:bold;margin-bottom:8px;">' +
@@ -1559,6 +1754,9 @@ function sendCustomSubscriberEmail(sheet, rowIdx, data, rowValues, currentHeader
     }
     if (!statusColIdxToSave && emailConfig && emailConfig.deliveryStatusColumn) {
       statusColIdxToSave = colLetterToNumber(emailConfig.deliveryStatusColumn);
+    }
+    if (!statusColIdxToSave) {
+      statusColIdxToSave = 16; // P
     }
     
     if (sheet && rowIdx && statusColIdxToSave > 0) {
@@ -1779,9 +1977,11 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
 
       var uMatch = (normZ && (normZ === targetNormUser || normZ.indexOf(targetNormUser) !== -1 || targetNormUser.indexOf(normZ) !== -1)) ||
                    (normB && (normB === targetNormUser || normB.indexOf(targetNormUser) !== -1 || targetNormUser.indexOf(normB) !== -1)) ||
+                   (normAA && (normAA === targetNormUser || targetNormUser.indexOf(normAA) !== -1 || normAA.indexOf(targetNormUser) !== -1)) ||
                    (targetNormPass && (normZ === targetNormPass || normB === targetNormPass));
 
       var pMatch = (normAA && (normAA === targetNormPass || normAA.indexOf(targetNormPass) !== -1 || targetNormPass.indexOf(normAA) !== -1)) ||
+                   (normAA && (normAA === targetNormUser || targetNormUser.indexOf(normAA) !== -1)) ||
                    (sheetPass && password && sheetPass === password.toString().trim()) ||
                    (!normAA && !targetNormPass);
 
@@ -1793,7 +1993,7 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
     }
     
     if (userRow === -1) {
-      return { success: false, message: 'اسم المشترك غير موجود، يرجى التأكد من التسجيل' };
+      return { success: false, message: 'اسم المشترك أو رقم القيد غير موجود، يرجى التأكد من التسجيل' };
     }
     
     var userData = usersData[userRowIdx];
@@ -1821,6 +2021,9 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
     // ج) التحقق من الجهاز وتسجيل بصمة وموقع الجهاز في الأعمدة AD:AW
     // AD=30(29), AE=31(30), AF=32(31), AG=33(32), AH=34(33), AI=35(34)...
     var currentDeviceId = (deviceId || "").toString().trim();
+    if (!currentDeviceId) {
+      currentDeviceId = "DEV-" + Utilities.formatDate(new Date(), "GMT+3", "yyyyMMddHHmmss") + "-" + Math.floor(Math.random() * 10000);
+    }
     var currentLocText = locationName || "";
     if (!currentLocText && lat && lng) {
       currentLocText = "إحداثيات: " + lat + ", " + lng;
@@ -1913,7 +2116,12 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
             isKnownDevice = true;
             // تحديث وقت آخر دخول وموقع الجهاز المعروف في خانته
             try {
+              var maxCols = settingsSheet.getMaxColumns();
+              if (maxCols < locColIdx + 1) {
+                settingsSheet.insertColumnsAfter(maxCols, (locColIdx + 1) - maxCols);
+              }
               settingsSheet.getRange(userRow, locColIdx + 1).setValue(currentLocText + " (" + Utilities.formatDate(new Date(), "GMT+3", "dd/MM HH:mm") + ")");
+              SpreadsheetApp.flush();
             } catch(e) {}
             break;
           }
@@ -1934,12 +2142,26 @@ function loginUser(username, password, deviceId, lat, lng, locationName, deviceI
           };
         }
 
-        // تسجيل الجهاز الجديد في أول خانة فارغة
+        // تسجيل الجهاز الجديد في أول خانة فارغة مع التأكد من وجود الأعمدة
         if (firstEmptyDeviceSlotIndex !== -1) {
           var targetLocCol = 30 + (firstEmptyDeviceSlotIndex * 2); // 1-based sheet column (AD=30, AF=32)
           var targetDevCol = 31 + (firstEmptyDeviceSlotIndex * 2); // 1-based sheet column (AE=31, AG=33)
 
           try {
+            var currentMaxCols = settingsSheet.getMaxColumns();
+            if (currentMaxCols < targetDevCol) {
+              settingsSheet.insertColumnsAfter(currentMaxCols, targetDevCol - currentMaxCols);
+            }
+            // إدراج رؤوس الأعمدة إذا كانت فارغة في الصف الأول
+            try {
+              var locHeader = settingsSheet.getRange(1, targetLocCol).getValue();
+              if (!locHeader) {
+                var slotNum = firstEmptyDeviceSlotIndex + 1;
+                settingsSheet.getRange(1, targetLocCol).setValue("موقع الجهاز " + slotNum);
+                settingsSheet.getRange(1, targetDevCol).setValue("معرف الجهاز " + slotNum);
+              }
+            } catch (hErr) {}
+
             settingsSheet.getRange(userRow, targetLocCol).setValue(currentLocText);
             // نسجل المعرف الكامل مع وصف الجهاز لسهولة المطابقة الموثوقة 100% في المرات القادمة
             settingsSheet.getRange(userRow, targetDevCol).setValue(currentDevText + " [ID:" + cleanCurDevId + "]");
@@ -2776,15 +2998,31 @@ function getSettingsSubscribersData() {
       // Check if row has any subscriber data
       var topicId = (r[0] !== null && r[0] !== undefined) ? r[0].toString().trim() : "1"; // Col A
       var nameB = (r[1] !== null && r[1] !== undefined) ? r[1].toString().trim() : "";    // Col B
+      var subStatusRaw = (r[2] !== null && r[2] !== undefined) ? r[2].toString().trim() : ""; // Col C: حالة المشترك
+      var archiveTag = (r[3] !== null && r[3] !== undefined) ? r[3].toString().trim() : ""; // Col D: وسام الأرشيف
       var nameZ = (r[25] !== null && r[25] !== undefined) ? r[25].toString().trim() : "";  // Col Z
       var regId = (r[26] !== null && r[26] !== undefined) ? r[26].toString().trim() : "";  // Col AA
-      var status = (r[27] !== null && r[27] !== undefined) ? r[27].toString().trim() : "مسموح"; // Col AB
+      var status = (r[27] !== null && r[27] !== undefined) ? r[27].toString().trim() : "مسموح"; // Col AB: مسموح/ممنوع للدخول
       var deviceCount = (r[28] !== null && r[28] !== undefined) ? r[28].toString().trim() : "1"; // Col AC
 
       var finalName = nameZ || nameB;
       if (!finalName && !regId && !topicId) continue;
 
       var isAllowed = !(status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا");
+
+      // تحديد وتصنيف حالة المشترك بدقة (معتمد / متقدم / قيد المراجعة / مؤرشف)
+      var finalSubStatus = subStatusRaw;
+      if (!finalSubStatus) {
+        if (topicId === "2" || topicId === "متقدم") {
+          finalSubStatus = "متقدم";
+        } else if (status === "ممنوع" || status === "معطل" || status === "محظور") {
+          finalSubStatus = "قيد المراجعة";
+        } else {
+          finalSubStatus = "معتمد";
+        }
+      }
+
+      var isArchived = (finalSubStatus === "مؤرشف" || finalSubStatus === "أرشيف" || finalSubStatus.indexOf("مؤرشف") !== -1 || Boolean(archiveTag));
 
       records.push({
         rowIndex: i + 2,
@@ -2794,6 +3032,9 @@ function getSettingsSubscribersData() {
         status: status || "مسموح",
         isAllowed: isAllowed,
         deviceCount: deviceCount || "1",
+        subscriberStatus: finalSubStatus,
+        isArchived: isArchived,
+        archiveTag: archiveTag,
         rawRow: r.map(function(c) { return c !== null && c !== undefined ? c.toString().trim() : ""; })
       });
     }
@@ -2809,7 +3050,7 @@ function getSettingsSubscribersData() {
   }
 }
 
-// 15. دالة تعديل بيانات المشترك في ورقة Settings
+// 15. دالة تعديل بيانات المشترك في ورقة Settings وتطبيق الألوان التلقائية
 function updateSettingsSubscriberInSheet(postData) {
   try {
     var ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -2857,19 +3098,30 @@ function updateSettingsSubscriberInSheet(postData) {
       if (cleanName) rowVals[1] = cleanName;  // Col B
     }
 
-    // 3. العامود AA: رقم التسجيل
+    // 3. العامود C: حالة المشترك (معتمد / متقدم / قيد المراجعة / مؤرشف)
+    if (updated.subscriberStatus !== undefined && updated.subscriberStatus !== null) {
+      var cleanSubStatus = updated.subscriberStatus.toString().trim() || "معتمد";
+      rowVals[2] = cleanSubStatus; // Col C
+    }
+
+    // 4. العامود D: وسام الأرشيف
+    if (updated.archiveTag !== undefined && updated.archiveTag !== null) {
+      rowVals[3] = updated.archiveTag.toString().trim(); // Col D
+    }
+
+    // 5. العامود AA: رقم التسجيل
     if (updated.registrationId !== undefined && updated.registrationId !== null) {
       var cleanRegId = updated.registrationId.toString().trim();
       rowVals[26] = cleanRegId; // Col AA
     }
 
-    // 4. العامود AB: مسموح / ممنوع للدخول
+    // 6. العامود AB: مسموح / ممنوع للدخول
     if (updated.status !== undefined && updated.status !== null) {
       var cleanStatus = updated.status.toString().trim() || "مسموح";
       rowVals[27] = cleanStatus; // Col AB
     }
 
-    // 5. العامود AC: عدد الأجهزة
+    // 7. العامود AC: عدد الأجهزة
     if (updated.deviceCount !== undefined && updated.deviceCount !== null) {
       var cleanDevCount = updated.deviceCount.toString().trim() || "1";
       rowVals[28] = cleanDevCount; // Col AC
@@ -2883,11 +3135,33 @@ function updateSettingsSubscriberInSheet(postData) {
     }
 
     sheet.getRange(targetRowIndex, 1, 1, lastCol).setValues([rowVals]);
+
+    // تلوين الصف في الشيت تلقائياً حسب لون حالته (🟢 معتمد، 🔵 متقدم، 🟡 قيد المراجعة، ⚪ مؤرشف)
+    try {
+      var statusColor = (rowVals[2] || "").toString().trim();
+      var cBg = "#ffffff";
+      var cFg = "#0f172a";
+      if (statusColor.indexOf("معتمد") !== -1) {
+        cBg = "#d1fae5"; // أخضر فاتح
+        cFg = "#065f46";
+      } else if (statusColor.indexOf("متقدم") !== -1) {
+        cBg = "#dbeafe"; // أزرق فاتح
+        cFg = "#1e40af";
+      } else if (statusColor.indexOf("مراجعة") !== -1) {
+        cBg = "#fef3c7"; // أصفر فاتح
+        cFg = "#92400e";
+      } else if (statusColor.indexOf("مؤرشف") !== -1 || statusColor.indexOf("أرشيف") !== -1) {
+        cBg = "#f1f5f9"; // رمادي فاتح
+        cFg = "#475569";
+      }
+      sheet.getRange(targetRowIndex, 1, 1, 4).setBackground(cBg).setFontColor(cFg);
+    } catch(colorErr) {}
+
     SpreadsheetApp.flush();
 
     return {
       success: true,
-      message: "تم تحديث بيانات المشترك بنجاح في ورقة Settings",
+      message: "تم تحديث بيانات المشترك بنجاح في ورقة Settings وتطبيق التلوين",
       rowIndex: targetRowIndex
     };
   } catch (err) {
@@ -2958,25 +3232,293 @@ function addSettingsSubscriberToSheet(postData) {
     var newRegId = postData.registrationId ? postData.registrationId.toString().trim() : "";
     var newStatus = postData.status ? postData.status.toString().trim() : "مسموح";
     var newDevCount = postData.deviceCount ? postData.deviceCount.toString().trim() : "1";
+    var newSubStatus = postData.subscriberStatus ? postData.subscriberStatus.toString().trim() : "معتمد";
 
     var newRow = new Array(30).fill("");
-    newRow[0] = newTopicId || "1";      // Col A
-    newRow[1] = newName;               // Col B
-    newRow[25] = newName;              // Col Z
-    newRow[26] = newRegId;             // Col AA
-    newRow[27] = newStatus || "مسموح"; // Col AB
-    newRow[28] = newDevCount || "1";   // Col AC
+    newRow[0] = newTopicId || "1";          // Col A
+    newRow[1] = newName;                   // Col B
+    newRow[2] = newSubStatus || "معتمد";    // Col C
+    newRow[25] = newName;                  // Col Z
+    newRow[26] = newRegId;                 // Col AA
+    newRow[27] = newStatus || "مسموح";     // Col AB
+    newRow[28] = newDevCount || "1";       // Col AC
 
     sheet.appendRow(newRow);
+    var addedRow = sheet.getLastRow();
+
+    // تطبيق لون الحالة
+    try {
+      var cBg = "#d1fae5";
+      var cFg = "#065f46";
+      if (newSubStatus.indexOf("متقدم") !== -1) { cBg = "#dbeafe"; cFg = "#1e40af"; }
+      else if (newSubStatus.indexOf("مراجعة") !== -1) { cBg = "#fef3c7"; cFg = "#92400e"; }
+      else if (newSubStatus.indexOf("مؤرشف") !== -1) { cBg = "#f1f5f9"; cFg = "#475569"; }
+      sheet.getRange(addedRow, 1, 1, 4).setBackground(cBg).setFontColor(cFg);
+    } catch(cErr) {}
+
     SpreadsheetApp.flush();
 
     return {
       success: true,
       message: "تمت إضافة المشترك بنجاح إلى ورقة Settings",
-      rowIndex: sheet.getLastRow()
+      rowIndex: addedRow
     };
   } catch (err) {
     Logger.log("addSettingsSubscriberToSheet error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// 18. دالة أرشفة وترتيب بيانات الدورة المنتهية (Soft Archiving من ورقة RegistrationAnswers بكامل البيانات)
+function archiveCompletedCourseInSheet(postData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var settingsSheet = ss.getSheetByName('Settings') || ss.getSheetByName('الإعدادات') || ss.getSheetByName('اعدادات');
+    if (!settingsSheet) {
+      return { success: false, message: "ورقة Settings غير موجودة" };
+    }
+
+    var answersSheet = ss.getSheetByName('RegistrationAnswers') || ss.getSheetByName('اجابات التسجيل') || ss.getSheetByName('إجابات التسجيل') || ss.getSheetByName('Answers');
+
+    var sLastRow = settingsSheet.getLastRow();
+    var sLastCol = Math.max(settingsSheet.getLastColumn(), 30);
+    if (sLastRow < 2) {
+      return { success: false, message: "لا توجد سجلات للأرشفة في ورقة Settings" };
+    }
+
+    var now = new Date();
+    var y = now.getFullYear();
+    var m = String(now.getMonth() + 1).padStart(2, '0');
+    var d = String(now.getDate()).padStart(2, '0');
+    var defaultName = "أرشيف_" + y + "_" + m + "_" + d;
+    var archiveSheetName = (postData.archiveSheetName || defaultName).toString().trim();
+
+    // إنشاء ورقة الأرشيف إن لم تكن موجودة
+    var archiveSheet = ss.getSheetByName(archiveSheetName);
+    if (!archiveSheet) {
+      archiveSheet = ss.insertSheet(archiveSheetName);
+    }
+
+    // 1. قراءة خريطة الطلاب من ورقة Settings لتحديد الحالات والصفوف المستهدفة
+    var allSettingsRows = settingsSheet.getRange(2, 1, sLastRow - 1, sLastCol).getValues();
+    var activeSubscribersMap = {}; // key: regId or name
+    var targetSettingsRowIndices = [];
+
+    for (var i = 0; i < allSettingsRows.length; i++) {
+      var r = allSettingsRows[i];
+      var name = (r[25] || r[1] || "").toString().trim();
+      var regId = (r[26] || "").toString().trim();
+      var curStatus = (r[2] || "").toString().trim();
+      if (!name && !regId) continue;
+
+      // تخطي الطلاب المؤرشفين مسبقاً منعاً لتكرار الأرشفة
+      if (curStatus === "مؤرشف" || curStatus === "أرشيف" || (r[3] && r[3].toString().trim().length > 0)) {
+        continue;
+      }
+
+      if (!curStatus) {
+        curStatus = (r[0] == "2") ? "متقدم" : "معتمد";
+      }
+
+      var subInfo = {
+        name: name,
+        regId: regId,
+        status: curStatus,
+        topicId: (r[0] || "1").toString().trim(),
+        settingsRowIdx: i + 2,
+        settingsRowData: r
+      };
+
+      if (regId) activeSubscribersMap[regId] = subInfo;
+      if (name) activeSubscribersMap[name] = subInfo;
+      targetSettingsRowIndices.push(i + 2);
+    }
+
+    if (targetSettingsRowIndices.length === 0) {
+      return { 
+        success: true, 
+        message: "جميع المشتركين مؤرشفون بالفعل أو لا توجد سجلات نشطة جديدة للأرشفة.",
+        archivedCount: 0,
+        archiveSheetName: archiveSheetName
+      };
+    }
+
+    // الفرز المنطقي حسب الألوان:
+    // 1. 🟢 معتمد / نشط
+    // 2. 🔵 متقدم
+    // 3. 🟡 قيد المراجعة
+    // 4. أخرين
+    var getStatusPriority = function(st) {
+      if (!st) return 4;
+      if (st.indexOf("معتمد") !== -1 || st.indexOf("نشط") !== -1) return 1;
+      if (st.indexOf("متقدم") !== -1) return 2;
+      if (st.indexOf("مراجعة") !== -1) return 3;
+      return 4;
+    };
+
+    var rowsToArchive = [];
+
+    // 2. محاولة جلب السجلات الكاملة من ورقة RegistrationAnswers
+    if (answersSheet && answersSheet.getLastRow() >= 2) {
+      var ansLastRow = answersSheet.getLastRow();
+      var ansLastCol = answersSheet.getLastColumn();
+      var ansHeaders = answersSheet.getRange(1, 1, 1, ansLastCol).getValues()[0];
+
+      // البحث عن عامود رقم التسجيل والاسم في ورقة الإجابات
+      var regIdColIdx = -1;
+      var nameColIdx = -1;
+      for (var h = 0; h < ansHeaders.length; h++) {
+        var hStr = (ansHeaders[h] || "").toString().trim().toLowerCase();
+        if (hStr.indexOf("رقم التسجيل") !== -1 || hStr.indexOf("registrationid") !== -1) {
+          regIdColIdx = h;
+        }
+        if (nameColIdx === -1 && (hStr === "الاسم" || hStr === "اسم المشترك" || hStr.indexOf("الاسم كامل") !== -1 || hStr === "name")) {
+          nameColIdx = h;
+        }
+      }
+
+      var ansData = answersSheet.getRange(2, 1, ansLastRow - 1, ansLastCol).getValues();
+      var matchedSubKeys = {};
+
+      for (var a = 0; a < ansData.length; a++) {
+        var aRow = ansData[a];
+        var aRegId = (regIdColIdx !== -1 && aRow[regIdColIdx]) ? aRow[regIdColIdx].toString().trim() : "";
+        var aName = (nameColIdx !== -1 && aRow[nameColIdx]) ? aRow[nameColIdx].toString().trim() : "";
+
+        var matchInfo = (aRegId && activeSubscribersMap[aRegId]) ? activeSubscribersMap[aRegId] : ((aName && activeSubscribersMap[aName]) ? activeSubscribersMap[aName] : null);
+
+        if (matchInfo) {
+          var matchedKey = matchInfo.regId || matchInfo.name;
+          matchedSubKeys[matchedKey] = true;
+
+          // تجهيز الصف مع إضافة عامود الحالة وعامود الأرشيف
+          var extendedRow = [matchInfo.status, archiveSheetName].concat(aRow);
+          rowsToArchive.push({
+            row: extendedRow,
+            status: matchInfo.status,
+            name: matchInfo.name,
+            regId: matchInfo.regId
+          });
+        }
+      }
+
+      // إضافة أي مشترك نشط لم يوجد له صف في RegistrationAnswers (سجل يدوياً في Settings)
+      for (var k = 0; k < allSettingsRows.length; k++) {
+        var sR = allSettingsRows[k];
+        var sName = (sR[25] || sR[1] || "").toString().trim();
+        var sRegId = (sR[26] || "").toString().trim();
+        var sSubKey = sRegId || sName;
+        if (sSubKey && activeSubscribersMap[sSubKey] && !matchedSubKeys[sSubKey]) {
+          var fallbackInfo = activeSubscribersMap[sSubKey];
+          var paddedRow = new Array(ansLastCol);
+          for (var p = 0; p < ansLastCol; p++) paddedRow[p] = "";
+          if (regIdColIdx !== -1) paddedRow[regIdColIdx] = fallbackInfo.regId;
+          if (nameColIdx !== -1) paddedRow[nameColIdx] = fallbackInfo.name;
+
+          var fallbackExtRow = [fallbackInfo.status, archiveSheetName].concat(paddedRow);
+          rowsToArchive.push({
+            row: fallbackExtRow,
+            status: fallbackInfo.status,
+            name: fallbackInfo.name,
+            regId: fallbackInfo.regId
+          });
+        }
+      }
+
+      // إعداد ترويسة ورقة الأرشيف (حالة المشترك + وسام الأرشيف + كامل حقول RegistrationAnswers)
+      var newArchiveHeaders = ["حالة المشترك (Status)", "وسام الأرشيف (Archive Tag)"].concat(ansHeaders);
+      archiveSheet.getRange(1, 1, 1, newArchiveHeaders.length).setValues([newArchiveHeaders])
+        .setFontWeight("bold").setBackground("#e2e8f0").setFontColor("#1e293b");
+
+    } else {
+      // إذا لم تكن ورقة RegistrationAnswers موجودة، نستخدم كامل بيانات ورقة Settings
+      var headerVals = settingsSheet.getRange(1, 1, 1, sLastCol).getValues()[0];
+      headerVals[0] = "رقم الصفحة (A)";
+      headerVals[1] = "اسم المشترك (B)";
+      headerVals[2] = "حالة المشترك (C)";
+      headerVals[3] = "وسام الأرشيف (D)";
+      archiveSheet.getRange(1, 1, 1, sLastCol).setValues([headerVals])
+        .setFontWeight("bold").setBackground("#e2e8f0").setFontColor("#1e293b");
+
+      for (var s = 0; s < allSettingsRows.length; s++) {
+        var rowItem = allSettingsRows[s];
+        var sSubName = (rowItem[25] || rowItem[1] || "").toString().trim();
+        var sSubRegId = (rowItem[26] || "").toString().trim();
+        var key = sSubRegId || sSubName;
+        if (key && activeSubscribersMap[key]) {
+          var itemInfo = activeSubscribersMap[key];
+          rowItem[2] = itemInfo.status;
+          rowItem[3] = archiveSheetName;
+          rowsToArchive.push({
+            row: rowItem,
+            status: itemInfo.status,
+            name: itemInfo.name,
+            regId: itemInfo.regId
+          });
+        }
+      }
+    }
+
+    if (rowsToArchive.length === 0) {
+      return { 
+        success: true, 
+        message: "لم يتم العثور على سجلات مطابقة للأرشفة.",
+        archivedCount: 0,
+        archiveSheetName: archiveSheetName
+      };
+    }
+
+    // فرز المشتركين حسب الحالات والألوان:
+    // 🟢 معتمد / نشط أولاً، ثم 🔵 متقدم، ثم 🟡 قيد المراجعة، ثم غيرهم
+    rowsToArchive.sort(function(a, b) {
+      return getStatusPriority(a.status) - getStatusPriority(b.status);
+    });
+
+    // نسخ البيانات المفروزة إلى ورقة الأرشيف
+    var sortedRowsData = rowsToArchive.map(function(item) { return item.row; });
+    var startRow = archiveSheet.getLastRow() + 1;
+    var totalCols = sortedRowsData[0].length;
+    archiveSheet.getRange(startRow, 1, sortedRowsData.length, totalCols).setValues(sortedRowsData);
+
+    // تلوين الأسطر في شيت الأرشيف بدقة حسب الحالة
+    for (var a = 0; a < rowsToArchive.length; a++) {
+      var item = rowsToArchive[a];
+      var cBg = "#ffffff";
+      var cFg = "#0f172a";
+      if (item.status.indexOf("معتمد") !== -1 || item.status.indexOf("نشط") !== -1) {
+        cBg = "#d1fae5"; // أخضر
+        cFg = "#065f46";
+      } else if (item.status.indexOf("متقدم") !== -1) {
+        cBg = "#dbeafe"; // أزرق
+        cFg = "#1e40af";
+      } else if (item.status.indexOf("مراجعة") !== -1) {
+        cBg = "#fef3c7"; // أصفر
+        cFg = "#92400e";
+      } else {
+        cBg = "#f1f5f9"; // رمادي
+        cFg = "#475569";
+      }
+      archiveSheet.getRange(startRow + a, 1, 1, Math.min(totalCols, 6)).setBackground(cBg).setFontColor(cFg);
+    }
+
+    // تحديث ورقة Settings الأصلية: وسم السجلات المؤرشفة بـ «⚪ مؤرشف» وتلوينها بالرمادي
+    for (var k = 0; k < targetSettingsRowIndices.length; k++) {
+      var rIdx = targetSettingsRowIndices[k];
+      settingsSheet.getRange(rIdx, 3).setValue("مؤرشف"); // Col C
+      settingsSheet.getRange(rIdx, 4).setValue(archiveSheetName); // Col D
+      settingsSheet.getRange(rIdx, 1, 1, 4).setBackground("#f1f5f9").setFontColor("#475569");
+    }
+
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: "تم بنجاح إنشاء شيت الأرشيف [" + archiveSheetName + "] وجلب ونقل " + rowsToArchive.length + " مشترك بكامل بياناتهم من ورقة RegistrationAnswers وترتيبهم وتلوينهم حسب الحالات، وحفظهم في النظام!",
+      archiveSheetName: archiveSheetName,
+      archivedCount: rowsToArchive.length
+    };
+  } catch(err) {
+    Logger.log("archiveCompletedCourseInSheet error: " + err.message);
     return { success: false, error: err.message };
   }
 }
@@ -3110,6 +3652,242 @@ function saveSiteTranslationsToSheet(payload) {
     };
   } catch (err) {
     Logger.log("saveSiteTranslationsToSheet error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// 18. دالة جلب محتوى وصفحات المشتركين من ورقة SubscriberContent
+function getSubscriberContentSheetData() {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetName = "SubscriberContent";
+    var sheet = ss.getSheetByName(sheetName) || ss.getSheetByName("محتوى المشتركين") || ss.getSheetByName("المحتوى");
+    if (!sheet) {
+      return { success: true, records: [], total: 0, message: "ورقة SubscriberContent غير موجودة بعد" };
+    }
+
+    var lastRow = sheet.getLastRow();
+    var lastCol = Math.max(sheet.getLastColumn(), 45);
+    if (lastRow < 2) {
+      return { success: true, records: [], total: 0, message: "لا توجد صفحات في ورقة SubscriberContent" };
+    }
+
+    var rows = sheet.getRange(2, 1, lastRow - 1, lastCol).getValues();
+    var records = [];
+
+    for (var i = 0; i < rows.length; i++) {
+      var r = rows[i];
+      var topicId = (r[0] !== null && r[0] !== undefined) ? r[0].toString().trim() : (i + 1).toString();
+      var title = (r[1] !== null && r[1] !== undefined) ? r[1].toString().trim() : "";
+      var description = (r[2] !== null && r[2] !== undefined) ? r[2].toString().trim() : "";
+      var coverImage = (r[3] !== null && r[3] !== undefined && r[3].toString().trim() !== "-") ? r[3].toString().trim() : "";
+      var badge = (r[4] !== null && r[4] !== undefined && r[4].toString().trim() !== "-") ? r[4].toString().trim() : "";
+
+      if (!topicId && !title && !description) continue;
+
+      var cards = [];
+      for (var k = 0; k < 12; k++) {
+        var baseIdx = 5 + (k * 4);
+        var cTitle = (r[baseIdx] !== null && r[baseIdx] !== undefined) ? r[baseIdx].toString().trim() : "";
+        var cDesc = (r[baseIdx + 1] !== null && r[baseIdx + 1] !== undefined) ? r[baseIdx + 1].toString().trim() : "";
+        var cMedia = (r[baseIdx + 2] !== null && r[baseIdx + 2] !== undefined && r[baseIdx + 2].toString().trim() !== "-") ? r[baseIdx + 2].toString().trim() : "";
+        var cLink = (r[baseIdx + 3] !== null && r[baseIdx + 3] !== undefined && r[baseIdx + 3].toString().trim() !== "-") ? r[baseIdx + 3].toString().trim() : "";
+
+        if (cTitle || cDesc || cMedia || cLink) {
+          cards.push({
+            id: "card_" + (k + 1),
+            title: cTitle,
+            description: cDesc,
+            mediaUrl: cMedia,
+            linkUrl: cLink
+          });
+        }
+      }
+
+      records.push({
+        rowIndex: i + 2,
+        topicId: topicId,
+        title: title || ("صفحة المشترك رقم " + topicId),
+        description: description,
+        coverImage: coverImage,
+        badge: badge,
+        cards: cards
+      });
+    }
+
+    return {
+      success: true,
+      records: records,
+      total: records.length
+    };
+  } catch (err) {
+    Logger.log("getSubscriberContentSheetData error: " + err.message);
+    return { success: false, error: err.message, records: [], total: 0 };
+  }
+}
+
+// 19. دالة حفظ أو تحديث صفحة محتوى مشترك في ورقة SubscriberContent
+function saveSubscriberContentToSheet(postData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetName = "SubscriberContent";
+    var sheet = ss.getSheetByName(sheetName) || ss.getSheetByName("محتوى المشتركين");
+
+    // إنشاء الورقة إذا لم تكن موجودة مع إعداد الترويسة القياسية
+    if (!sheet) {
+      sheet = ss.insertSheet(sheetName);
+      var initialHeaders = ["رقم الصفحة (الصف)", "عنوان الصفحة (B)", "الوصف الترحيبي (C)", "صورة الغلاف (D)", "الشارة والتصنيف (E)"];
+      for (var h = 1; h <= 10; h++) {
+        initialHeaders.push("عنوان " + h, "وصف " + h, "وسائط " + h, "رابط " + h);
+      }
+      sheet.appendRow(initialHeaders);
+      sheet.getRange(1, 1, 1, initialHeaders.length).setFontWeight("bold").setBackground("#cfe2f3");
+      sheet.setFrozenRows(1);
+    }
+
+    var topicId = (postData.topicId !== undefined && postData.topicId !== null) ? postData.topicId.toString().trim() : "1";
+    var reqRowIndex = postData.rowIndex ? Number(postData.rowIndex) : -1;
+    var lastRow = sheet.getLastRow();
+    var lastCol = Math.max(sheet.getLastColumn(), 50);
+
+    var targetRow = -1;
+
+    // 1. البحث برقم الصف إن وجد
+    if (reqRowIndex >= 2 && reqRowIndex <= lastRow) {
+      var checkTopic = sheet.getRange(reqRowIndex, 1).getValue();
+      if (checkTopic && checkTopic.toString().trim() === topicId) {
+        targetRow = reqRowIndex;
+      }
+    }
+
+    // 2. البحث برقم الصفحة في العامود A
+    if (targetRow === -1 && lastRow >= 2) {
+      var colA = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (var r = 0; r < colA.length; r++) {
+        var cellVal = colA[r][0] ? colA[r][0].toString().trim() : "";
+        if (cellVal === topicId) {
+          targetRow = r + 2;
+          break;
+        }
+      }
+    }
+
+    // إذا لم نجد صفاً مطابقاً، ننشئ صفاً جديداً في نهاية الورقة
+    if (targetRow === -1) {
+      targetRow = lastRow + 1;
+    }
+
+    // تجهيز مصفوفة القيم للصف
+    var rowValues = [];
+    for (var c = 0; c < lastCol; c++) {
+      rowValues.push("");
+    }
+
+    // إذا كان الصف موجوداً، نقرأ قيمه الحالية أولاً للحفاظ على أي خانات أخرى
+    if (targetRow <= lastRow) {
+      var existingRowVals = sheet.getRange(targetRow, 1, 1, lastCol).getValues()[0];
+      for (var ex = 0; ex < existingRowVals.length; ex++) {
+        rowValues[ex] = existingRowVals[ex];
+      }
+    }
+
+    // العامود A: رقم الصفحة
+    rowValues[0] = topicId;
+    // القسم الأول: الهيدر B:E
+    rowValues[1] = postData.title !== undefined ? postData.title.toString().trim() : (rowValues[1] || "");
+    rowValues[2] = postData.description !== undefined ? postData.description.toString().trim() : (rowValues[2] || "");
+    rowValues[3] = postData.coverImage !== undefined ? postData.coverImage.toString().trim() : (rowValues[3] || "");
+    rowValues[4] = postData.badge !== undefined ? postData.badge.toString().trim() : (rowValues[4] || "");
+
+    // مسح خانات البطاقات القديمة قبل كتابة الجديدة لضمان النظافة
+    for (var clr = 5; clr < lastCol; clr++) {
+      rowValues[clr] = "";
+    }
+
+    // القسم الثاني: البطاقات والمحاور F:I / J:M / N:Q ...
+    var cards = postData.cards || [];
+    if (Array.isArray(cards)) {
+      for (var k = 0; k < cards.length; k++) {
+        var card = cards[k];
+        if (!card) continue;
+        var bIdx = 5 + (k * 4);
+        if (bIdx + 3 >= rowValues.length) {
+          while (rowValues.length <= bIdx + 4) {
+            rowValues.push("");
+          }
+        }
+        rowValues[bIdx] = (card.title || "").toString().trim();
+        rowValues[bIdx + 1] = (card.description || "").toString().trim();
+        rowValues[bIdx + 2] = (card.mediaUrl || (card.media && card.media[0] ? card.media[0].url : "") || "").toString().trim();
+        rowValues[bIdx + 3] = (card.linkUrl || "").toString().trim();
+      }
+    }
+
+    // كتابة الصف في الشيت
+    var writeColCount = Math.max(rowValues.length, sheet.getLastColumn());
+    while (rowValues.length < writeColCount) {
+      rowValues.push("");
+    }
+    sheet.getRange(targetRow, 1, 1, rowValues.length).setValues([rowValues]);
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: "تم حفظ وتحديث صفحة المحتوى بنجاح في ورقة SubscriberContent (الصف " + targetRow + ")",
+      rowIndex: targetRow,
+      topicId: topicId
+    };
+  } catch (err) {
+    Logger.log("saveSubscriberContentToSheet error: " + err.message);
+    return { success: false, error: err.message };
+  }
+}
+
+// 20. دالة حذف صفحة محتوى مشترك من ورقة SubscriberContent
+function deleteSubscriberContentFromSheet(postData) {
+  try {
+    var ss = SpreadsheetApp.getActiveSpreadsheet();
+    var sheetName = "SubscriberContent";
+    var sheet = ss.getSheetByName(sheetName) || ss.getSheetByName("محتوى المشتركين");
+    if (!sheet) {
+      return { success: false, message: "ورقة SubscriberContent غير موجودة" };
+    }
+
+    var lastRow = sheet.getLastRow();
+    if (lastRow < 2) {
+      return { success: false, message: "لا توجد صفوف للحذف" };
+    }
+
+    var topicId = postData.topicId ? postData.topicId.toString().trim() : "";
+    var reqRowIndex = postData.rowIndex ? Number(postData.rowIndex) : -1;
+    var targetRow = -1;
+
+    if (reqRowIndex >= 2 && reqRowIndex <= lastRow) {
+      targetRow = reqRowIndex;
+    } else if (topicId) {
+      var colA = sheet.getRange(2, 1, lastRow - 1, 1).getValues();
+      for (var r = 0; r < colA.length; r++) {
+        if (colA[r][0] && colA[r][0].toString().trim() === topicId) {
+          targetRow = r + 2;
+          break;
+        }
+      }
+    }
+
+    if (targetRow === -1) {
+      return { success: false, message: "لم يتم العثور على الصفحة المراد حذفها" };
+    }
+
+    sheet.deleteRow(targetRow);
+    SpreadsheetApp.flush();
+
+    return {
+      success: true,
+      message: "تم حذف صفحة المحتوى بنجاح من ورقة SubscriberContent",
+      deletedRowIndex: targetRow
+    };
+  } catch (err) {
+    Logger.log("deleteSubscriberContentFromSheet error: " + err.message);
     return { success: false, error: err.message };
   }
 }

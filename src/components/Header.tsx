@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { BookOpen, Image as ImageIcon, Play, ShoppingBag, Phone, HelpCircle, LogIn, Menu, X, Landmark, Globe, Sparkles, Settings } from "lucide-react";
+import { BookOpen, Image as ImageIcon, Play, ShoppingBag, Phone, HelpCircle, LogIn, Menu, X, Landmark, Globe, Sparkles, Settings, Users } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { ProfileData, SocialLinks, CustomTexts } from "../types";
 import { useLanguage } from "../context/LanguageContext";
@@ -16,6 +16,7 @@ interface HeaderProps {
   onLogout: () => void;
   onOpenDashboard: () => void;
   onOpenSettings?: () => void;
+  onOpenMonitoring?: () => void;
   isAdmin?: boolean;
   onAdminLogout?: () => void;
   customTexts?: CustomTexts;
@@ -31,6 +32,7 @@ export default function Header({
   onLogout,
   onOpenDashboard,
   onOpenSettings,
+  onOpenMonitoring,
   isAdmin = false,
   onAdminLogout,
   customTexts,
@@ -168,23 +170,35 @@ export default function Header({
             {/* Language Selector Dropdown */}
             <LanguageSelector variant="header" />
 
-            {isAdmin && onOpenSettings && (
-              <div className="flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/40 px-2.5 py-1.5 rounded-full">
-                <button
-                  onClick={onOpenSettings}
-                  title="فتح لوحة إعدادات المشرف"
-                  className="text-amber-400 hover:text-amber-300 font-sans text-xs font-semibold flex items-center gap-1.5 transition-colors"
-                >
-                  <Settings className="w-3.5 h-3.5 text-amber-400 animate-spin-slow" />
-                  <span>{t("nav_admin_settings", "لوحة الإعدادات")}</span>
-                </button>
+            {isAdmin && (
+              <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/40 px-3 py-1.5 rounded-full">
+                {onOpenMonitoring && (
+                  <button
+                    onClick={onOpenMonitoring}
+                    title="فتح لوحة متابعة المشتركين المستقلة"
+                    className="text-emerald-400 hover:text-emerald-300 font-sans text-xs font-semibold flex items-center gap-1.5 transition-colors pl-2 border-l border-amber-500/30"
+                  >
+                    <Users className="w-3.5 h-3.5 text-emerald-400" />
+                    <span>متابعة المشتركين</span>
+                  </button>
+                )}
+                {onOpenSettings && (
+                  <button
+                    onClick={onOpenSettings}
+                    title="فتح لوحة إعدادات المشرف"
+                    className="text-amber-400 hover:text-amber-300 font-sans text-xs font-semibold flex items-center gap-1.5 transition-colors"
+                  >
+                    <Settings className="w-3.5 h-3.5 text-amber-400 animate-spin-slow" />
+                    <span>{t("nav_admin_settings", "الإعدادات")}</span>
+                  </button>
+                )}
                 {onAdminLogout && (
                   <button
                     onClick={onAdminLogout}
                     title="تسجيل خروج المشرف"
                     className="text-[10px] bg-slate-900/80 hover:bg-slate-900 text-slate-400 hover:text-red-400 px-2 py-0.5 rounded-full transition-colors"
                   >
-                    {t("nav_admin_logout", "خروج المشرف")}
+                    {t("nav_admin_logout", "خروج")}
                   </button>
                 )}
               </div>
@@ -209,7 +223,7 @@ export default function Header({
             ) : (
               <button
                 onClick={onOpenLogin}
-                className="relative group overflow-hidden bg-slate-900 border border-amber-500/30 text-amber-400 hover:text-slate-950 px-4 py-2 rounded-full font-sans text-xs font-semibold shadow-lg hover:shadow-amber-500/20 transition-all duration-300"
+                className="relative group overflow-hidden bg-slate-900 border border-amber-500/30 text-amber-400 hover:text-slate-950 px-4 py-2 rounded-full font-sans text-xs font-semibold shadow-lg hover:shadow-amber-500/20 transition-all duration-300 cursor-pointer"
               >
                 <span className="absolute inset-0 w-full h-full bg-gradient-to-r from-amber-500 to-yellow-600 scale-x-0 group-hover:scale-x-100 origin-right transition-transform duration-300 ease-out"></span>
                 <span className="relative flex items-center gap-1.5 z-10">
@@ -262,18 +276,32 @@ export default function Header({
               );
             })}
 
-            {isAdmin && onOpenSettings && (
+            {isAdmin && (
               <div className="flex flex-col gap-2 bg-slate-900 border border-amber-500/30 rounded-xl p-3">
-                <button
-                  onClick={() => {
-                    onOpenSettings();
-                    setIsMobileMenuOpen(false);
-                  }}
-                  className="flex items-center gap-3 font-sans text-sm font-semibold text-amber-400"
-                >
-                  <Settings className="w-5 h-5 text-amber-500" />
-                  <span>{t("nav_admin_settings", "لوحة إعدادات المشرف والربط")}</span>
-                </button>
+                {onOpenMonitoring && (
+                  <button
+                    onClick={() => {
+                      onOpenMonitoring();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="flex items-center gap-3 font-sans text-sm font-semibold text-emerald-400"
+                  >
+                    <Users className="w-5 h-5 text-emerald-500" />
+                    <span>لوحة متابعة وسجل المشتركين (مستقل)</span>
+                  </button>
+                )}
+                {onOpenSettings && (
+                  <button
+                    onClick={() => {
+                      onOpenSettings();
+                      setIsMobileMenuOpen(false);
+                    }}
+                    className="flex items-center gap-3 font-sans text-sm font-semibold text-amber-400"
+                  >
+                    <Settings className="w-5 h-5 text-amber-500" />
+                    <span>{t("nav_admin_settings", "لوحة إعدادات المشرف والربط")}</span>
+                  </button>
+                )}
                 {onAdminLogout && (
                   <button
                     onClick={() => {
@@ -318,7 +346,7 @@ export default function Header({
                   onOpenLogin();
                   setIsMobileMenuOpen(false);
                 }}
-                className="w-full bg-gradient-to-r from-amber-500 to-yellow-600 text-slate-950 py-3.5 rounded-xl font-sans text-sm font-bold shadow-lg shadow-amber-500/20 flex items-center justify-center gap-2"
+                className="w-full bg-gradient-to-r from-slate-900 to-slate-950 border border-amber-500/40 text-amber-300 hover:text-white py-3.5 rounded-xl font-sans text-sm font-bold shadow-lg flex items-center justify-center gap-2 cursor-pointer"
               >
                 <LogIn className="w-5 h-5" />
                 <span>{t("nav_subscriber_portal", profile.loginButtonText || "بوابة المشتركين")}</span>

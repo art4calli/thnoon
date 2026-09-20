@@ -13,8 +13,9 @@
 
 import { RegistrationQuestion, RegistrationAnswerRecord, SettingsSubscriberRecord, TelegramConfig, SubscriberEmailConfig, SubscriberTopicContent, SubscriberCard } from "../types";
 import { formatImageUrl } from "./imageUtils";
+import { DEFAULT_SUBSCRIBER_EMAIL_CONFIG, DEFAULT_TELEGRAM_CONFIG } from "../data/defaultConfigs";
 
-export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbxgdooTDplJSni4jsNkf08tEear5AC0s6nDD-Z7MlqtCsAuMqplCIkBXnVXXOpzFKlqaw/exec";
+export const DEFAULT_SCRIPT_URL = "https://script.google.com/macros/s/AKfycbyCJdOuMaG6tWW7wKtMj5xvvcYzDvczwZ43dQCIU7GgU9ip6aw9Igy4EkCHHqw2jAZOHw/exec";
 export const DEFAULT_SPREADSHEET_ID = "1MAurScyKTntcUUWAoB7Qt62vwvmEnDqmYNaB0DKo9tY";
 export const DEFAULT_DRIVE_FOLDER_ID = "1tae6n3-tjB9vVtxr2GbK572SRtWxZ3f7";
 
@@ -137,19 +138,21 @@ export async function verifyRegistrationInSheet(
   subscriberName?: string,
   explicitScriptUrl?: string,
   spreadsheetId?: string,
-  timeoutMs = 6000
+  timeoutMs = 10000
 ): Promise<boolean> {
   const activeSheetId = getActiveSpreadsheetId(spreadsheetId);
   const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
-  const safeId = String(registrationId).trim();
+  const safeId = String(registrationId || "").trim();
   const safeName = String(subscriberName || "").trim();
+
+  if (!safeId && !safeName) return false;
 
   const startTime = Date.now();
   while (Date.now() - startTime < timeoutMs) {
-    // 1. Fast GVIZ check on top rows
+    // 1. Fast GVIZ check on bottom rows with fresh cache-busting
     try {
-      const gvizUrl = `https://docs.google.com/spreadsheets/d/${activeSheetId}/gviz/tq?tqx=out:json&headers=1&sheet=RegistrationAnswers&tq=${encodeURIComponent("order by A desc limit 5")}`;
-      const res = await fetch(gvizUrl);
+      const gvizUrl = `https://docs.google.com/spreadsheets/d/${activeSheetId}/gviz/tq?tqx=out:json&sheet=RegistrationAnswers&_cb=${Date.now()}`;
+      const res = await fetch(gvizUrl, { cache: "no-store" });
       if (res.ok) {
         const text = await res.text();
         const jsonStart = text.indexOf("{");
@@ -157,10 +160,14 @@ export async function verifyRegistrationInSheet(
         if (jsonStart !== -1 && jsonEnd !== -1) {
           const json = JSON.parse(text.substring(jsonStart, jsonEnd + 1));
           const rows = json.table?.rows || [];
-          for (const r of rows) {
-            const rowId = String(r?.c?.[1]?.v || "");
-            const rowName = String(r?.c?.[2]?.v || "").trim();
-            if ((safeId && rowId && (rowId === safeId || rowId.includes(safeId))) || (safeName && rowName && (rowName === safeName || rowName.includes(safeName)))) {
+          // Inspect the latest 15 rows from the bottom (new registrations are always appended at the end)
+          const recent = rows.slice(-15);
+          for (let i = recent.length - 1; i >= 0; i--) {
+            const r = recent[i];
+            const cells = (r?.c || []).map((cell: any) => (cell?.v !== null && cell?.v !== undefined) ? String(cell.v).trim() : "");
+            const hasId = safeId && cells.some(v => v === safeId || (safeId.length >= 6 && v.includes(safeId)));
+            const hasName = safeName && cells.some(v => v === safeName || (safeName.length >= 2 && v.includes(safeName)));
+            if (hasId || hasName) {
               return true;
             }
           }
@@ -168,17 +175,17 @@ export async function verifyRegistrationInSheet(
       }
     } catch (e) {}
 
-    // 2. Apps Script GET check
+    // 2. Apps Script GET check with fresh cache-busting
     try {
-      const gasUrl = `${targetScriptUrl}?action=getRegistrationAnswers`;
-      const gasRes = await fetch(gasUrl);
+      const gasUrl = `${targetScriptUrl}?action=getRegistrationAnswers&_cb=${Date.now()}`;
+      const gasRes = await fetch(gasUrl, { cache: "no-store" });
       if (gasRes.ok) {
         const gasJson = await gasRes.json();
         const records = gasJson.records || [];
-        const recent = records.slice(-5);
+        const recent = records.slice(-15);
         for (const rec of recent) {
-          const recId = String(rec.registrationId || "");
-          const recName = String(rec.name || "").trim();
+          const recId = String(rec.registrationId || rec["رقم التسجيل"] || "");
+          const recName = String(rec.name || rec.nameArabic || rec["الاسم"] || rec["الاسم بالعربي"] || "").trim();
           if ((safeId && recId && (recId === safeId || recId.includes(safeId))) || (safeName && recName && (recName === safeName || recName.includes(safeName)))) {
             return true;
           }
@@ -262,7 +269,7 @@ export async function fetchTelegramConfigBridge(
     }
   } catch (sheetErr) {}
 
-  // 3. Fallback to localStorage
+  // 3. Fallback to localStorage or default verified config
   if (typeof window !== "undefined") {
     try {
       const local = localStorage.getItem("thnoon_telegram_config");
@@ -270,7 +277,7 @@ export async function fetchTelegramConfigBridge(
     } catch (err) {}
   }
 
-  return null;
+  return DEFAULT_TELEGRAM_CONFIG;
 }
 
 /**
@@ -397,17 +404,23 @@ export async function submitRegistrationBridge(
       if (stored) emailConfig = JSON.parse(stored);
     } catch (e) {}
   }
+  if (!emailConfig) {
+    emailConfig = DEFAULT_SUBSCRIBER_EMAIL_CONFIG;
+  }
 
   let telegramConfig = regPayload.telegramConfig;
   if (!telegramConfig) {
-    telegramConfig = await fetchTelegramConfigBridge();
+    telegramConfig = await fetchTelegramConfigBridge().catch(() => DEFAULT_TELEGRAM_CONFIG);
+  }
+  if (!telegramConfig) {
+    telegramConfig = DEFAULT_TELEGRAM_CONFIG;
   }
 
-  const enrichedPayload: any = {
+  const enrichedPayload = {
     ...regPayload,
     scriptUrl: targetScriptUrl,
-    emailConfig: emailConfig || undefined,
-    telegramConfig: telegramConfig || undefined
+    emailConfig: emailConfig,
+    telegramConfig: telegramConfig
   };
 
   const regId = enrichedPayload.registrationId || `REG-${Date.now().toString().slice(-6)}`;
@@ -467,7 +480,25 @@ export async function submitRegistrationBridge(
       }
     }
   } catch (directErr) {
-    console.warn("Direct fetch POST failed (likely CORS redirect policy on mobile/other devices), checking sheet verification...", directErr);
+    console.warn("Standard fetch POST failed (likely CORS redirect policy on mobile/iOS/Android), sending via no-cors fallback...", directErr);
+    // On Mobile Safari and Android Chrome, standard fetch throws on 302 redirect from script.google.com.
+    // Mode "no-cors" forces the mobile browser to transmit the POST body to Google Apps Script without throwing.
+    try {
+      await fetch(targetScriptUrl, {
+        method: "POST",
+        mode: "no-cors",
+        headers: {
+          "Content-Type": "text/plain;charset=utf-8"
+        },
+        body: JSON.stringify({
+          action: "submitRegistration",
+          ...enrichedPayload,
+          timestamp: enrichedPayload.timestamp || new Date().toISOString()
+        })
+      });
+    } catch (noCorsErr) {
+      console.warn("no-cors mobile fallback error:", noCorsErr);
+    }
   }
 
   if (directSuccess) {
@@ -479,28 +510,28 @@ export async function submitRegistrationBridge(
     };
   }
 
-  // 4. Verify whether the initial POST already succeeded on Google's servers
-  // (In many browsers, the POST succeeds in GAS but the 302 redirect causes a CORS error in fetch)
-  const isSavedInitially = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 3500);
+  // 4. Verify whether the POST succeeded on Google's servers and saved to the sheet
+  // (On mobile, GAS receives the POST and appends the row, but the browser blocks reading the response)
+  const isSavedInitially = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 9000);
   if (isSavedInitially) {
     return {
       success: true,
       registrationId: regId,
-      message: `تم استلام وحفظ طلب التسجيل بنجاح وتأكيده بالرقم المرجعي (${regId}) في ورقة البيانات وتلغرام!`,
+      message: `تم استلام وحفظ طلب التسجيل بنجاح وتأكيده بالرقم المرجعي (${regId}) في جدول البيانات وتلغرام!`,
       data: { registrationId: regId, verified: true }
     };
   }
 
-  // 5. If not verified yet, trigger Strategy 2: Hidden Iframe Form Submit (100% immune to browser CORS / redirect blocks)
+  // 5. If not verified yet, trigger Strategy 2: Hidden Iframe Form Submit (Immune to browser network blocks)
   try {
     await submitViaHiddenIframe("submitRegistration", enrichedPayload, targetScriptUrl);
     // Poll the Google Sheet to confirm receipt
-    const isSavedAfterIframe = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 6000);
+    const isSavedAfterIframe = await verifyRegistrationInSheet(regId, enrichedPayload.name, targetScriptUrl, undefined, 7000);
     if (isSavedAfterIframe) {
       return {
         success: true,
         registrationId: regId,
-        message: `تم استلام وحفظ طلب التسجيل بنجاح وتأكيده بالرقم المرجعي (${regId}) في ورقة البيانات وتلغرام!`,
+        message: `تم استلام وحفظ طلب التسجيل بنجاح وتأكيده بالرقم المرجعي (${regId}) في جدول البيانات وتلغرام!`,
         data: { registrationId: regId, verified: true }
       };
     }
@@ -709,7 +740,7 @@ export async function fetchFormQuestionsBridge(
           type: fieldType,
           options: opts.length > 0 ? opts : undefined,
           required: qRequired,
-          imageUrl: qImage ? formatImageUrl(qImage) : undefined,
+          imageUrl: qImage ? formatMediaUrl(qImage) : undefined,
           externalLink: (qLink && qLink !== "-") ? qLink : undefined
         });
       }
@@ -988,19 +1019,105 @@ export function isTopicMatching(targetTopic: any, rowTopic: any): boolean {
   return false;
 }
 
+export const SUBSCRIBER_CONTENT_LOCAL_STORAGE_KEY = "thnoon_subscriber_content_records";
+
+export function getLocalSubscriberTopics(): SubscriberTopicContent[] {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(SUBSCRIBER_CONTENT_LOCAL_STORAGE_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (e) {}
+  return [];
+}
+
+export function saveLocalSubscriberTopics(topics: SubscriberTopicContent[]): void {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(SUBSCRIBER_CONTENT_LOCAL_STORAGE_KEY, JSON.stringify(topics));
+  } catch (e) {}
+}
+
+let cachedSiteTransMap: Map<string, { en: string; th: string }> | null = null;
+let cachedSiteTransTime = 0;
+
+/**
+ * Universal SiteTranslations live dictionary reader.
+ * Fetches translations stored in the Google Sheets SiteTranslations tab
+ * so any device globally gets instant multi-language support.
+ */
+export async function getLiveSiteTranslationsMap(spreadsheetId?: string): Promise<Map<string, { en: string; th: string }>> {
+  const now = Date.now();
+  if (cachedSiteTransMap && now - cachedSiteTransTime < 45000) {
+    return cachedSiteTransMap;
+  }
+  const map = new Map<string, { en: string; th: string }>();
+  const targetSpreadsheetId = getActiveSpreadsheetId(spreadsheetId);
+  try {
+    const url = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=SiteTranslations&t=${now}`;
+    const res = await fetch(url, { cache: "no-store" });
+    if (res.ok) {
+      const text = await res.text();
+      const s = text.indexOf("{");
+      const e = text.lastIndexOf("}");
+      if (s !== -1 && e !== -1) {
+        const json = JSON.parse(text.substring(s, e + 1));
+        if (json?.table?.rows) {
+          json.table.rows.forEach((r: any) => {
+            const cr = r?.c || [];
+            const getV = (i: number) => {
+              if (!cr[i] || cr[i].v === null || cr[i].v === undefined) return "";
+              return (cr[i].f !== undefined ? cr[i].f : cr[i].v).toString().trim();
+            };
+            const id = getV(0);
+            const ar = getV(3);
+            const th = getV(4);
+            const en = getV(5);
+            if (id && (en || th)) {
+              map.set(id.toLowerCase(), { en, th });
+            }
+            if (ar && (en || th)) {
+              map.set(normalizeArabicText(ar), { en, th });
+            }
+          });
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Could not fetch live SiteTranslations map:", err);
+  }
+  cachedSiteTransMap = map;
+  cachedSiteTransTime = now;
+  return map;
+}
+
 /**
  * Universal, high-resilience SubscriberContent reader.
  * Reads cards, covers, videos, links, badges from Google Sheets SubscriberContent tab.
- * Supports mobile browsers, tablets, desktop, Vercel static hosting and local container.
+ * Automatically synchronizes and enriches with SiteTranslations so that
+ * mobile phones, tablets, and remote PCs receive full English and Thai translations.
  */
 export async function fetchSubscriberTopicContent(
   topicId: string,
   explicitSpreadsheetId?: string
 ): Promise<SubscriberTopicContent | null> {
-  const targetSpreadsheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
   const cleanTargetTopic = normalizeTopicDigitStr(topicId) || "1";
 
+  // 1. فحص فوري وسريع من النظام الداخلي أولاً
+  const localList = getLocalSubscriberTopics();
+  const matchedLocal = localList.find((t) => isTopicMatching(cleanTargetTopic, t.topicId));
+  // If local record has cards AND already has translations, return immediately
+  if (matchedLocal && matchedLocal.cards && matchedLocal.cards.length > 0 && (matchedLocal.titleEn || matchedLocal.titleTh)) {
+    return matchedLocal;
+  }
+
+  const targetSpreadsheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
   const sheetNames = ["SubscriberContent", "Subscriber Content", "subscribercontent", "محتوى المشتركين", "المحتوى", "محتوى المشترك"];
+
+  // Fetch live translations map concurrently
+  const transMapPromise = getLiveSiteTranslationsMap(targetSpreadsheetId).catch(() => new Map<string, { en: string; th: string }>());
 
   for (const sheetName of sheetNames) {
     try {
@@ -1084,14 +1201,62 @@ export async function fetchSubscriberTopicContent(
                 }
               }
 
-              return {
+              // Enrich with translations from SiteTranslations sheet or local cache
+              const transMap = await transMapPromise;
+              const normTitle = normalizeArabicText(title);
+              const normDesc = normalizeArabicText(description);
+              const normBadge = badge ? normalizeArabicText(badge) : "";
+
+              const titleTrans = transMap.get(normTitle) || transMap.get(`sub_topic_${cleanTargetTopic}_title`) || transMap.get(`sub_topic_${cleanTargetTopic}_t`);
+              const descTrans = transMap.get(normDesc) || transMap.get(`sub_topic_${cleanTargetTopic}_desc`) || transMap.get(`sub_topic_${cleanTargetTopic}_d`);
+              const badgeTrans = normBadge ? (transMap.get(normBadge) || transMap.get(`sub_topic_${cleanTargetTopic}_badge`)) : undefined;
+
+              const enrichedCards: SubscriberCard[] = cards.map((crd, crdIdx) => {
+                const normCrdTitle = normalizeArabicText(crd.title);
+                const normCrdDesc = normalizeArabicText(crd.description);
+                const cTitleTrans = transMap.get(normCrdTitle) || transMap.get(`sub_topic_${cleanTargetTopic}_card_${crdIdx}_title`) || transMap.get(`sub_topic_${cleanTargetTopic}_c${crdIdx}_t`);
+                const cDescTrans = transMap.get(normCrdDesc) || transMap.get(`sub_topic_${cleanTargetTopic}_card_${crdIdx}_desc`) || transMap.get(`sub_topic_${cleanTargetTopic}_c${crdIdx}_d`);
+
+                // Fall back to matchedLocal if already cached on this machine
+                const localCard = matchedLocal?.cards?.[crdIdx];
+
+                return {
+                  ...crd,
+                  titleEn: cTitleTrans?.en || localCard?.titleEn,
+                  titleTh: cTitleTrans?.th || localCard?.titleTh,
+                  descriptionEn: cDescTrans?.en || localCard?.descriptionEn,
+                  descriptionTh: cDescTrans?.th || localCard?.descriptionTh
+                };
+              });
+
+              const enrichedTopic: SubscriberTopicContent = {
                 topicId: cleanTargetTopic,
                 title,
+                titleEn: titleTrans?.en || matchedLocal?.titleEn,
+                titleTh: titleTrans?.th || matchedLocal?.titleTh,
                 description,
+                descriptionEn: descTrans?.en || matchedLocal?.descriptionEn,
+                descriptionTh: descTrans?.th || matchedLocal?.descriptionTh,
                 coverImage,
                 badge: (badge && badge !== "-") ? badge : undefined,
-                cards
+                badgeEn: badgeTrans?.en || matchedLocal?.badgeEn,
+                badgeTh: badgeTrans?.th || matchedLocal?.badgeTh,
+                cards: enrichedCards
               };
+
+              // Cache to localStorage on this device (mobile / tablet / computer)
+              try {
+                const freshLocal = getLocalSubscriberTopics();
+                const eIdx = freshLocal.findIndex((t) => isTopicMatching(cleanTargetTopic, t.topicId));
+                if (eIdx !== -1) {
+                  freshLocal[eIdx] = enrichedTopic;
+                } else {
+                  freshLocal.push(enrichedTopic);
+                }
+                saveLocalSubscriberTopics(freshLocal);
+              } catch (cacheErr) {}
+
+              return enrichedTopic;
             }
           }
         }
@@ -1100,6 +1265,9 @@ export async function fetchSubscriberTopicContent(
       console.warn(`Error reading sheet tab '${sheetName}':`, sheetErr);
     }
   }
+
+  // Final fallback to local cache
+  if (matchedLocal) return matchedLocal;
 
   return null;
 }
@@ -1195,8 +1363,21 @@ export async function loginSubscriberBridge(
         }
 
         // Background sync to Apps Script to ensure Google Sheet updates device info & timestamp
-        if (currentDeviceId && targetScriptUrl) {
+        if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
           try {
+            const syncParams = new URLSearchParams({
+              action: "loginUser",
+              username: cleanUser,
+              password: cleanPass,
+              deviceId: currentDeviceId,
+              lat: extra?.lat ? String(extra.lat) : "",
+              lng: extra?.lng ? String(extra.lng) : "",
+              locationName: extra?.locationName || "",
+              deviceInfo: extra?.deviceInfo || "",
+              _cb: String(Date.now())
+            });
+            const syncGetUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}${syncParams.toString()}`;
+            fetch(syncGetUrl, { mode: "no-cors" }).catch(() => {});
             executeAppsScriptPost("loginUser", {
               username: cleanUser,
               password: cleanPass,
@@ -1317,6 +1498,21 @@ export async function loginSubscriberBridge(
 
                     // Always trigger background device registration/timestamp in Google Sheets
                     try {
+                      if (targetScriptUrl && targetScriptUrl.startsWith("http")) {
+                        const syncParams = new URLSearchParams({
+                          action: "loginUser",
+                          username: cleanUser,
+                          password: cleanPass,
+                          deviceId: currentDeviceId,
+                          lat: extra?.lat ? String(extra.lat) : "",
+                          lng: extra?.lng ? String(extra.lng) : "",
+                          locationName: extra?.locationName || "",
+                          deviceInfo: extra?.deviceInfo || "",
+                          _cb: String(Date.now())
+                        });
+                        const syncGetUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}${syncParams.toString()}`;
+                        fetch(syncGetUrl, { mode: "no-cors" }).catch(() => {});
+                      }
                       executeAppsScriptPost("loginUser", {
                         username: cleanUser,
                         password: cleanPass,
@@ -1332,6 +1528,7 @@ export async function loginSubscriberBridge(
                   const rawTopicId = sheetColA || "1";
                   const topicId = normalizeTopicDigitStr(rawTopicId) || "1";
                   const subscriberName = sheetColB || sheetColZ || cleanUser;
+                  const regId = sheetColAA || cleanPass || cleanUser;
 
                   // Read SubscriberContent sheet
                   const topicContent = await fetchSubscriberTopicContent(topicId, targetSpreadsheetId);
@@ -1341,6 +1538,8 @@ export async function loginSubscriberBridge(
                     subscriberName,
                     topicId,
                     content: topicContent,
+                    registrationId: regId,
+                    username: sheetColZ || cleanUser,
                     linkButtonText1: getVal(2),
                     linkButtonComment1: getVal(3),
                     url1: getVal(4),
@@ -1393,6 +1592,8 @@ export async function loginSubscriberBridge(
                     subscriberName: regName || cleanUser,
                     topicId,
                     content: topicContent,
+                    registrationId: regId || cleanPass || cleanUser,
+                    username: cleanUser,
                     exitButtonText: "تسجيل الخروج"
                   };
                 }
@@ -1477,7 +1678,7 @@ export async function loginSubscriberBridge(
 export async function checkSubscriberAccountStatus(
   username: string,
   spreadsheetId?: string
-): Promise<{ exists: boolean; isBlocked: boolean; statusText: string; maxDevices: number }> {
+): Promise<{ exists: boolean; isBlocked: boolean; statusText: string; maxDevices: number; name?: string; regId?: string; subscriberStatus?: string }> {
   const targetSpreadsheetId = spreadsheetId || getActiveSpreadsheetId();
   const cleanUser = (username || "").trim().toLowerCase();
 
@@ -1498,12 +1699,26 @@ export async function checkSubscriberAccountStatus(
         for (const row of rows) {
           const r = row?.c || [];
           const getVal = (idx: number) => (r[idx] && r[idx].v !== null && r[idx].v !== undefined) ? r[idx].v.toString().trim() : "";
-          const sheetUser = getVal(25).toLowerCase();
-          if (sheetUser === cleanUser) {
+          const sheetUserZ = getVal(25).toLowerCase();
+          const sheetRegId = getVal(26).toLowerCase();
+          const sheetNameB = getVal(1).toLowerCase();
+          
+          if (sheetUserZ === cleanUser || sheetRegId === cleanUser || sheetNameB === cleanUser) {
             const status = getVal(27);
             const isBlocked = status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا";
             const maxDev = parseInt(getVal(28), 10) || 1;
-            return { exists: true, isBlocked, statusText: status, maxDevices: maxDev };
+            const subStatus = getVal(2) || "معتمد";
+            const foundName = getVal(25) || getVal(1);
+            const foundRegId = getVal(26);
+            return {
+              exists: true,
+              isBlocked,
+              statusText: status,
+              maxDevices: maxDev,
+              name: foundName,
+              regId: foundRegId,
+              subscriberStatus: subStatus
+            };
           }
         }
       }
@@ -1512,6 +1727,141 @@ export async function checkSubscriberAccountStatus(
     console.warn("Status check failed:", err);
   }
   return { exists: false, isBlocked: false, statusText: "", maxDevices: 1 };
+}
+
+/**
+ * Rigorously checks whether a student's registration record still exists in Google Sheets
+ * Checks both 'RegistrationAnswers' sheet AND 'Settings' sheet.
+ * Returns:
+ * - exists: true (record is found in the sheets)
+ * - exists: false (sheets were checked successfully and record is definitely NOT present, i.e. admin deleted it)
+ * - error: if network failed or sheets could not be reached (prevents accidental wipe on network glitches)
+ */
+export async function checkStudentRecordExistsInGoogleSheets(
+  registrationId: string,
+  studentName?: string,
+  explicitSpreadsheetId?: string,
+  explicitScriptUrl?: string
+): Promise<{ exists: boolean; checked: boolean; foundIn?: string; name?: string; error?: string }> {
+  const activeSheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+  const cleanId = String(registrationId || "").trim().toLowerCase();
+  const cleanName = String(studentName || "").trim().toLowerCase();
+
+  if (!cleanId && !cleanName) {
+    return { exists: false, checked: true };
+  }
+
+  let sheetsCheckedCount = 0;
+
+  // 1. Check RegistrationAnswers sheet via GVIZ
+  try {
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${activeSheetId}/gviz/tq?tqx=out:json&sheet=RegistrationAnswers&_cb=${Date.now()}`;
+    const res = await fetch(gvizUrl, { cache: "no-store" });
+    if (res.ok) {
+      const text = await res.text();
+      const s = text.indexOf("{");
+      const e = text.lastIndexOf("}");
+      if (s !== -1 && e !== -1) {
+        sheetsCheckedCount++;
+        const json = JSON.parse(text.substring(s, e + 1));
+        const rows = json?.table?.rows || [];
+        for (const row of rows) {
+          const cells = (row?.c || []).map((c: any) => (c?.v !== null && c?.v !== undefined) ? String(c.v).trim() : "");
+          const matchId = cleanId && cells.some(v => v.toLowerCase() === cleanId || (cleanId.length >= 5 && v.toLowerCase().includes(cleanId)));
+          const matchName = cleanName && cells.some(v => v.toLowerCase() === cleanName || (cleanName.length >= 3 && v.toLowerCase().includes(cleanName)));
+          if (matchId || matchName) {
+            return {
+              exists: true,
+              checked: true,
+              foundIn: "RegistrationAnswers",
+              name: cells[2] || cells[1] || studentName
+            };
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("RegistrationAnswers GVIZ check error:", err);
+  }
+
+  // 2. Check Settings sheet via GVIZ
+  try {
+    const gvizUrl = `https://docs.google.com/spreadsheets/d/${activeSheetId}/gviz/tq?tqx=out:json&sheet=Settings&_cb=${Date.now()}`;
+    const res = await fetch(gvizUrl, { cache: "no-store" });
+    if (res.ok) {
+      const text = await res.text();
+      const s = text.indexOf("{");
+      const e = text.lastIndexOf("}");
+      if (s !== -1 && e !== -1) {
+        sheetsCheckedCount++;
+        const json = JSON.parse(text.substring(s, e + 1));
+        const rows = json?.table?.rows || [];
+        for (const row of rows) {
+          const r = row?.c || [];
+          const getVal = (idx: number) => (r[idx] && r[idx].v !== null && r[idx].v !== undefined) ? r[idx].v.toString().trim() : "";
+          const sheetUserZ = getVal(25).toLowerCase();
+          const sheetRegId = getVal(26).toLowerCase();
+          const sheetNameB = getVal(1).toLowerCase();
+
+          const matchId = cleanId && (sheetRegId === cleanId || sheetUserZ === cleanId || (cleanId.length >= 5 && (sheetRegId.includes(cleanId) || sheetUserZ.includes(cleanId))));
+          const matchName = cleanName && (sheetNameB === cleanName || sheetUserZ === cleanName || (cleanName.length >= 3 && (sheetNameB.includes(cleanName) || sheetUserZ.includes(cleanName))));
+
+          if (matchId || matchName) {
+            return {
+              exists: true,
+              checked: true,
+              foundIn: "Settings",
+              name: getVal(1) || getVal(25) || studentName
+            };
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.warn("Settings GVIZ check error:", err);
+  }
+
+  // 3. Fallback: Check via Apps Script GET (action=getRegistrationAnswers) if GVIZ could not verify
+  if (sheetsCheckedCount === 0 && targetScriptUrl && targetScriptUrl.startsWith("http")) {
+    try {
+      const gasUrl = `${targetScriptUrl}?action=getRegistrationAnswers&_cb=${Date.now()}`;
+      const gasRes = await fetch(gasUrl, { cache: "no-store" });
+      if (gasRes.ok) {
+        sheetsCheckedCount++;
+        const gasJson = await gasRes.json();
+        const records = gasJson.records || [];
+        for (const rec of records) {
+          const recId = String(rec.registrationId || rec["رقم التسجيل"] || "").toLowerCase();
+          const recName = String(rec.name || rec.nameArabic || rec["الاسم"] || rec["الاسم بالعربي"] || "").toLowerCase();
+          if ((cleanId && recId && (recId === cleanId || recId.includes(cleanId))) ||
+              (cleanName && recName && (recName === cleanName || recName.includes(cleanName)))) {
+            return {
+              exists: true,
+              checked: true,
+              foundIn: "AppsScript",
+              name: rec.name || rec["الاسم"] || studentName
+            };
+          }
+        }
+      }
+    } catch (e) {}
+  }
+
+  // If at least one sheet was successfully queried and the record was not found:
+  if (sheetsCheckedCount > 0) {
+    return {
+      exists: false,
+      checked: true
+    };
+  }
+
+  // Network / fetch error fallback
+  return {
+    exists: true,
+    checked: false,
+    error: "تعذر التحقق من قاعدة البيانات حالياً بسبب انقطاع الاتصال"
+  };
 }
 
 /**
@@ -1577,6 +1927,8 @@ export async function fetchSettingsSubscribersBridge(
 
             const topicId = getVal(0) || "1"; // Col A
             const nameB = getVal(1);           // Col B
+            const subStatusRaw = getVal(2);    // Col C: حالة المشترك
+            const archiveTag = getVal(3);      // Col D: وسام الأرشيف
             const nameZ = getVal(25);          // Col Z
             const regId = getVal(26);          // Col AA
             const status = getVal(27) || "مسموح"; // Col AB
@@ -1587,6 +1939,19 @@ export async function fetchSettingsSubscribersBridge(
 
             const isAllowed = !(status === "ممنوع" || status === "معطل" || status === "محظور" || status === "لا");
 
+            let finalSubStatus = subStatusRaw;
+            if (!finalSubStatus) {
+              if (topicId === "2" || topicId === "متقدم") {
+                finalSubStatus = "متقدم";
+              } else if (!isAllowed) {
+                finalSubStatus = "قيد المراجعة";
+              } else {
+                finalSubStatus = "معتمد";
+              }
+            }
+
+            const isArchived = (finalSubStatus === "مؤرشف" || finalSubStatus === "أرشيف" || finalSubStatus.includes("مؤرشف") || Boolean(archiveTag));
+
             records.push({
               rowIndex: rIdx + 2,
               name: finalName,
@@ -1595,6 +1960,9 @@ export async function fetchSettingsSubscribersBridge(
               status: status || "مسموح",
               isAllowed,
               deviceCount: devCount || "1",
+              subscriberStatus: finalSubStatus,
+              isArchived,
+              archiveTag,
               rawRow: r.c.map((cell: any) => {
                 if (!cell || cell.v === null || cell.v === undefined) return "";
                 return cell.f !== undefined ? cell.f.toString().trim() : cell.v.toString().trim();
@@ -1629,6 +1997,8 @@ export async function updateSettingsSubscriberBridge(
     topicId: string;
     status: string;
     deviceCount: string;
+    subscriberStatus?: string;
+    archiveTag?: string;
     resetRegisteredDevices?: boolean;
   },
   explicitScriptUrl?: string
@@ -1659,6 +2029,8 @@ export async function updateSettingsSubscriberBridge(
       topicId: params.topicId,
       status: params.status,
       deviceCount: params.deviceCount,
+      subscriberStatus: params.subscriberStatus,
+      archiveTag: params.archiveTag,
       resetRegisteredDevices: params.resetRegisteredDevices
     }
   }, targetScriptUrl);
@@ -1719,6 +2091,7 @@ export async function addSettingsSubscriberBridge(
     topicId: string;
     status: string;
     deviceCount: string;
+    subscriberStatus?: string;
   },
   explicitScriptUrl?: string
 ): Promise<{ success: boolean; message?: string }> {
@@ -1748,6 +2121,47 @@ export async function addSettingsSubscriberBridge(
   return {
     success: false,
     message: result.error || result.data?.message || "فشل إضافة المشترك إلى الشيت"
+  };
+}
+
+/**
+ * Universal Course Archive Bridge (Soft Archiving & Status Coloring)
+ */
+export async function archiveCompletedCourseBridge(
+  archiveSheetName?: string,
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; message?: string; archiveSheetName?: string; archivedCount?: number }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+
+  // 1. Try local Express API
+  try {
+    const res = await fetch("/api/settings-subscribers/archive", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ archiveSheetName, scriptUrl: targetScriptUrl })
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success) {
+        return data;
+      }
+    }
+  } catch (e) {}
+
+  // 2. Direct Apps Script Post
+  const result = await executeAppsScriptPost("archiveCompletedCourse", { archiveSheetName }, targetScriptUrl);
+  if (result.success && result.data && result.data.success) {
+    return {
+      success: true,
+      message: result.data.message || "تمت أرشفة الدورة بنجاح في Google Sheets",
+      archiveSheetName: result.data.archiveSheetName,
+      archivedCount: result.data.archivedCount
+    };
+  }
+
+  return {
+    success: false,
+    message: result.error || result.data?.message || "فشل تنفيذ أرشفة الدورة في Google Sheets"
   };
 }
 
@@ -1828,5 +2242,619 @@ export async function fetchSiteTranslationsBridge(
 
   return { success: false, translations: [] };
 }
+
+/**
+ * Universal Subscriber Topics Fetcher Bridge
+ * Reads all rows from SubscriberContent tab, merging with local translations cache.
+ */
+export async function fetchAllSubscriberTopicsBridge(
+  explicitSpreadsheetId?: string,
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; topics: SubscriberTopicContent[]; message?: string }> {
+  const targetSpreadsheetId = getActiveSpreadsheetId(explicitSpreadsheetId);
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+  const existingLocal = getLocalSubscriberTopics();
+  const localMap = new Map<string, SubscriberTopicContent>();
+  existingLocal.forEach((t) => {
+    if (t.topicId) localMap.set(normalizeTopicDigitStr(t.topicId), t);
+  });
+
+  // 1. Try reading via GViz direct from SubscriberContent sheet
+  const sheetNames = ["SubscriberContent", "Subscriber Content", "subscribercontent", "محتوى المشتركين", "المحتوى"];
+  for (const sheetName of sheetNames) {
+    try {
+      const contentUrl = `https://docs.google.com/spreadsheets/d/${targetSpreadsheetId}/gviz/tq?tqx=out:json&sheet=${encodeURIComponent(sheetName)}&t=${Date.now()}`;
+      const res = await fetch(contentUrl, { cache: "no-store" });
+      if (res.ok) {
+        const text = await res.text();
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        if (start !== -1 && end !== -1) {
+          const json = JSON.parse(text.substring(start, end + 1));
+          if (json && json.table && json.table.rows && json.table.rows.length > 0) {
+            const fetchedTopics: SubscriberTopicContent[] = [];
+
+            json.table.rows.forEach((rowItem: any, rIdx: number) => {
+              const cr = rowItem?.c || [];
+              const getVal = (idx: number) => {
+                if (!cr[idx] || cr[idx].v === null || cr[idx].v === undefined) return "";
+                return cr[idx].f !== undefined ? cr[idx].f.toString().trim() : cr[idx].v.toString().trim();
+              };
+
+              const rawTopicId = getVal(0);
+              const cleanTopicId = normalizeTopicDigitStr(rawTopicId) || (rIdx + 1).toString();
+              const title = getVal(1) || `صفحة المشترك رقم ${cleanTopicId}`;
+              const description = getVal(2);
+              const rawCover = getVal(3);
+              const badge = getVal(4);
+              const coverImage = (rawCover && rawCover !== "-") ? formatImageUrl(rawCover) : undefined;
+
+              const cards: SubscriberCard[] = [];
+              for (let c = 0; c < 12; c++) {
+                const baseIdx = 5 + (c * 4);
+                const cardTitle = getVal(baseIdx);
+                const cardDesc = getVal(baseIdx + 1);
+                const cardMediaRaw = getVal(baseIdx + 2);
+                const cardLinkUrl = getVal(baseIdx + 3);
+
+                if (cardTitle || cardDesc || cardMediaRaw || cardLinkUrl) {
+                  const mediaItems = cardMediaRaw
+                    ? cardMediaRaw
+                        .split(/[\n,\|]+/)
+                        .map((s: string) => s.trim())
+                        .filter(Boolean)
+                        .map((rawUrl: string) => ({
+                          url: formatImageUrl(rawUrl),
+                          type: rawUrl.match(/(youtube\.com|youtu\.be|vimeo\.com|\.(mp4|webm|ogg|mov)$)/i) ? ("video" as const) : ("image" as const)
+                        }))
+                    : [];
+
+                  cards.push({
+                    id: `card_${c + 1}`,
+                    title: cardTitle || `المحور ${c + 1}`,
+                    description: cardDesc,
+                    media: mediaItems,
+                    mediaUrl: cardMediaRaw || undefined,
+                    linkUrl: (cardLinkUrl && cardLinkUrl !== "-") ? cardLinkUrl : undefined,
+                    buttonText: (cardLinkUrl && cardLinkUrl !== "-") ? "فتح الرابط / المورد المرفق" : undefined
+                  });
+                }
+              }
+
+              // Merge with live SiteTranslations sheet and local translations
+              const cached = localMap.get(cleanTopicId);
+              const normTitle = normalizeArabicText(title);
+              const normDesc = normalizeArabicText(description);
+              const normBadge = badge ? normalizeArabicText(badge) : "";
+
+              // We'll populate translations from live SiteTranslations map
+              const topicRecord: SubscriberTopicContent = {
+                topicId: cleanTopicId,
+                rowIndex: rIdx + 2,
+                title,
+                titleEn: cached?.titleEn,
+                titleTh: cached?.titleTh,
+                description,
+                descriptionEn: cached?.descriptionEn,
+                descriptionTh: cached?.descriptionTh,
+                coverImage,
+                badge: (badge && badge !== "-") ? badge : undefined,
+                badgeEn: cached?.badgeEn,
+                badgeTh: cached?.badgeTh,
+                cards: cards.map((cd, cdIdx) => {
+                  const cachedCard = cached?.cards?.[cdIdx];
+                  return {
+                    ...cd,
+                    titleEn: cachedCard?.titleEn,
+                    titleTh: cachedCard?.titleTh,
+                    descriptionEn: cachedCard?.descriptionEn,
+                    descriptionTh: cachedCard?.descriptionTh
+                  };
+                }),
+                updatedAt: cached?.updatedAt || new Date().toISOString()
+              };
+
+              fetchedTopics.push(topicRecord);
+            });
+
+            if (fetchedTopics.length > 0) {
+              // Concurrently enrich all fetched topics with SiteTranslations
+              try {
+                const transMap = await getLiveSiteTranslationsMap(targetSpreadsheetId);
+                fetchedTopics.forEach((t) => {
+                  const nTitle = normalizeArabicText(t.title);
+                  const nDesc = normalizeArabicText(t.description);
+                  const nBadge = t.badge ? normalizeArabicText(t.badge) : "";
+                  const tTitle = transMap.get(nTitle) || transMap.get(`sub_topic_${t.topicId}_title`);
+                  const tDesc = transMap.get(nDesc) || transMap.get(`sub_topic_${t.topicId}_desc`);
+                  const tBadge = nBadge ? (transMap.get(nBadge) || transMap.get(`sub_topic_${t.topicId}_badge`)) : undefined;
+
+                  if (!t.titleEn && tTitle?.en) t.titleEn = tTitle.en;
+                  if (!t.titleTh && tTitle?.th) t.titleTh = tTitle.th;
+                  if (!t.descriptionEn && tDesc?.en) t.descriptionEn = tDesc.en;
+                  if (!t.descriptionTh && tDesc?.th) t.descriptionTh = tDesc.th;
+                  if (!t.badgeEn && tBadge?.en) t.badgeEn = tBadge.en;
+                  if (!t.badgeTh && tBadge?.th) t.badgeTh = tBadge.th;
+
+                  (t.cards || []).forEach((c, idx) => {
+                    const nCTitle = normalizeArabicText(c.title);
+                    const nCDesc = normalizeArabicText(c.description);
+                    const cTitleTrans = transMap.get(nCTitle) || transMap.get(`sub_topic_${t.topicId}_card_${idx}_title`);
+                    const cDescTrans = transMap.get(nCDesc) || transMap.get(`sub_topic_${t.topicId}_card_${idx}_desc`);
+                    if (!c.titleEn && cTitleTrans?.en) c.titleEn = cTitleTrans.en;
+                    if (!c.titleTh && cTitleTrans?.th) c.titleTh = cTitleTrans.th;
+                    if (!c.descriptionEn && cDescTrans?.en) c.descriptionEn = cDescTrans.en;
+                    if (!c.descriptionTh && cDescTrans?.th) c.descriptionTh = cDescTrans.th;
+                  });
+                });
+              } catch (e) {}
+
+              saveLocalSubscriberTopics(fetchedTopics);
+              return { success: true, topics: fetchedTopics };
+            }
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("GViz fetch error for SubscriberContent:", e);
+    }
+  }
+
+  // 2. Try Apps Script GET
+  try {
+    const getUrl = `${targetScriptUrl}${targetScriptUrl.includes("?") ? "&" : "?"}action=getSubscriberContent&t=${Date.now()}`;
+    const res = await fetch(getUrl);
+    if (res.ok) {
+      const data = await res.json();
+      if (data && data.success && Array.isArray(data.records) && data.records.length > 0) {
+        const gasTopics: SubscriberTopicContent[] = data.records.map((r: any) => {
+          const cleanTopicId = normalizeTopicDigitStr(r.topicId) || "1";
+          const cached = localMap.get(cleanTopicId);
+          return {
+            topicId: cleanTopicId,
+            rowIndex: r.rowIndex,
+            title: r.title,
+            titleEn: cached?.titleEn,
+            titleTh: cached?.titleTh,
+            description: r.description,
+            descriptionEn: cached?.descriptionEn,
+            descriptionTh: cached?.descriptionTh,
+            coverImage: r.coverImage,
+            badge: r.badge,
+            badgeEn: cached?.badgeEn,
+            badgeTh: cached?.badgeTh,
+            cards: (r.cards || []).map((c: any, cIdx: number) => {
+              const cachedCard = cached?.cards?.[cIdx];
+              return {
+                id: c.id || `card_${cIdx + 1}`,
+                title: c.title,
+                titleEn: cachedCard?.titleEn,
+                titleTh: cachedCard?.titleTh,
+                description: c.description,
+                descriptionEn: cachedCard?.descriptionEn,
+                descriptionTh: cachedCard?.descriptionTh,
+                mediaUrl: c.mediaUrl,
+                media: c.mediaUrl ? [{ url: formatImageUrl(c.mediaUrl), type: "image" as const }] : [],
+                linkUrl: c.linkUrl
+              };
+            }),
+            updatedAt: cached?.updatedAt || new Date().toISOString()
+          };
+        });
+
+        saveLocalSubscriberTopics(gasTopics);
+        return { success: true, topics: gasTopics };
+      }
+    }
+  } catch (e) {}
+
+  // 3. Fallback to local storage
+  if (existingLocal.length > 0) {
+    return { success: true, topics: existingLocal };
+  }
+
+  // Initial default starter page if completely empty
+  const defaultStarter: SubscriberTopicContent[] = [
+    {
+      topicId: "1",
+      rowIndex: 2,
+      title: "دورة خط الرقعة والديواني للمشتركين",
+      titleEn: "Ruq'ah & Diwani Calligraphy Course for Subscribers",
+      titleTh: "หลักสูตรอักษรวิจิตร รุกอะฮ์ และ ดิวานี สำหรับสมาชิก",
+      description: "أهلاً بك في صفحتك الخاصة. تجد هنا كافة الدروس والمحاور التعليمية المخصصة لاشتراكك مع روابط التطبيقات والمتابعة المباشرة.",
+      descriptionEn: "Welcome to your personal learning page. Find all lessons, resources, and direct follow-up links.",
+      descriptionTh: "ยินดีต้อนรับสู่หน้าการเรียนรู้ส่วนบุคคลของคุณ พบกับบทเรียน ทรัพยากร และลิงก์ติดตามทั้งหมด",
+      badge: "دورة تدريبية متقدمة",
+      badgeEn: "Advanced Training Course",
+      badgeTh: "หลักสูตรการฝึกอบรมขั้นสูง",
+      cards: [
+        {
+          id: "card_1",
+          title: "الدرس الأول: القواعد الأساسية والموازين",
+          titleEn: "Lesson 1: Fundamental Rules & Proportions",
+          titleTh: "บทเรียนที่ 1: กฎพื้นฐานและสัดส่วน",
+          description: "شرح شامل لحركات الحروف والميزان النقطي لمبتدئي خط الرقعة.",
+          descriptionEn: "Comprehensive explanation of letter strokes and point scale.",
+          descriptionTh: "คำอธิบายที่ครอบคลุมเกี่ยวกับจังหวะตัวอักษรและมาตราส่วนจุด",
+          media: [],
+          mediaUrl: "",
+          linkUrl: ""
+        }
+      ],
+      updatedAt: new Date().toISOString()
+    }
+  ];
+  saveLocalSubscriberTopics(defaultStarter);
+  return { success: true, topics: defaultStarter };
+}
+
+/**
+ * Automatically syncs subscriber topic translations to the SiteTranslations tab in Google Sheets.
+ * Merges with existing site translations so nothing is lost, and writes to Google Sheets.
+ * This guarantees that when a subscriber logs in on ANY mobile device, tablet, or PC,
+ * their page is rendered in English, Thai, or Arabic instantly.
+ */
+export async function syncSubscriberTopicTranslationsToSheet(
+  topic: SubscriberTopicContent,
+  explicitScriptUrl?: string
+): Promise<void> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+  const cleanTopicId = normalizeTopicDigitStr(topic.topicId) || "1";
+
+  const newTransItems: any[] = [];
+  if (topic.title && (topic.titleEn || topic.titleTh)) {
+    newTransItems.push({
+      id: `sub_topic_${cleanTopicId}_title`,
+      category: "subscriber",
+      label: `عنوان موضوع المشترك ${cleanTopicId}`,
+      ar: topic.title,
+      en: topic.titleEn || "",
+      th: topic.titleTh || ""
+    });
+  }
+  if (topic.description && (topic.descriptionEn || topic.descriptionTh)) {
+    newTransItems.push({
+      id: `sub_topic_${cleanTopicId}_desc`,
+      category: "subscriber",
+      label: `وصف موضوع المشترك ${cleanTopicId}`,
+      ar: topic.description,
+      en: topic.descriptionEn || "",
+      th: topic.descriptionTh || ""
+    });
+  }
+  if (topic.badge && (topic.badgeEn || topic.badgeTh)) {
+    newTransItems.push({
+      id: `sub_topic_${cleanTopicId}_badge`,
+      category: "subscriber",
+      label: `شارة موضوع المشترك ${cleanTopicId}`,
+      ar: topic.badge,
+      en: topic.badgeEn || "",
+      th: topic.badgeTh || ""
+    });
+  }
+
+  (topic.cards || []).forEach((c, idx) => {
+    if (c.title && (c.titleEn || c.titleTh)) {
+      newTransItems.push({
+        id: `sub_topic_${cleanTopicId}_card_${idx}_title`,
+        category: "subscriber",
+        label: `عنوان بطاقة ${idx + 1} للموضوع ${cleanTopicId}`,
+        ar: c.title,
+        en: c.titleEn || "",
+        th: c.titleTh || ""
+      });
+    }
+    if (c.description && (c.descriptionEn || c.descriptionTh)) {
+      newTransItems.push({
+        id: `sub_topic_${cleanTopicId}_card_${idx}_desc`,
+        category: "subscriber",
+        label: `وصف بطاقة ${idx + 1} للموضوع ${cleanTopicId}`,
+        ar: c.description,
+        en: c.descriptionEn || "",
+        th: c.descriptionTh || ""
+      });
+    }
+  });
+
+  if (newTransItems.length === 0) return;
+
+  // Clear memory cache so fresh translations are queried immediately
+  cachedSiteTransMap = null;
+
+  try {
+    const existingRes = await fetchSiteTranslationsBridge(targetScriptUrl);
+    const existingList = (existingRes && existingRes.success && Array.isArray(existingRes.translations))
+      ? existingRes.translations
+      : [];
+
+    const mergedMap = new Map<string, any>();
+    existingList.forEach((item: any) => {
+      if (item && item.id) {
+        mergedMap.set(item.id.toLowerCase(), item);
+      }
+    });
+
+    newTransItems.forEach((item: any) => {
+      mergedMap.set(item.id.toLowerCase(), item);
+    });
+
+    const finalTranslations = Array.from(mergedMap.values());
+    await saveSiteTranslationsBridge(finalTranslations, targetScriptUrl);
+  } catch (err) {
+    console.warn("Could not sync subscriber translations to SiteTranslations sheet:", err);
+  }
+}
+
+/**
+ * Universal Subscriber Topic Saver Bridge
+ * Saves the page into internal fast storage (instant UI update)
+ * AND writes the Arabic text + cards into Google Sheets (SubscriberContent sheet) via Google Apps Script.
+ */
+export async function saveSubscriberTopicBridge(
+  topic: SubscriberTopicContent,
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; message?: string; topic?: SubscriberTopicContent }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+  const cleanTopicId = normalizeTopicDigitStr(topic.topicId) || "1";
+
+  // 1. UPDATE LOCAL SYSTEM CACHE IMMEDIATELY (ZERO LATENCY FOR SUBSCRIBERS)
+  const currentList = getLocalSubscriberTopics();
+  const existingIdx = currentList.findIndex((t) => isTopicMatching(cleanTopicId, t.topicId));
+  const updatedTopic: SubscriberTopicContent = {
+    ...topic,
+    topicId: cleanTopicId,
+    updatedAt: new Date().toISOString()
+  };
+
+  if (existingIdx !== -1) {
+    currentList[existingIdx] = updatedTopic;
+  } else {
+    currentList.push(updatedTopic);
+  }
+  saveLocalSubscriberTopics(currentList);
+
+  // Background: synchronize all topic translations to Google Sheets SiteTranslations tab
+  syncSubscriberTopicTranslationsToSheet(updatedTopic, targetScriptUrl).catch(() => {});
+
+  // 2. PREPARE PAYLOAD FOR GOOGLE APPS SCRIPT (Arabic content + cards recorded permanently)
+  const postPayload = {
+    topicId: cleanTopicId,
+    rowIndex: topic.rowIndex || (existingIdx !== -1 ? currentList[existingIdx].rowIndex : undefined),
+    title: topic.title,
+    description: topic.description,
+    coverImage: topic.coverImage || "",
+    badge: topic.badge || "",
+    cards: (topic.cards || []).map((c) => ({
+      title: c.title,
+      description: c.description,
+      mediaUrl: c.mediaUrl || (c.media && c.media[0] ? c.media[0].url : "") || "",
+      linkUrl: c.linkUrl || ""
+    }))
+  };
+
+  // 3. Optional local express proxy
+  try {
+    fetch("/api/subscriber-content/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...postPayload, scriptUrl: targetScriptUrl })
+    }).catch(() => {});
+  } catch (e) {}
+
+  // 4. DIRECT GOOGLE APPS SCRIPT POST
+  const result = await executeAppsScriptPost("saveSubscriberContent", postPayload, targetScriptUrl);
+  if (result.success && result.data && result.data.success) {
+    if (result.data.rowIndex && existingIdx !== -1) {
+      currentList[existingIdx].rowIndex = result.data.rowIndex;
+      saveLocalSubscriberTopics(currentList);
+    }
+    return {
+      success: true,
+      message: result.data.message || "تم حفظ محتوى الصفحة بنجاح في النظام وفي قوقل شيت!",
+      topic: updatedTopic
+    };
+  }
+
+  return {
+    success: true,
+    message: "تم حفظ المحتوى في النظام الداخلي بنجاح!",
+    topic: updatedTopic
+  };
+}
+
+/**
+ * Universal Subscriber Topic Deletion Bridge
+ */
+export async function deleteSubscriberTopicBridge(
+  topicId: string,
+  rowIndex?: number,
+  explicitScriptUrl?: string
+): Promise<{ success: boolean; message?: string }> {
+  const targetScriptUrl = getActiveScriptUrl(explicitScriptUrl);
+  const cleanTopicId = normalizeTopicDigitStr(topicId) || topicId;
+
+  // 1. Remove from local store
+  const currentList = getLocalSubscriberTopics();
+  const filtered = currentList.filter((t) => !isTopicMatching(cleanTopicId, t.topicId));
+  saveLocalSubscriberTopics(filtered);
+
+  // 2. Call Apps Script deletion
+  const result = await executeAppsScriptPost("deleteSubscriberContent", {
+    topicId: cleanTopicId,
+    rowIndex: rowIndex
+  }, targetScriptUrl);
+
+  return {
+    success: true,
+    message: result.data?.message || "تم حذف صفحة المحتوى بنجاح من النظام"
+  };
+}
+
+/**
+ * Represents parsed Telegram bot URLs for both direct app protocol and web fallback
+ */
+export interface TelegramLinkPair {
+  appUrl: string;       // tg://resolve?domain=nuon2026_bot&start=student_XXXXXX
+  webUrl: string;       // https://t.me/nuon2026_bot?start=student_XXXXXX
+  domain: string;       // nuon2026_bot
+  startParam?: string;  // student_XXXXXX
+}
+
+/**
+ * Resolves the dynamic Telegram activation link for a given subscriber registration ID.
+ * Replaces 'student_XXXXXX' or '{id}' with the actual registration ID.
+ */
+export function getSubscriberTelegramLink(registrationId?: string): string {
+  let activeEmailConfig: any = DEFAULT_SUBSCRIBER_EMAIL_CONFIG;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("thnoon_subscriber_email_config");
+      if (stored) activeEmailConfig = JSON.parse(stored);
+    } catch (e) {}
+  }
+  const botTemplate = activeEmailConfig?.telegramBotLink || "https://t.me/nuon2026_bot?start=student_XXXXXX";
+  const cleanId = (registrationId || "").toString().trim() || "XXXXXX";
+  return botTemplate
+    .replace(/XXXXXX/g, cleanId)
+    .replace(/\{id\}/g, cleanId)
+    .replace(/\{\{id\}\}/g, cleanId)
+    .replace(/\{\{registrationId\}\}/g, cleanId);
+}
+
+/**
+ * Parses any Telegram URL (https://t.me/... or tg://...) and returns both
+ * native app URL (tg://resolve?domain=...&start=...) and web fallback URL (https://t.me/...).
+ */
+export function parseTelegramUrls(rawUrl?: string, registrationId?: string): TelegramLinkPair {
+  let activeEmailConfig: any = DEFAULT_SUBSCRIBER_EMAIL_CONFIG;
+  if (typeof window !== "undefined") {
+    try {
+      const stored = localStorage.getItem("thnoon_subscriber_email_config");
+      if (stored) activeEmailConfig = JSON.parse(stored);
+    } catch (e) {}
+  }
+  const baseTpl = activeEmailConfig?.telegramBotLink || "https://t.me/nuon2026_bot?start=student_XXXXXX";
+  const cleanId = (registrationId || "").toString().trim() || "XXXXXX";
+
+  let resolved = (rawUrl && (rawUrl.includes("t.me") || rawUrl.includes("tg://")) ? rawUrl : baseTpl)
+    .replace(/XXXXXX/g, cleanId)
+    .replace(/\{id\}/g, cleanId)
+    .replace(/\{\{id\}\}/g, cleanId)
+    .replace(/\{\{registrationId\}\}/g, cleanId);
+
+  let domain = "nuon2026_bot";
+  let startParam: string | undefined = `student_${cleanId}`;
+
+  try {
+    if (resolved.startsWith("tg://")) {
+      const pseudo = resolved.replace("tg://resolve", "http://tg.local").replace("tg://", "http://tg.local/");
+      const u = new URL(pseudo);
+      domain = u.searchParams.get("domain") || domain;
+      const s = u.searchParams.get("start");
+      if (s) startParam = s;
+    } else {
+      const match = resolved.match(/(?:t\.me|telegram\.me)\/([a-zA-Z0-9_]+)(?:\?start=([a-zA-Z0-9_#-]+))?/i);
+      if (match) {
+        domain = match[1] || domain;
+        if (match[2]) startParam = match[2];
+      }
+    }
+  } catch (e) {}
+
+  const appUrl = startParam
+    ? `tg://resolve?domain=${domain}&start=${startParam}`
+    : `tg://resolve?domain=${domain}`;
+
+  const webUrl = startParam
+    ? `https://t.me/${domain}?start=${startParam}`
+    : `https://t.me/${domain}`;
+
+  return { appUrl, webUrl, domain, startParam };
+}
+
+/**
+ * Smart Deep Link for Telegram:
+ * 1. Tries to launch Telegram App directly via tg:// protocol scheme.
+ * 2. If user is on a device without Telegram installed, automatically falls back
+ *    to opening the web URL (https://t.me/...) in a new tab without showing errors.
+ */
+export function openTelegramSmartLink(
+  targetUrlOrRegId?: string,
+  explicitRegId?: string,
+  event?: React.MouseEvent
+): void {
+  if (event) {
+    try {
+      event.preventDefault();
+    } catch (e) {}
+  }
+
+  let rawUrl = targetUrlOrRegId;
+  let regId = explicitRegId;
+
+  if (!rawUrl || /^\d+$/.test(rawUrl)) {
+    regId = rawUrl || explicitRegId;
+    rawUrl = undefined;
+  }
+
+  const { appUrl, webUrl } = parseTelegramUrls(rawUrl, regId);
+
+  if (typeof window === "undefined") return;
+
+  const start = Date.now();
+  let appOpened = false;
+
+  const handleBlurOrHide = () => {
+    appOpened = true;
+    window.removeEventListener("blur", handleBlurOrHide);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+  };
+
+  const handleVisibilityChange = () => {
+    if (document.hidden || document.visibilityState === "hidden") {
+      appOpened = true;
+      window.removeEventListener("blur", handleBlurOrHide);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    }
+  };
+
+  window.addEventListener("blur", handleBlurOrHide);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+
+  // Attempt direct native app launch
+  try {
+    const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+    if (isMobile) {
+      window.location.href = appUrl;
+    } else {
+      // For desktop, create a hidden iframe or try location
+      const iframe = document.createElement("iframe");
+      iframe.style.display = "none";
+      iframe.src = appUrl;
+      document.body.appendChild(iframe);
+      setTimeout(() => {
+        try {
+          if (iframe.parentNode) iframe.parentNode.removeChild(iframe);
+        } catch (e) {}
+      }, 2500);
+
+      // Also trigger navigation on desktop
+      window.location.href = appUrl;
+    }
+  } catch (err) {
+    console.warn("Direct tg scheme error:", err);
+  }
+
+  // Graceful fallback: If the page is still active/visible after 1200ms, open web URL
+  setTimeout(() => {
+    window.removeEventListener("blur", handleBlurOrHide);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
+
+    if (!appOpened && !document.hidden && document.visibilityState === "visible") {
+      window.open(webUrl, "_blank", "noopener,noreferrer");
+    }
+  }, 1200);
+}
+
 
 
